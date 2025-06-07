@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useRef, useEffect, useState } from "react"
 import {
   ChatBubble,
   ChatBubbleAvatar,
@@ -34,6 +35,49 @@ export function ConversationPage({
   className = "",
   onAction
 }: ConversationPageProps) {
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const [showScrollButton, setShowScrollButton] = useState(false)
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages, isLoading])
+
+  // Monitor scroll position to show/hide scroll button
+  useEffect(() => {
+    const scrollContainer = scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]')
+    if (!scrollContainer) return
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = scrollContainer
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100
+      setShowScrollButton(!isNearBottom)
+    }
+
+    scrollContainer.addEventListener('scroll', handleScroll)
+    handleScroll() // Check initial state
+
+    return () => scrollContainer.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  const scrollToBottom = () => {
+    // Try multiple methods to ensure scrolling works
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+    
+    // Fallback: scroll the container directly
+    setTimeout(() => {
+      if (scrollAreaRef.current) {
+        const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]') || scrollAreaRef.current
+        if (scrollContainer) {
+          scrollContainer.scrollTop = scrollContainer.scrollHeight
+        }
+      }
+    }, 100)
+  }
+
   const handleAction = (action: string, messageId: string, messageContent: string) => {
     if (onAction) {
       onAction(action, messageId, messageContent)
@@ -66,7 +110,7 @@ export function ConversationPage({
 
   return (
     <div className={`flex flex-col h-full bg-black relative ${className}`}>
-      <ScrollArea className="flex-1 px-4 py-6">
+      <ScrollArea ref={scrollAreaRef} className="flex-1 px-4 py-6">
         <div className="max-w-4xl mx-auto space-y-6">
           {messages.map((message) => {
             const variant = message.sender === "user" ? "sent" : "received"
@@ -152,23 +196,24 @@ export function ConversationPage({
               </div>
             </div>
                       )}
+          
+          {/* Invisible element to scroll to */}
+          <div ref={messagesEndRef} />
         </div>
       </ScrollArea>
       
-      {/* Scroll to bottom button */}
-      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
-        <button
-          onClick={() => {
-            const scrollArea = document.querySelector('[data-radix-scroll-area-viewport]')
-            if (scrollArea) {
-              scrollArea.scrollTop = scrollArea.scrollHeight
-            }
-          }}
-          className="p-2 bg-gray-800 border border-gray-700 rounded-full hover:bg-gray-700 transition-colors shadow-lg"
-        >
-          <ChevronDown className="w-4 h-4 text-gray-400" />
-        </button>
-      </div>
+      {/* Scroll to bottom button - only show when not at bottom */}
+      {showScrollButton && (
+        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
+          <button
+            onClick={scrollToBottom}
+            className="p-2 bg-gray-800 border border-gray-700 rounded-full hover:bg-gray-700 transition-all duration-200 shadow-lg group animate-in fade-in slide-in-from-bottom-2"
+            title="Scroll to bottom"
+          >
+            <ChevronDown className="w-4 h-4 text-gray-400 group-hover:text-gray-200 transition-colors" />
+          </button>
+        </div>
+      )}
     </div>
   )
 } 
