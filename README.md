@@ -1,6 +1,6 @@
-# V0 AI Chat Component Integration
+# LocalGPT Chat Component Integration
 
-This project demonstrates the integration of a V0-style AI chat component built with React, TypeScript, Tailwind CSS, and shadcn/ui.
+This project demonstrates the integration of a localGPT-style AI chat component built with React, TypeScript, Tailwind CSS, and shadcn/ui.
 
 ## 🚀 Project Setup
 
@@ -21,7 +21,7 @@ src/
 ├── components/
 │   ├── ui/
 │   │   ├── textarea.tsx     # shadcn/ui textarea component
-│   │   └── v0-ai-chat.tsx   # Main AI chat component
+│   │   └── localgpt-chat.tsx   # Main AI chat component
 │   └── demo.tsx            # Demo wrapper component
 └── lib/
     └── utils.ts            # Utility functions (cn helper)
@@ -29,7 +29,7 @@ src/
 
 ## 🎯 Component Features
 
-The `VercelV0Chat` component includes:
+The `LocalGPTChat` component includes:
 
 - **Auto-resizing textarea** that expands as you type
 - **Keyboard shortcuts** (Enter to send, Shift+Enter for new line)
@@ -58,12 +58,12 @@ The `VercelV0Chat` component includes:
 ### Basic Usage
 
 ```tsx
-import { VercelV0Chat } from "@/components/ui/v0-ai-chat";
+import { LocalGPTChat } from "@/components/ui/localgpt-chat";
 
 export function MyPage() {
     return (
         <div className="min-h-screen bg-white dark:bg-black">
-            <VercelV0Chat />
+            <LocalGPTChat />
         </div>
     );
 }
@@ -71,7 +71,7 @@ export function MyPage() {
 
 ### Component Props
 
-The `VercelV0Chat` component currently doesn't accept props, but you can customize it by:
+The `LocalGPTChat` component currently doesn't accept props, but you can customize it by:
 
 1. **Modifying the placeholder text**
 2. **Changing the action buttons**
@@ -82,13 +82,13 @@ The `VercelV0Chat` component currently doesn't accept props, but you can customi
 
 #### Custom Placeholder
 ```tsx
-// In v0-ai-chat.tsx, line ~94
+// In localgpt-chat.tsx, line ~94
 placeholder="Ask me anything..."
 ```
 
 #### Custom Auto-resize Limits
 ```tsx
-// In v0-ai-chat.tsx, line ~73-76
+// In localgpt-chat.tsx, line ~73-76
 const { textareaRef, adjustHeight } = useAutoResizeTextarea({
     minHeight: 80,  // Increase minimum height
     maxHeight: 300, // Increase maximum height

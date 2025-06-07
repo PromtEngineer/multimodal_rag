@@ -66,7 +66,7 @@ function useAutoResizeTextarea({
     return { textareaRef, adjustHeight };
 }
 
-export function VercelV0Chat() {
+export function LocalGPTChat() {
     const [value, setValue] = useState("");
     const { textareaRef, adjustHeight } = useAutoResizeTextarea({
         minHeight: 60,

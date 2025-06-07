@@ -1,6 +1,6 @@
 "use client";
 
-import { VercelV0Chat } from "@/components/ui/v0-ai-chat"
+import { LocalGPTChat } from "@/components/ui/localgpt-chat"
 import { SessionNavBar } from "@/components/ui/sidebar"
 
 export function Demo() {
@@ -9,7 +9,7 @@ export function Demo() {
             <SessionNavBar />
             <main className="flex h-screen grow flex-col overflow-auto ml-12 transition-all duration-200">
                 <div className="flex items-center justify-center h-full">
-                    <VercelV0Chat />
+                    <LocalGPTChat />
                 </div>
             </main>
         </div>
