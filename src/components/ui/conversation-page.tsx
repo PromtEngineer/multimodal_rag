@@ -10,17 +10,10 @@ import {
 } from "@/components/ui/chat-bubble"
 import { Copy, RefreshCcw, ThumbsUp, ThumbsDown, Volume2, MoreHorizontal, ChevronDown } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
-
-interface Message {
-  id: number
-  content: string
-  sender: "user" | "assistant"
-  timestamp: Date
-  isLoading?: boolean
-}
+import { ChatMessage } from "@/lib/api"
 
 interface ConversationPageProps {
-  messages: Message[]
+  messages: ChatMessage[]
   isLoading?: boolean
   className?: string
 }

@@ -1,61 +1,105 @@
 "use client";
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { LocalGPTChat } from "@/components/ui/localgpt-chat"
 import { SessionNavBar } from "@/components/ui/sidebar"
 import { ConversationPage } from "@/components/ui/conversation-page"
 import { ArrowUp } from "lucide-react"
-
-// Sample conversation data
-const sampleMessages = [
-  {
-    id: 1,
-    content: "Hey, can you tell me a joke.",
-    sender: "user" as const,
-    timestamp: new Date(),
-  },
-  {
-    id: 2,
-    content: "Sure thing! Here's one for you:\n\nWhy did the computer keep sneezing?\n\nBecause it had a bad case of CAPS LOCK! 😄\n\nWant to hear another?",
-    sender: "assistant" as const,
-    timestamp: new Date(),
-  },
-  {
-    id: 3,
-    content: "tell me another one",
-    sender: "user" as const,
-    timestamp: new Date(),
-  },
-  {
-    id: 4,
-    content: "Alright, here's another:\n\nWhy don't programmers like nature?\n\nIt has too many bugs! 🐛😄\n\nWould you like one more?",
-    sender: "assistant" as const,
-    timestamp: new Date(),
-  }
-]
+import { chatAPI, ChatMessage } from "@/lib/api"
 
 export function Demo() {
     const [showConversation, setShowConversation] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
     const [inputValue, setInputValue] = useState("")
+    const [messages, setMessages] = useState<ChatMessage[]>([])
+    const [backendStatus, setBackendStatus] = useState<'checking' | 'connected' | 'error'>('checking')
+    const [nextMessageId, setNextMessageId] = useState(1)
+
+    // Check backend health on component mount
+    useEffect(() => {
+        checkBackendHealth()
+    }, [])
+
+    const checkBackendHealth = async () => {
+        try {
+            await chatAPI.checkHealth()
+            setBackendStatus('connected')
+        } catch (error) {
+            console.error('Backend health check failed:', error)
+            setBackendStatus('error')
+        }
+    }
 
     const handleStartConversation = () => {
         setShowConversation(true)
+        // Start with a sample conversation or empty
+        if (messages.length === 0) {
+            setMessages([
+                chatAPI.createMessage(1, "Hey, can you tell me a joke?", "user"),
+            ])
+            setNextMessageId(2)
+            // Send the first message automatically
+            sendMessageToAPI("Hey, can you tell me a joke?", [])
+        }
     }
 
     const handleBackToChat = () => {
         setShowConversation(false)
     }
 
-    const handleSendMessage = () => {
-        if (inputValue.trim()) {
+    const sendMessageToAPI = async (message: string, currentMessages: ChatMessage[]) => {
+        try {
             setIsLoading(true)
-            // Simulate AI response delay
-            setTimeout(() => {
-                setIsLoading(false)
-            }, 3000)
-            setInputValue("")
+            
+            // Convert messages to conversation history
+            const conversationHistory = chatAPI.messagesToHistory(currentMessages)
+            
+            const response = await chatAPI.sendMessage({
+                message,
+                conversation_history: conversationHistory
+            })
+
+            // Add AI response
+            const aiMessage = chatAPI.createMessage(
+                nextMessageId + 1,
+                response.response,
+                "assistant"
+            )
+
+            setMessages(prev => [...prev, aiMessage])
+            setNextMessageId(prev => prev + 2)
+            
+        } catch (error) {
+            console.error('Failed to send message:', error)
+            
+            // Add error message
+            const errorMessage = chatAPI.createMessage(
+                nextMessageId + 1,
+                `Sorry, I encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}. Please make sure the backend server is running.`,
+                "assistant"
+            )
+            
+            setMessages(prev => [...prev, errorMessage])
+            setNextMessageId(prev => prev + 2)
+        } finally {
+            setIsLoading(false)
         }
+    }
+
+    const handleSendMessage = async () => {
+        if (!inputValue.trim()) return
+
+        // Add user message immediately
+        const userMessage = chatAPI.createMessage(nextMessageId, inputValue.trim(), "user")
+        const newMessages = [...messages, userMessage]
+        setMessages(newMessages)
+        
+        const messageToSend = inputValue.trim()
+        setInputValue("")
+        setNextMessageId(prev => prev + 1)
+
+        // Send to API
+        await sendMessageToAPI(messageToSend, newMessages)
     }
 
     const toggleLoading = () => {
@@ -77,12 +121,34 @@ export function Demo() {
                     <div className="flex items-center justify-center h-full">
                         <div className="space-y-4">
                             <LocalGPTChat />
-                                                                <div className="flex justify-center gap-3">
+                                                                <div className="flex flex-col items-center gap-3">
+                                        <div className="flex items-center gap-2 text-sm">
+                                            {backendStatus === 'checking' && (
+                                                <div className="flex items-center gap-2 text-gray-400">
+                                                    <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+                                                    Connecting to backend...
+                                                </div>
+                                            )}
+                                            {backendStatus === 'connected' && (
+                                                <div className="flex items-center gap-2 text-green-400">
+                                                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                                    Backend connected
+                                                </div>
+                                            )}
+                                            {backendStatus === 'error' && (
+                                                <div className="flex items-center gap-2 text-red-400">
+                                                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                                                    Backend offline (using mock data)
+                                                </div>
+                                            )}
+                                        </div>
+                                        
                                         <button
                                             onClick={handleStartConversation}
-                                            className="px-4 py-2 bg-white text-black rounded-lg hover:bg-gray-200 transition-colors text-sm"
+                                            disabled={backendStatus === 'checking'}
+                                            className="px-4 py-2 bg-white text-black rounded-lg hover:bg-gray-200 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
-                                            View Sample Conversation
+                                            {backendStatus === 'connected' ? 'Start Real Chat' : 'View Sample Conversation'}
                                         </button>
                                     </div>
                         </div>
@@ -113,7 +179,7 @@ export function Demo() {
                         
                         <div className="flex-1 flex flex-col">
                             <ConversationPage 
-                                messages={sampleMessages}
+                                messages={messages}
                                 isLoading={isLoading}
                             />
                             
