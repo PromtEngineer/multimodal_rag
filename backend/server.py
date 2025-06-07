@@ -31,6 +31,8 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
             })
         elif parsed_path.path == '/sessions':
             self.handle_get_sessions()
+        elif parsed_path.path == '/sessions/cleanup':
+            self.handle_cleanup_sessions()
         elif parsed_path.path.startswith('/sessions/'):
             session_id = parsed_path.path.split('/')[-1]
             self.handle_get_session(session_id)
@@ -117,6 +119,19 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
         except Exception as e:
             self.send_json_response({
                 "error": f"Failed to get sessions: {str(e)}"
+            }, status_code=500)
+    
+    def handle_cleanup_sessions(self):
+        """Clean up empty sessions"""
+        try:
+            cleanup_count = db.cleanup_empty_sessions()
+            self.send_json_response({
+                "message": f"Cleaned up {cleanup_count} empty sessions",
+                "cleanup_count": cleanup_count
+            })
+        except Exception as e:
+            self.send_json_response({
+                "error": f"Failed to cleanup sessions: {str(e)}"
             }, status_code=500)
     
     def handle_get_session(self, session_id: str):
@@ -280,6 +295,14 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
 
 def main():
     PORT = 8000
+    
+    print(f"✅ Database initialized successfully")
+    
+    # Clean up any empty sessions on startup
+    print("🧹 Cleaning up empty sessions...")
+    cleanup_count = db.cleanup_empty_sessions()
+    if cleanup_count == 0:
+        print("✨ No empty sessions to clean up")
     
     print(f"🚀 Starting localGPT backend server on port {PORT}")
     print(f"📍 Chat endpoint: http://localhost:{PORT}/chat")

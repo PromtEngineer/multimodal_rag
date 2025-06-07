@@ -7,11 +7,16 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ChatSession, chatAPI } from "@/lib/api"
 
+interface SessionSidebarRef {
+  refreshSessions: () => Promise<void>
+}
+
 interface SessionSidebarProps {
   currentSessionId?: string
   onSessionSelect: (sessionId: string) => void
   onNewSession: () => void
   onSessionDelete?: (sessionId: string) => void
+  onSessionCreated?: (ref: SessionSidebarRef) => void
   className?: string
 }
 
@@ -20,6 +25,7 @@ export function SessionSidebar({
   onSessionSelect,
   onNewSession,
   onSessionDelete,
+  onSessionCreated,
   className = ""
 }: SessionSidebarProps) {
   const [sessions, setSessions] = useState<ChatSession[]>([])
@@ -31,7 +37,7 @@ export function SessionSidebar({
     loadSessions()
   }, [])
 
-  const loadSessions = async () => {
+  const loadSessions = React.useCallback(async () => {
     try {
       setError(null)
       const response = await chatAPI.getSessions()
@@ -42,19 +48,24 @@ export function SessionSidebar({
     } finally {
       setIsLoading(false)
     }
+  }, [])
+
+  const handleNewSession = () => {
+    // Don't create session immediately - just trigger empty state
+    onNewSession()
   }
 
-  const handleNewSession = async () => {
-    try {
-      const newSession = await chatAPI.createSession()
-      setSessions(prev => [newSession, ...prev])
-      onSessionSelect(newSession.id)
-      onNewSession()
-    } catch (error) {
-      console.error('Failed to create session:', error)
-      setError('Failed to create session')
+  // Refresh sessions when a new session is created
+  const refreshSessions = React.useCallback(async () => {
+    await loadSessions()
+  }, [loadSessions])
+
+  // Expose refresh function to parent
+  React.useEffect(() => {
+    if (onSessionCreated) {
+      onSessionCreated({ refreshSessions })
     }
-  }
+  }, [onSessionCreated, refreshSessions])
 
   const handleDeleteSession = async (sessionId: string, event: React.MouseEvent) => {
     event.stopPropagation() // Prevent session selection when clicking delete

@@ -185,6 +185,35 @@ class ChatDatabase:
         
         return deleted
     
+    def cleanup_empty_sessions(self) -> int:
+        """Remove sessions with no messages"""
+        conn = sqlite3.connect(self.db_path)
+        
+        # Find sessions with no messages
+        cursor = conn.execute('''
+            SELECT s.id FROM sessions s
+            LEFT JOIN messages m ON s.id = m.session_id
+            WHERE m.id IS NULL
+        ''')
+        
+        empty_sessions = [row[0] for row in cursor.fetchall()]
+        
+        # Delete empty sessions
+        deleted_count = 0
+        for session_id in empty_sessions:
+            cursor = conn.execute('DELETE FROM sessions WHERE id = ?', (session_id,))
+            if cursor.rowcount > 0:
+                deleted_count += 1
+                print(f"🗑️ Cleaned up empty session: {session_id[:8]}...")
+        
+        conn.commit()
+        conn.close()
+        
+        if deleted_count > 0:
+            print(f"✨ Cleaned up {deleted_count} empty sessions")
+        
+        return deleted_count
+    
     def get_stats(self) -> Dict:
         """Get database statistics"""
         conn = sqlite3.connect(self.db_path)

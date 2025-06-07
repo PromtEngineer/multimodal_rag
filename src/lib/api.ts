@@ -198,6 +198,22 @@ class ChatAPI {
     }
   }
 
+  async cleanupEmptySessions(): Promise<{ message: string; cleanup_count: number }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/sessions/cleanup`);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(`Cleanup sessions error: ${errorData.error || response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Cleanup sessions failed:', error);
+      throw error;
+    }
+  }
+
   // Convert database message format to ChatMessage format
   convertDbMessage(dbMessage: Record<string, unknown>): ChatMessage {
     return {

@@ -11,6 +11,7 @@ export function Demo() {
     const [currentSession, setCurrentSession] = useState<ChatSession | null>(null)
     const [showConversation, setShowConversation] = useState(false)
     const [backendStatus, setBackendStatus] = useState<'checking' | 'connected' | 'error'>('checking')
+    const [sidebarRef, setSidebarRef] = useState<{ refreshSessions: () => Promise<void> } | null>(null)
 
     console.log('Demo component rendering...')
 
@@ -35,23 +36,28 @@ export function Demo() {
         setShowConversation(true)
     }
 
-    const handleNewSession = async () => {
-        try {
-            const newSession = await chatAPI.createSession()
-            setCurrentSessionId(newSession.id)
-            setCurrentSession(newSession)
-            setShowConversation(true)
-        } catch (error) {
-            console.error('Failed to create session:', error)
-        }
+    const handleNewSession = () => {
+        // Don't create session immediately - just show empty state
+        setCurrentSessionId(undefined)
+        setCurrentSession(null)
+        setShowConversation(true)
     }
 
-    const handleSessionChange = (session: ChatSession) => {
+    const handleSessionChange = async (session: ChatSession) => {
         setCurrentSession(session)
+        // Update the current session ID when a new session is created
+        if (session.id !== currentSessionId) {
+            setCurrentSessionId(session.id)
+            // Refresh the sidebar to show the new session
+            if (sidebarRef) {
+                await sidebarRef.refreshSessions()
+            }
+        }
     }
 
     const handleSessionDelete = (deletedSessionId: string) => {
         if (currentSessionId === deletedSessionId) {
+            // Stay in conversation mode but show empty state
             setCurrentSessionId(undefined)
             setCurrentSession(null)
         }
@@ -59,6 +65,7 @@ export function Demo() {
 
     const handleStartConversation = () => {
         if (backendStatus === 'connected') {
+            // Just show empty state, don't create session yet
             handleNewSession()
         } else {
             setShowConversation(true)
@@ -72,8 +79,9 @@ export function Demo() {
                 <SessionSidebar
                     currentSessionId={currentSessionId}
                     onSessionSelect={handleSessionSelect}
-                    onNewSession={() => handleNewSession()}
+                    onNewSession={handleNewSession}
                     onSessionDelete={handleSessionDelete}
+                    onSessionCreated={setSidebarRef}
                 />
             )}
             
@@ -157,7 +165,7 @@ export function Demo() {
                                         )}
                                     </div>
                                     <button
-                                        onClick={() => handleNewSession()}
+                                        onClick={handleNewSession}
                                         className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
                                     >
                                         Back to Home
