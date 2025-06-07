@@ -109,8 +109,8 @@ export function ConversationPage({
   }
 
   return (
-    <div className={`flex flex-col h-full bg-black relative ${className}`}>
-      <ScrollArea ref={scrollAreaRef} className="flex-1 px-4 py-6">
+    <div className={`flex flex-col h-full bg-black relative overflow-hidden ${className}`}>
+      <ScrollArea ref={scrollAreaRef} className="flex-1 px-4 py-6 min-h-0">
         <div className="max-w-4xl mx-auto space-y-6">
           {messages.map((message) => {
             const variant = message.sender === "user" ? "sent" : "received"
@@ -204,7 +204,7 @@ export function ConversationPage({
       
       {/* Scroll to bottom button - only show when not at bottom */}
       {showScrollButton && (
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
+        <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 z-10">
           <button
             onClick={scrollToBottom}
             className="p-2 bg-gray-800 border border-gray-700 rounded-full hover:bg-gray-700 transition-all duration-200 shadow-lg group animate-in fade-in slide-in-from-bottom-2"

@@ -54,6 +54,15 @@ export function Demo() {
         setCurrentSession(null)
     }
 
+    const handleSessionDelete = (deletedSessionId: string) => {
+        // If the deleted session was currently selected, go back to home
+        if (currentSessionId === deletedSessionId) {
+            setShowConversation(false)
+            setCurrentSessionId(undefined)
+            setCurrentSession(null)
+        }
+    }
+
     const handleStartConversation = () => {
         if (backendStatus === 'connected') {
             // Create a new session automatically
@@ -72,11 +81,12 @@ export function Demo() {
                     currentSessionId={currentSessionId}
                     onSessionSelect={handleSessionSelect}
                     onNewSession={() => handleNewSession()}
+                    onSessionDelete={handleSessionDelete}
                 />
             )}
             
-            <main className={`flex h-screen grow flex-col overflow-auto transition-all duration-200 ${
-                showConversation ? '' : 'ml-12'
+            <main className={`flex h-screen grow flex-col transition-all duration-200 ${
+                showConversation ? 'overflow-hidden' : 'overflow-auto ml-12'
             }`}>
                 {!showConversation ? (
                     <div className="flex items-center justify-center h-full">

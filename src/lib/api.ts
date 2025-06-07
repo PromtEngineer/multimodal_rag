@@ -180,6 +180,24 @@ class ChatAPI {
     }
   }
 
+  async deleteSession(sessionId: string): Promise<{ message: string; deleted_session_id: string }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(`Delete session error: ${errorData.error || response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Delete session failed:', error);
+      throw error;
+    }
+  }
+
   // Convert database message format to ChatMessage format
   convertDbMessage(dbMessage: any): ChatMessage {
     return {

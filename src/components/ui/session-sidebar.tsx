@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useState, useEffect } from "react"
-import { Plus, MessageSquare, Calendar, Hash } from "lucide-react"
+import { Plus, MessageSquare, Calendar, Hash, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ChatSession, chatAPI } from "@/lib/api"
@@ -11,6 +11,7 @@ interface SessionSidebarProps {
   currentSessionId?: string
   onSessionSelect: (sessionId: string) => void
   onNewSession: () => void
+  onSessionDelete?: (sessionId: string) => void
   className?: string
 }
 
@@ -18,6 +19,7 @@ export function SessionSidebar({
   currentSessionId,
   onSessionSelect,
   onNewSession,
+  onSessionDelete,
   className = ""
 }: SessionSidebarProps) {
   const [sessions, setSessions] = useState<ChatSession[]>([])
@@ -51,6 +53,27 @@ export function SessionSidebar({
     } catch (error) {
       console.error('Failed to create session:', error)
       setError('Failed to create session')
+    }
+  }
+
+  const handleDeleteSession = async (sessionId: string, event: React.MouseEvent) => {
+    event.stopPropagation() // Prevent session selection when clicking delete
+    
+    if (!confirm('Are you sure you want to delete this conversation? This action cannot be undone.')) {
+      return
+    }
+
+    try {
+      await chatAPI.deleteSession(sessionId)
+      setSessions(prev => prev.filter(s => s.id !== sessionId))
+      
+      // If the deleted session was currently selected, notify parent
+      if (currentSessionId === sessionId && onSessionDelete) {
+        onSessionDelete(sessionId)
+      }
+    } catch (error) {
+      console.error('Failed to delete session:', error)
+      setError('Failed to delete session')
     }
   }
 
@@ -119,41 +142,54 @@ export function SessionSidebar({
           ) : (
             <div className="space-y-1">
               {sessions.map((session) => (
-                <button
+                <div
                   key={session.id}
-                  onClick={() => onSessionSelect(session.id)}
-                  className={`w-full p-3 rounded-lg text-left transition-colors ${
+                  className={`relative group rounded-lg transition-colors ${
                     currentSessionId === session.id
                       ? 'bg-blue-600 text-white'
                       : 'hover:bg-gray-800 text-gray-300'
                   }`}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <MessageSquare className="w-3 h-3 flex-shrink-0" />
-                        <p className="font-medium text-sm truncate">
-                          {truncateTitle(session.title)}
-                        </p>
-                      </div>
-                      
-                      <div className="flex items-center gap-3 text-xs opacity-70">
-                        <div className="flex items-center gap-1">
-                          <Hash className="w-3 h-3" />
-                          <span>{session.message_count}</span>
+                  <button
+                    onClick={() => onSessionSelect(session.id)}
+                    className="w-full p-3 text-left"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0 pr-8">
+                        <div className="flex items-center gap-2 mb-1">
+                          <MessageSquare className="w-3 h-3 flex-shrink-0" />
+                          <p className="font-medium text-sm truncate">
+                            {truncateTitle(session.title)}
+                          </p>
                         </div>
-                        <div className="flex items-center gap-1">
-                          <Calendar className="w-3 h-3" />
-                          <span>{formatDate(session.updated_at)}</span>
+                        
+                        <div className="flex items-center gap-3 text-xs opacity-70">
+                          <div className="flex items-center gap-1">
+                            <Hash className="w-3 h-3" />
+                            <span>{session.message_count}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            <span>{formatDate(session.updated_at)}</span>
+                          </div>
                         </div>
-                      </div>
-                      
-                      <div className="text-xs mt-1 opacity-50">
-                        {session.model_used}
+                        
+                        <div className="text-xs mt-1 opacity-50">
+                          {session.model_used}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </button>
+                  </button>
+                  
+                  {/* Delete button - appears on hover */}
+                  <button
+                    onClick={(e) => handleDeleteSession(session.id, e)}
+                    className="absolute right-2 top-2 p-1.5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 rounded text-gray-400 hover:text-white"
+                    title="Delete conversation"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
               ))}
             </div>
           )}

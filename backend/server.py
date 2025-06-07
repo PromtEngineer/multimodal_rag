@@ -14,7 +14,7 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
         """Handle CORS preflight requests"""
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
     
@@ -49,6 +49,17 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
         elif parsed_path.path.startswith('/sessions/') and parsed_path.path.endswith('/messages'):
             session_id = parsed_path.path.split('/')[-2]
             self.handle_session_chat(session_id)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_DELETE(self):
+        """Handle DELETE requests"""
+        parsed_path = urlparse(self.path)
+        
+        if parsed_path.path.startswith('/sessions/') and parsed_path.path.count('/') == 2:
+            session_id = parsed_path.path.split('/')[-1]
+            self.handle_delete_session(session_id)
         else:
             self.send_response(404)
             self.end_headers()
@@ -221,6 +232,35 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
         except Exception as e:
             self.send_json_response({
                 "error": f"Server error: {str(e)}"
+            }, status_code=500)
+
+    def handle_delete_session(self, session_id: str):
+        """Delete a chat session and all its messages"""
+        try:
+            # Check if session exists
+            session = db.get_session(session_id)
+            if not session:
+                self.send_json_response({
+                    "error": "Session not found"
+                }, status_code=404)
+                return
+            
+            # Delete the session (will cascade delete messages)
+            success = db.delete_session(session_id)
+            
+            if success:
+                self.send_json_response({
+                    "message": "Session deleted successfully",
+                    "deleted_session_id": session_id
+                })
+            else:
+                self.send_json_response({
+                    "error": "Failed to delete session"
+                }, status_code=500)
+                
+        except Exception as e:
+            self.send_json_response({
+                "error": f"Failed to delete session: {str(e)}"
             }, status_code=500)
     
     def send_json_response(self, data, status_code=200):

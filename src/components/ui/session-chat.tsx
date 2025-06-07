@@ -143,9 +143,9 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
   }
 
   return (
-    <div className={`flex flex-col h-full ${className}`}>
+    <div className={`flex flex-col h-full overflow-hidden ${className}`}>
       {error && (
-        <div className="bg-red-900 text-red-200 px-4 py-2 text-sm">
+        <div className="bg-red-900 text-red-200 px-4 py-2 text-sm flex-shrink-0">
           {error}
         </div>
       )}
@@ -154,14 +154,16 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
         messages={messages}
         isLoading={isLoading}
         onAction={handleAction}
-        className="flex-1"
+        className="flex-1 min-h-0"
       />
       
-      <ChatInput
-        onSendMessage={sendMessage}
-        disabled={!sessionId || isLoading}
-        placeholder={sessionId ? "Message localGPT..." : "Select or create a session to start chatting"}
-      />
+      <div className="flex-shrink-0">
+        <ChatInput
+          onSendMessage={sendMessage}
+          disabled={!sessionId || isLoading}
+          placeholder={sessionId ? "Message localGPT..." : "Select or create a session to start chatting"}
+        />
+      </div>
     </div>
   )
 }) 
