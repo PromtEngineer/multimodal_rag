@@ -16,6 +16,7 @@ interface ConversationPageProps {
   messages: ChatMessage[]
   isLoading?: boolean
   className?: string
+  onAction?: (action: string, messageId: string, messageContent: string) => void
 }
 
 const actionIcons = [
@@ -30,14 +31,20 @@ const actionIcons = [
 export function ConversationPage({ 
   messages, 
   isLoading = false,
-  className = ""
+  className = "",
+  onAction
 }: ConversationPageProps) {
-  const handleAction = (action: string, messageId: number) => {
+  const handleAction = (action: string, messageId: string, messageContent: string) => {
+    if (onAction) {
+      onAction(action, messageId, messageContent)
+      return
+    }
+    
     console.log(`Action ${action} clicked for message ${messageId}`)
     // Handle different actions here
     switch (action) {
       case 'copy':
-        // Copy message to clipboard
+        navigator.clipboard.writeText(messageContent)
         break
       case 'regenerate':
         // Regenerate AI response
@@ -103,7 +110,7 @@ export function ConversationPage({
                         {actionIcons.map(({ icon: Icon, type, action }) => (
                           <button
                             key={action}
-                            onClick={() => handleAction(action, message.id)}
+                            onClick={() => handleAction(action, message.id, message.content)}
                             className="p-1.5 hover:bg-gray-700 rounded-md transition-colors text-gray-400 hover:text-gray-200"
                             title={type}
                           >
