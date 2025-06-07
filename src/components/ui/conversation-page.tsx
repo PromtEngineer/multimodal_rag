@@ -3,11 +3,7 @@
 import * as React from "react"
 import { useRef, useEffect, useState } from "react"
 import {
-  ChatBubble,
   ChatBubbleAvatar,
-  ChatBubbleMessage,
-  ChatBubbleAction,
-  ChatBubbleActionWrapper
 } from "@/components/ui/chat-bubble"
 import { Copy, RefreshCcw, ThumbsUp, ThumbsDown, Volume2, MoreHorizontal, ChevronDown } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -113,7 +109,6 @@ export function ConversationPage({
       <ScrollArea ref={scrollAreaRef} className="flex-1 px-4 py-6 min-h-0">
         <div className="max-w-4xl mx-auto space-y-6">
           {messages.map((message) => {
-            const variant = message.sender === "user" ? "sent" : "received"
             const isUser = message.sender === "user"
             
             return (

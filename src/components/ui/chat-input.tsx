@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useState, useRef } from "react"
-import { ArrowUp, Mic } from "lucide-react"
+import { ArrowUp } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface ChatInputProps {
@@ -44,7 +44,7 @@ export function ChatInput({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSubmit(e as any)
+      handleSubmit(e as unknown as React.FormEvent)
     }
   }
 

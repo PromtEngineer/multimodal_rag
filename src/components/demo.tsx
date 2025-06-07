@@ -12,8 +12,10 @@ export function Demo() {
     const [showConversation, setShowConversation] = useState(false)
     const [backendStatus, setBackendStatus] = useState<'checking' | 'connected' | 'error'>('checking')
 
-    // Check backend health on component mount
+    console.log('Demo component rendering...')
+
     useEffect(() => {
+        console.log('Demo component mounted')
         checkBackendHealth()
     }, [])
 
@@ -48,16 +50,8 @@ export function Demo() {
         setCurrentSession(session)
     }
 
-    const handleBackToChat = () => {
-        setShowConversation(false)
-        setCurrentSessionId(undefined)
-        setCurrentSession(null)
-    }
-
     const handleSessionDelete = (deletedSessionId: string) => {
-        // If the deleted session was currently selected, go back to home
         if (currentSessionId === deletedSessionId) {
-            setShowConversation(false)
             setCurrentSessionId(undefined)
             setCurrentSession(null)
         }
@@ -65,10 +59,8 @@ export function Demo() {
 
     const handleStartConversation = () => {
         if (backendStatus === 'connected') {
-            // Create a new session automatically
             handleNewSession()
         } else {
-            // Show sample conversation
             setShowConversation(true)
         }
     }
@@ -140,7 +132,7 @@ export function Demo() {
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
                                     <h1 className="text-xl font-medium text-white">
-                                        {currentSession?.title || 'localGPT Chat'}
+                                        {currentSession?.title || 'New Chat'}
                                     </h1>
                                     {currentSession && (
                                         <div className="flex items-center gap-4 text-sm text-gray-400">
@@ -165,7 +157,7 @@ export function Demo() {
                                         )}
                                     </div>
                                     <button
-                                        onClick={handleBackToChat}
+                                        onClick={() => handleNewSession()}
                                         className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
                                     >
                                         Back to Home

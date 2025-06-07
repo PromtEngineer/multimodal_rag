@@ -6,7 +6,7 @@ export interface ChatMessage {
   sender: 'user' | 'assistant';
   timestamp: string;
   isLoading?: boolean;
-  metadata?: any;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ChatSession {
@@ -199,13 +199,13 @@ class ChatAPI {
   }
 
   // Convert database message format to ChatMessage format
-  convertDbMessage(dbMessage: any): ChatMessage {
+  convertDbMessage(dbMessage: Record<string, unknown>): ChatMessage {
     return {
-      id: dbMessage.id,
-      content: dbMessage.content,
-      sender: dbMessage.sender,
-      timestamp: dbMessage.timestamp,
-      metadata: dbMessage.metadata,
+      id: dbMessage.id as string,
+      content: dbMessage.content as string,
+      sender: dbMessage.sender as 'user' | 'assistant',
+      timestamp: dbMessage.timestamp as string,
+      metadata: dbMessage.metadata as Record<string, unknown> | undefined,
     };
   }
 

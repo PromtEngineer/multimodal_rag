@@ -3,8 +3,7 @@
 import {
   ChatBubble,
   ChatBubbleAvatar,
-  ChatBubbleMessage,
-  ChatBubbleAction
+  ChatBubbleMessage
 } from "@/components/ui/chat-bubble"
 import { Copy, RefreshCcw } from "lucide-react"
 
@@ -39,7 +38,7 @@ export function ChatBubbleVariants() {
       <ChatBubble variant="received">
         <ChatBubbleAvatar fallback="AI" src="https://images.unsplash.com/photo-1677442136019-21780ecad995?w=64&h=64&q=80&crop=faces&fit=crop"  />
         <ChatBubbleMessage>
-          Sure, I'd be happy to help!
+          Sure, I&apos;d be happy to help!
         </ChatBubbleMessage>
       </ChatBubble>
     </div>

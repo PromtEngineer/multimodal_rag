@@ -3,6 +3,7 @@
 import * as React from "react"
 import { ConversationPage } from "./conversation-page"
 import { ChatInput } from "./chat-input"
+import { EmptyChatState } from "./empty-chat-state"
 import { ChatMessage, ChatSession, chatAPI } from "@/lib/api"
 import { useEffect, useState, forwardRef, useImperativeHandle } from "react"
 
@@ -32,11 +33,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
   
   const apiService = chatAPI
 
-  // Expose functions to parent component
-  useImperativeHandle(ref, () => ({
-    sendMessage,
-    currentSession
-  }))
+  // Expose functions to parent component (moved after sendMessage definition)
 
   // Load session when sessionId changes
   useEffect(() => {
@@ -47,14 +44,14 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
       setMessages([])
       setCurrentSession(null)
     }
-  }, [sessionId])
+  }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadSession = async (id: string) => {
     try {
       setError(null)
       const { session, messages: sessionMessages } = await apiService.getSession(id)
       
-      const convertedMessages = sessionMessages.map((msg: any) => apiService.convertDbMessage(msg))
+      const convertedMessages = sessionMessages.map((msg: unknown) => apiService.convertDbMessage(msg as Record<string, unknown>))
       setMessages(convertedMessages)
       setCurrentSession(session)
       
@@ -68,10 +65,28 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
   }
 
   const sendMessage = async (content: string) => {
-    if (!sessionId || !content.trim()) return
+    if (!content.trim()) return
 
     try {
       setError(null)
+      
+      // If no sessionId, create a new session first
+      let activeSessionId = sessionId
+      if (!activeSessionId) {
+        try {
+          const newSession = await apiService.createSession()
+          activeSessionId = newSession.id
+          setCurrentSession(newSession)
+          
+          if (onSessionChange) {
+            onSessionChange(newSession)
+          }
+        } catch (error) {
+          console.error('Failed to create session:', error)
+          setError('Failed to create session')
+          return
+        }
+      }
       
       // Add user message immediately
       const userMessage = apiService.createMessage(content, 'user')
@@ -85,7 +100,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
       setIsLoading(true)
 
       // Send to API
-      const response = await apiService.sendSessionMessage(sessionId, content)
+      const response = await apiService.sendSessionMessage(activeSessionId, content)
       
       // Add AI response
       const aiMessage: ChatMessage = {
@@ -117,6 +132,12 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
     }
   }
 
+  // Expose functions to parent component
+  useImperativeHandle(ref, () => ({
+    sendMessage,
+    currentSession
+  }))
+
   const handleAction = async (action: string, messageId: string, messageContent: string) => {
     console.log(`Action ${action} on message ${messageId}`)
     
@@ -142,6 +163,8 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
     }
   }
 
+  const showEmptyState = (!sessionId || (sessionId && messages.length === 0)) && !isLoading
+
   return (
     <div className={`flex flex-col h-full overflow-hidden ${className}`}>
       {error && (
@@ -150,20 +173,32 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
         </div>
       )}
       
-      <ConversationPage 
-        messages={messages}
-        isLoading={isLoading}
-        onAction={handleAction}
-        className="flex-1 min-h-0"
-      />
-      
-      <div className="flex-shrink-0">
-        <ChatInput
+      {showEmptyState ? (
+        <EmptyChatState
           onSendMessage={sendMessage}
-          disabled={!sessionId || isLoading}
-          placeholder={sessionId ? "Message localGPT..." : "Select or create a session to start chatting"}
+          disabled={isLoading}
+          placeholder="Message localGPT..."
         />
-      </div>
+      ) : (
+        <>
+          <ConversationPage 
+            messages={messages}
+            isLoading={isLoading}
+            onAction={handleAction}
+            className="flex-1 min-h-0"
+          />
+          
+          <div className="flex-shrink-0">
+            <ChatInput
+              onSendMessage={sendMessage}
+              disabled={isLoading}
+              placeholder="Message localGPT..."
+            />
+          </div>
+        </>
+      )}
     </div>
   )
-}) 
+})
+
+SessionChat.displayName = "SessionChat" 
