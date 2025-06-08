@@ -116,7 +116,10 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    @apply bg-black;
+  }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-black text-white;
   }
 }

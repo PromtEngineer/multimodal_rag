@@ -1,9 +1,12 @@
 import json
 import http.server
 import socketserver
+import cgi
 from urllib.parse import urlparse, parse_qs
 from ollama_client import OllamaClient
 from database import db, generate_session_title
+import simple_pdf_processor as pdf_module
+from simple_pdf_processor import initialize_simple_pdf_processor
 
 class ChatHandler(http.server.BaseHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -51,6 +54,9 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
         elif parsed_path.path.startswith('/sessions/') and parsed_path.path.endswith('/messages'):
             session_id = parsed_path.path.split('/')[-2]
             self.handle_session_chat(session_id)
+        elif parsed_path.path.startswith('/sessions/') and parsed_path.path.endswith('/upload'):
+            session_id = parsed_path.path.split('/')[-2]
+            self.handle_pdf_upload(session_id)
         else:
             self.send_response(404)
             self.end_headers()
@@ -224,8 +230,41 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
             # Get conversation history
             conversation_history = db.get_conversation_history(session_id)
             
+            # Get all PDF content for this session if available
+            pdf_context = ""
+            if message.strip() and pdf_module.simple_pdf_processor:
+                session_documents = pdf_module.simple_pdf_processor.get_session_documents(session_id)
+                if session_documents:
+                    print(f"📄 Found {len(session_documents)} documents for context")
+                    context_parts = []
+                    for doc in session_documents:
+                        # Get the full document content from database
+                        doc_content = pdf_module.simple_pdf_processor.get_document_content(doc['id'])
+                        if doc_content:
+                            context_parts.append(f"=== Document: {doc['filename']} ===\n{doc_content}")
+                    
+                    if context_parts:
+                        pdf_context = "\n\n".join(context_parts)
+                        print(f"📄 Added {len(pdf_context)} characters of PDF context")
+            
+            # Augment message with full document context if available
+            augmented_message = message
+            if pdf_context:
+                augmented_message = f"""Based on the following document(s), please answer the question:
+
+DOCUMENT CONTENT:
+{pdf_context}
+
+QUESTION: {message}
+
+Please answer based on the provided document content."""
+                
+                # Replace the last message in conversation history with augmented version
+                if conversation_history and conversation_history[-1]['role'] == 'user':
+                    conversation_history[-1]['content'] = augmented_message
+            
             # Get response from Ollama
-            response = self.ollama_client.chat(message, model, conversation_history[:-1])  # Exclude the just-added user message
+            response = self.ollama_client.chat(augmented_message, model, conversation_history[:-1])  # Exclude the just-added user message
             
             # Add AI response to database
             ai_message_id = db.add_message(session_id, response, "assistant")
@@ -278,6 +317,171 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
                 "error": f"Failed to delete session: {str(e)}"
             }, status_code=500)
     
+    def handle_pdf_upload(self, session_id: str):
+        """Handle PDF file upload for a session"""
+        try:
+            # Check if PDF processor is available
+            print(f"🔍 PDF Upload Debug - simple_pdf_processor: {pdf_module.simple_pdf_processor}")
+            print(f"🔍 PDF Upload Debug - type: {type(pdf_module.simple_pdf_processor)}")
+            if not pdf_module.simple_pdf_processor:
+                print("❌ PDF processor is None/False - returning 503")
+                self.send_json_response({
+                    "error": "PDF processing is not available. Please check server logs."
+                }, status_code=503)
+                return
+            
+            # Check if session exists
+            session = db.get_session(session_id)
+            if not session:
+                self.send_json_response({
+                    "error": "Session not found"
+                }, status_code=404)
+                return
+            
+            # Parse multipart form data
+            content_type = self.headers.get('Content-Type', '')
+            print(f"📤 Upload Content-Type: {content_type}")
+            if not content_type.startswith('multipart/form-data'):
+                self.send_json_response({
+                    "error": "Expected multipart/form-data"
+                }, status_code=400)
+                return
+            
+            # Parse the form data  
+            print("📤 Starting form data parsing...")
+            try:
+                # Set a larger max file size (50MB)
+                import tempfile
+                tempfile.tempdir = '/tmp'  # Ensure we have space
+                
+                form = cgi.FieldStorage(
+                    fp=self.rfile,
+                    headers=self.headers,
+                    environ={
+                        'REQUEST_METHOD': 'POST',
+                        'CONTENT_TYPE': self.headers['Content-Type'],
+                    },
+                    # Increase file size limits
+                    keep_blank_values=True,
+                )
+                print(f"📤 Form parsed successfully, found {len(form.keys())} fields")
+            except Exception as parse_error:
+                print(f"❌ Form parsing failed: {str(parse_error)}")
+                self.send_json_response({
+                    "error": f"Failed to parse form data: {str(parse_error)}"
+                }, status_code=400)
+                return
+            
+            uploaded_files = []
+            processing_results = []
+            
+            # Process each uploaded file
+            print(f"📤 Processing {len(form.keys())} form fields...")
+            for field_name in form.keys():
+                print(f"📤 Processing field: {field_name}")
+                field = form[field_name]
+                print(f"📤 Field has filename attr: {hasattr(field, 'filename')}")
+                if hasattr(field, 'filename'):
+                    print(f"📤 Filename: {field.filename}")
+                if hasattr(field, 'filename') and field.filename:
+                    # Check if it's a PDF file
+                    if not field.filename.lower().endswith('.pdf'):
+                        processing_results.append({
+                            "filename": field.filename,
+                            "success": False,
+                            "error": "Only PDF files are supported"
+                        })
+                        continue
+                    
+                    # Read file content
+                    print(f"📤 Field.file type: {type(field.file)}")
+                    print(f"📤 Field.file available methods: {[m for m in dir(field.file) if not m.startswith('_')]}")
+                    
+                    file_content = field.file.read()
+                    print(f"📤 File content size: {len(file_content)} bytes")
+                    
+                    # Try to get more info about the file
+                    if hasattr(field.file, 'tell'):
+                        print(f"📤 File position after read: {field.file.tell()}")
+                    if hasattr(field.file, 'seek'):
+                        field.file.seek(0)  # Reset to beginning
+                        file_content = field.file.read()  # Try reading again
+                        print(f"📤 File content size after seek/re-read: {len(file_content)} bytes")
+                    
+                    # Try getvalue() for BytesIO objects
+                    if hasattr(field.file, 'getvalue'):
+                        buffer_content = field.file.getvalue()
+                        print(f"📤 Buffer content via getvalue(): {len(buffer_content)} bytes")
+                        if buffer_content and not file_content:
+                            file_content = buffer_content
+                            print(f"📤 Using buffer content instead")
+                    
+                    if not file_content:
+                        processing_results.append({
+                            "filename": field.filename,
+                            "success": False,
+                            "error": "Empty file - frontend may not be sending file content properly"
+                        })
+                        continue
+                    
+                    # Process the PDF
+                    print(f"📄 Starting PDF processing for {field.filename} ({len(file_content)} bytes)")
+                    try:
+                        result = pdf_module.simple_pdf_processor.process_pdf(file_content, field.filename, session_id)
+                        print(f"📄 PDF processing result: {result}")
+                        processing_results.append(result)
+                    except Exception as pdf_error:
+                        print(f"❌ PDF processing failed: {str(pdf_error)}")
+                        processing_results.append({
+                            "filename": field.filename,
+                            "success": False,
+                            "error": f"PDF processing failed: {str(pdf_error)}"
+                        })
+                    
+                    if result.get("success", False):
+                        uploaded_files.append({
+                            "filename": field.filename,
+                            "file_id": result.get("file_id", ""),
+                            "chunks": result.get("chunks", 0),
+                            "text_length": result.get("text_length", 0)
+                        })
+            
+            if not processing_results:
+                self.send_json_response({
+                    "error": "No PDF files found in upload"
+                }, status_code=400)
+                return
+            
+            # Get updated session documents
+            session_documents = pdf_module.simple_pdf_processor.get_session_documents(session_id)
+            
+            print(f"✅ PDF processing complete. Attempting to send response...")
+            try:
+                self.send_json_response({
+                    "message": f"Processed {len(uploaded_files)} PDF files",
+                    "uploaded_files": uploaded_files,
+                    "processing_results": processing_results,
+                    "session_documents": session_documents,
+                    "total_session_documents": len(session_documents)
+                })
+                print(f"✅ Response sent successfully")
+            except Exception as response_error:
+                print(f"❌ Failed to send response: {str(response_error)}")
+                # The processing was successful even if response sending failed
+                print(f"📊 Processing summary: {len(uploaded_files)} files uploaded, {len(session_documents)} total docs")
+                pass
+            
+        except Exception as e:
+            print(f"❌ Error in PDF upload: {str(e)}")
+            try:
+                self.send_json_response({
+                    "error": f"Failed to process PDF upload: {str(e)}"
+                }, status_code=500)
+            except:
+                # Ignore broken pipe errors when sending error response
+                print("❌ Failed to send error response (broken pipe)")
+                pass
+    
     def send_json_response(self, data, status_code=200):
         """Send JSON response with CORS headers"""
         self.send_response(status_code)
@@ -297,6 +501,14 @@ def main():
     PORT = 8000
     
     print(f"✅ Database initialized successfully")
+    
+    # Initialize simple PDF processor
+    print("📄 Initializing simple PDF processing...")
+    pdf_initialized = initialize_simple_pdf_processor()
+    if pdf_initialized:
+        print("✅ Simple PDF processing ready")
+    else:
+        print("⚠️ PDF processing disabled - server will run without RAG functionality")
     
     # Clean up any empty sessions on startup
     print("🧹 Cleaning up empty sessions...")

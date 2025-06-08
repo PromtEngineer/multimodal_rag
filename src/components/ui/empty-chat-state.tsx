@@ -8,7 +8,10 @@ import {
     ArrowUpIcon,
     Paperclip,
     PlusIcon,
+    X,
+    FileText,
 } from "lucide-react";
+import { AttachedFile } from "@/lib/types";
 
 interface UseAutoResizeTextareaProps {
     minHeight: number;
@@ -67,7 +70,7 @@ function useAutoResizeTextarea({
 }
 
 interface EmptyChatStateProps {
-    onSendMessage: (message: string) => void;
+    onSendMessage: (message: string, attachedFiles?: AttachedFile[]) => void;
     disabled?: boolean;
     placeholder?: string;
 }
@@ -78,15 +81,18 @@ export function EmptyChatState({
     placeholder = "Ask localgpt a question..." 
 }: EmptyChatStateProps) {
     const [value, setValue] = useState("");
+    const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const { textareaRef, adjustHeight } = useAutoResizeTextarea({
         minHeight: 60,
         maxHeight: 200,
     });
 
     const handleSend = () => {
-        if (value.trim() && !disabled) {
-            onSendMessage(value.trim());
+        if ((value.trim() || attachedFiles.length > 0) && !disabled) {
+            onSendMessage(value.trim(), attachedFiles);
             setValue("");
+            setAttachedFiles([]);
             adjustHeight(true);
         }
     };
@@ -98,6 +104,49 @@ export function EmptyChatState({
         }
     };
 
+    const handleFileAttach = () => {
+        fileInputRef.current?.click();
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files) return;
+
+        const newFiles: AttachedFile[] = [];
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            // Only allow PDF files for now
+            if (file.type === 'application/pdf') {
+                newFiles.push({
+                    id: crypto.randomUUID(),
+                    name: file.name,
+                    size: file.size,
+                    type: file.type,
+                    file: file,
+                });
+            }
+        }
+
+        setAttachedFiles(prev => [...prev, ...newFiles]);
+        
+        // Reset the input
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
+
+    const removeFile = (fileId: string) => {
+        setAttachedFiles(prev => prev.filter(f => f.id !== fileId));
+    };
+
+    const formatFileSize = (bytes: number) => {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    };
+
     return (
         <div className="flex flex-col items-center justify-center h-full w-full max-w-4xl mx-auto p-4 space-y-8">
             <h1 className="text-4xl font-bold text-white">
@@ -105,6 +154,30 @@ export function EmptyChatState({
             </h1>
 
             <div className="w-full">
+                {/* Attached Files Display */}
+                {attachedFiles.length > 0 && (
+                    <div className="mb-4 space-y-2">
+                        <div className="text-sm text-gray-400 font-medium">Attached Files:</div>
+                        <div className="space-y-2">
+                            {attachedFiles.map((file) => (
+                                <div key={file.id} className="flex items-center gap-3 bg-gray-800 rounded-lg p-3">
+                                    <FileText className="w-5 h-5 text-red-400" />
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-sm text-white truncate">{file.name}</div>
+                                        <div className="text-xs text-gray-400">{formatFileSize(file.size)}</div>
+                                    </div>
+                                    <button
+                                        onClick={() => removeFile(file.id)}
+                                        className="p-1 hover:bg-gray-700 rounded transition-colors"
+                                    >
+                                        <X className="w-4 h-4 text-gray-400 hover:text-white" />
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 <div className="relative bg-neutral-900 rounded-xl border border-neutral-800">
                     <div className="overflow-y-auto">
                         <Textarea
@@ -115,7 +188,7 @@ export function EmptyChatState({
                                 adjustHeight();
                             }}
                             onKeyDown={handleKeyDown}
-                            placeholder={placeholder}
+                            placeholder={attachedFiles.length > 0 ? "Ask questions about your attached files..." : placeholder}
                             disabled={disabled}
                             className={cn(
                                 "w-full px-4 py-3",
@@ -135,16 +208,28 @@ export function EmptyChatState({
                         />
                     </div>
 
+                    {/* Hidden file input */}
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".pdf"
+                        multiple
+                        onChange={handleFileChange}
+                        className="hidden"
+                    />
+
                     <div className="flex items-center justify-between p-3">
                         <div className="flex items-center gap-2">
                             <button
                                 type="button"
+                                onClick={handleFileAttach}
                                 disabled={disabled}
                                 className="group p-2 hover:bg-neutral-800 rounded-lg transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Attach PDF files"
                             >
                                 <Paperclip className="w-4 h-4 text-white" />
                                 <span className="text-xs text-zinc-400 hidden group-hover:inline transition-opacity">
-                                    Attach
+                                    Attach PDF
                                 </span>
                             </button>
                         </div>
@@ -160,10 +245,10 @@ export function EmptyChatState({
                             <button
                                 type="button"
                                 onClick={handleSend}
-                                disabled={disabled || !value.trim()}
+                                disabled={disabled || (!value.trim() && attachedFiles.length === 0)}
                                 className={cn(
                                     "px-1.5 py-1.5 rounded-lg text-sm transition-colors border border-zinc-700 hover:border-zinc-600 hover:bg-zinc-800 flex items-center justify-between gap-1",
-                                    value.trim() && !disabled
+                                    (value.trim() || attachedFiles.length > 0) && !disabled
                                         ? "bg-white text-black hover:bg-gray-200"
                                         : "text-zinc-400",
                                     "disabled:opacity-50 disabled:cursor-not-allowed"
@@ -172,7 +257,7 @@ export function EmptyChatState({
                                 <ArrowUpIcon
                                     className={cn(
                                         "w-4 h-4",
-                                        value.trim() && !disabled
+                                        (value.trim() || attachedFiles.length > 0) && !disabled
                                             ? "text-black"
                                             : "text-zinc-400"
                                     )}

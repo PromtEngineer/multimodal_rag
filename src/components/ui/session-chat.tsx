@@ -5,6 +5,7 @@ import { ConversationPage } from "./conversation-page"
 import { ChatInput } from "./chat-input"
 import { EmptyChatState } from "./empty-chat-state"
 import { ChatMessage, ChatSession, chatAPI } from "@/lib/api"
+import { AttachedFile } from "@/lib/types"
 import { useEffect, useState, forwardRef, useImperativeHandle } from "react"
 
 interface SessionChatProps {
@@ -16,7 +17,7 @@ interface SessionChatProps {
 
 // Export sendMessage function for parent components
 export interface SessionChatRef {
-  sendMessage: (content: string) => Promise<void>
+  sendMessage: (content: string, attachedFiles?: AttachedFile[]) => Promise<void>
   currentSession: ChatSession | null
 }
 
@@ -38,13 +39,17 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
   // Load session when sessionId changes
   useEffect(() => {
     if (sessionId) {
-      loadSession(sessionId)
+      // Only load session if we don't already have the current session
+      // This prevents overriding messages when a new session is created
+      if (!currentSession || currentSession.id !== sessionId) {
+        loadSession(sessionId)
+      }
     } else {
       // Clear messages if no session
       setMessages([])
       setCurrentSession(null)
     }
-  }, [sessionId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sessionId, currentSession]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadSession = async (id: string) => {
     try {
@@ -64,8 +69,8 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
     }
   }
 
-  const sendMessage = async (content: string) => {
-    if (!content.trim()) return
+  const sendMessage = async (content: string, attachedFiles?: AttachedFile[]) => {
+    if (!content.trim() && (!attachedFiles || attachedFiles.length === 0)) return
 
     try {
       setError(null)
@@ -88,16 +93,48 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
         }
       }
       
-      // Add user message immediately
-      const userMessage = apiService.createMessage(content, 'user')
-      setMessages(prev => [...prev, userMessage])
-      
-      if (onNewMessage) {
-        onNewMessage(userMessage)
+      // Add user message immediately if there's content
+      if (content.trim()) {
+        const userMessage = apiService.createMessage(content, 'user')
+        setMessages(prev => [...prev, userMessage])
+        
+        if (onNewMessage) {
+          onNewMessage(userMessage)
+        }
       }
 
       // Start loading
       setIsLoading(true)
+
+      // Upload PDFs if any are attached
+      if (attachedFiles && attachedFiles.length > 0) {
+        try {
+          const files = attachedFiles.map(af => af.file)
+          const uploadResult = await apiService.uploadPDFs(activeSessionId, files)
+          console.log('✅ PDFs uploaded successfully:', uploadResult)
+          
+          // Show upload success message  
+          const uploadMessage = apiService.createMessage(
+            `📎 Uploaded ${uploadResult.uploaded_files.length} PDF file(s): ${uploadResult.uploaded_files.map(f => f.filename).join(', ')}`,
+            'assistant'
+          )
+          setMessages(prev => [...prev, uploadMessage])
+          
+        } catch (error) {
+          console.error('❌ Failed to upload PDFs:', error)
+          const errorMessage = apiService.createMessage(
+            '❌ Failed to upload PDF files. Please try again.',
+            'assistant'
+          )
+          setMessages(prev => [...prev, errorMessage])
+        }
+      }
+
+      // Don't send API request if there's no content
+      if (!content.trim()) {
+        setIsLoading(false)
+        return
+      }
 
       // Send to API
       const response = await apiService.sendSessionMessage(activeSessionId, content)
@@ -166,7 +203,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
   const showEmptyState = (!sessionId || (sessionId && messages.length === 0)) && !isLoading
 
   return (
-    <div className={`flex flex-col h-full overflow-hidden ${className}`}>
+    <div className={`flex flex-col h-full ${className}`}>
       {error && (
         <div className="bg-red-900 text-red-200 px-4 py-2 text-sm flex-shrink-0">
           {error}
@@ -185,10 +222,10 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             messages={messages}
             isLoading={isLoading}
             onAction={handleAction}
-            className="flex-1 min-h-0"
+            className="flex-1 min-h-0 overflow-hidden"
           />
           
-          <div className="flex-shrink-0">
+          <div className="flex-shrink-0 sticky bottom-0 z-10">
             <ChatInput
               onSendMessage={sendMessage}
               disabled={isLoading}

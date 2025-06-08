@@ -214,6 +214,67 @@ class ChatAPI {
     }
   }
 
+  async uploadPDFs(sessionId: string, files: File[]): Promise<{ 
+    message: string; 
+    uploaded_files: any[]; 
+    processing_results: any[];
+    session_documents: any[];
+    total_session_documents: number;
+  }> {
+    try {
+      // Test if files have content and show size info
+      let totalSize = 0;
+      for (const file of files) {
+        if (file.size === 0) {
+          throw new Error(`File ${file.name} is empty (0 bytes)`);
+        }
+        totalSize += file.size;
+        const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+        console.log(`📄 File ${file.name}: ${sizeMB}MB (${file.size} bytes), type: ${file.type}`);
+      }
+      
+      const totalSizeMB = (totalSize / (1024 * 1024)).toFixed(2);
+      console.log(`📄 Total upload size: ${totalSizeMB}MB`);
+      
+      if (totalSize > 50 * 1024 * 1024) { // 50MB limit
+        throw new Error(`Total file size ${totalSizeMB}MB exceeds 50MB limit`);
+      }
+      
+      const formData = new FormData();
+      
+      files.forEach((file, index) => {
+        formData.append(`file_${index}`, file);
+      });
+
+      console.log('🔧 Frontend: FormData created, sending request...');
+      
+      // Create abort controller for timeout (increased for large files)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout for large PDFs
+      
+      const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/upload`, {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal,
+        headers: {
+          // Don't set Content-Type - let browser set it with boundary for multipart
+        }
+      });
+      
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(`PDF upload error: ${errorData.error || response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('PDF upload failed:', error);
+      throw error;
+    }
+  }
+
   // Convert database message format to ChatMessage format
   convertDbMessage(dbMessage: Record<string, unknown>): ChatMessage {
     return {

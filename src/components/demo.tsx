@@ -73,7 +73,7 @@ export function Demo() {
     }
 
     return (
-        <div className="flex h-screen w-screen flex-row">
+        <div className="flex h-screen w-screen flex-row bg-black">
             {/* Session Sidebar */}
             {showConversation && (
                 <SessionSidebar
@@ -85,7 +85,7 @@ export function Demo() {
                 />
             )}
             
-            <main className={`flex h-screen grow flex-col transition-all duration-200 ${
+            <main className={`flex h-screen grow flex-col transition-all duration-200 bg-black ${
                 showConversation ? 'overflow-hidden' : 'overflow-auto ml-12'
             }`}>
                 {!showConversation ? (
@@ -134,7 +134,7 @@ export function Demo() {
                         </div>
                     </div>
                 ) : (
-                    <div className="h-full flex flex-col">
+                    <div className="h-full flex flex-col bg-black">
                         {/* Header */}
                         <div className="p-4 border-b border-gray-800 bg-black">
                             <div className="flex items-center justify-between">

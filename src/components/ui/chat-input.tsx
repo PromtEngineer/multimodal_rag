@@ -2,11 +2,12 @@
 
 import * as React from "react"
 import { useState, useRef } from "react"
-import { ArrowUp } from "lucide-react"
+import { ArrowUp, Paperclip, X, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { AttachedFile } from "@/lib/types"
 
 interface ChatInputProps {
-  onSendMessage: (message: string) => Promise<void>
+  onSendMessage: (message: string, attachedFiles?: AttachedFile[]) => Promise<void>
   disabled?: boolean
   placeholder?: string
   className?: string
@@ -19,23 +20,28 @@ export function ChatInput({
   className = ""
 }: ChatInputProps) {
   const [message, setMessage] = useState("")
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!message.trim() || disabled || isLoading) return
+    if ((!message.trim() && attachedFiles.length === 0) || disabled || isLoading) return
 
     const messageToSend = message.trim()
+    const filesToSend = [...attachedFiles]
     setMessage("")
+    setAttachedFiles([])
     setIsLoading(true)
 
     try {
-      await onSendMessage(messageToSend)
+      await onSendMessage(messageToSend, filesToSend)
     } catch (error) {
       console.error("Failed to send message:", error)
-      // Restore message on error
+      // Restore message and files on error
       setMessage(messageToSend)
+      setAttachedFiles(filesToSend)
     } finally {
       setIsLoading(false)
     }
@@ -59,21 +65,119 @@ export function ChatInput({
     }
   }
 
+  const handleFileAttach = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files) return
+
+    const newFiles: AttachedFile[] = []
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      console.log('🔧 Frontend: File selected:', {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        lastModified: file.lastModified
+      });
+      
+      // Only allow PDF files for now
+      if (file.type === 'application/pdf') {
+        newFiles.push({
+          id: crypto.randomUUID(),
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          file: file,
+        })
+      } else {
+        console.log('🔧 Frontend: File rejected - not PDF:', file.type);
+      }
+    }
+
+    setAttachedFiles(prev => [...prev, ...newFiles])
+    
+    // Reset the input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const removeFile = (fileId: string) => {
+    setAttachedFiles(prev => prev.filter(f => f.id !== fileId))
+  }
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes'
+    const k = 1024
+    const sizes = ['Bytes', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  }
+
   return (
     <div className={`border-t border-gray-800 bg-black p-4 ${className}`}>
       <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
+        {/* Attached Files Display */}
+        {attachedFiles.length > 0 && (
+          <div className="mb-3 space-y-2">
+            <div className="text-sm text-gray-400 font-medium">Attached Files:</div>
+            <div className="space-y-2">
+              {attachedFiles.map((file) => (
+                <div key={file.id} className="flex items-center gap-3 bg-gray-800 rounded-lg p-3">
+                  <FileText className="w-5 h-5 text-red-400" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-white truncate">{file.name}</div>
+                    <div className="text-xs text-gray-400">{formatFileSize(file.size)}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(file.id)}
+                    className="p-1 hover:bg-gray-700 rounded transition-colors"
+                  >
+                    <X className="w-4 h-4 text-gray-400 hover:text-white" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="relative flex items-end gap-3">
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf"
+            multiple
+            onChange={handleFileChange}
+            className="hidden"
+          />
+
+          {/* Attach button */}
+          <button
+            type="button"
+            onClick={handleFileAttach}
+            disabled={disabled || isLoading}
+            className="p-3 text-gray-400 hover:text-white hover:bg-gray-800 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Attach PDF files"
+          >
+            <Paperclip className="w-5 h-5" />
+          </button>
+
           <div className="flex-1 relative">
             <textarea
               ref={textareaRef}
               value={message}
               onChange={handleInput}
               onKeyDown={handleKeyDown}
-              placeholder={placeholder}
+              placeholder={attachedFiles.length > 0 ? "Ask questions about your attached files..." : placeholder}
               disabled={disabled || isLoading}
               rows={1}
               className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 pr-12 text-white placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ maxHeight: '120px' }}
+              style={{ maxHeight: '120px', minHeight: '44px' }}
             />
             
             {/* Send button positioned inside textarea */}
@@ -81,7 +185,7 @@ export function ChatInput({
               <Button
                 type="submit"
                 size="sm"
-                disabled={!message.trim() || disabled || isLoading}
+                disabled={(!message.trim() && attachedFiles.length === 0) || disabled || isLoading}
                 className="w-8 h-8 p-0 rounded-full bg-white hover:bg-gray-100 text-black disabled:bg-gray-600 disabled:text-gray-400"
               >
                 {isLoading ? (

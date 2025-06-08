@@ -107,7 +107,7 @@ export function SessionSidebar({
   }
 
   return (
-    <div className={`w-64 bg-gray-900 border-r border-gray-800 flex flex-col ${className}`}>
+    <div className={`w-64 bg-black border-r border-gray-800 flex flex-col ${className}`}>
       {/* Header */}
       <div className="p-4 border-b border-gray-800">
         <div className="flex items-center justify-between mb-3">
@@ -115,7 +115,7 @@ export function SessionSidebar({
           <Button
             onClick={handleNewSession}
             size="sm"
-            className="w-8 h-8 p-0 bg-gray-800 hover:bg-gray-700 text-gray-300"
+            className="w-8 h-8 p-0 bg-gray-800 hover:bg-gray-600 text-gray-300"
           >
             <Plus className="w-4 h-4" />
           </Button>
@@ -141,7 +141,7 @@ export function SessionSidebar({
           {isLoading ? (
             <div className="space-y-2">
               {[...Array(5)].map((_, i) => (
-                <div key={i} className="h-12 bg-gray-800 rounded-lg animate-pulse" />
+                <div key={i} className="h-12 bg-gray-900 rounded-lg animate-pulse" />
               ))}
             </div>
           ) : sessions.length === 0 ? (
@@ -158,7 +158,7 @@ export function SessionSidebar({
                   className={`relative group rounded-lg transition-colors ${
                     currentSessionId === session.id
                       ? 'bg-blue-600 text-white'
-                      : 'hover:bg-gray-800 text-gray-300'
+                      : 'hover:bg-gray-900 text-gray-300'
                   }`}
                 >
                   <button
@@ -209,7 +209,7 @@ export function SessionSidebar({
 
       {/* Footer with stats */}
       {sessions.length > 0 && (
-        <div className="p-4 border-t border-gray-800 text-xs text-gray-400">
+        <div className="p-4 border-t border-gray-800 text-xs text-gray-400 bg-black">
           <div className="flex justify-between">
             <span>{sessions.length} conversations</span>
             <span>
