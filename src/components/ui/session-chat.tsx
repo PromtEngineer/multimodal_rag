@@ -4,9 +4,10 @@ import * as React from "react"
 import { ConversationPage } from "./conversation-page"
 import { ChatInput } from "./chat-input"
 import { EmptyChatState } from "./empty-chat-state"
-import { ChatMessage, ChatSession, chatAPI } from "@/lib/api"
+import { ChatMessage, ChatSession, chatAPI, generateUUID } from "@/lib/api"
 import { AttachedFile } from "@/lib/types"
 import { useEffect, useState, forwardRef, useImperativeHandle } from "react"
+import { Button } from "./button"
 
 interface SessionChatProps {
   sessionId?: string
@@ -31,6 +32,8 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
   const [isLoading, setIsLoading] = useState(false)
   const [currentSession, setCurrentSession] = useState<ChatSession | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [uploadedFiles, setUploadedFiles] = useState<{filename: string, stored_path: string}[]>([])
+  const [isIndexed, setIsIndexed] = useState(false)
   
   const apiService = chatAPI
 
@@ -70,102 +73,119 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
   }
 
   const sendMessage = async (content: string, attachedFiles?: AttachedFile[]) => {
-    if (!content.trim() && (!attachedFiles || attachedFiles.length === 0)) return
+    // --- Guard Clauses ---
+    // If files are being indexed, do nothing.
+    if (uploadedFiles.length > 0 && !isIndexed) {
+      console.warn("sendMessage called while waiting for indexing. Action blocked.");
+      return;
+    }
+    // If no content and no files, do nothing.
+    if (!content.trim() && (!attachedFiles || attachedFiles.length === 0)) return;
 
     try {
       setError(null)
       
-      // If no sessionId, create a new session first
       let activeSessionId = sessionId
       if (!activeSessionId) {
         try {
           const newSession = await apiService.createSession()
           activeSessionId = newSession.id
           setCurrentSession(newSession)
-          
-          if (onSessionChange) {
-            onSessionChange(newSession)
-          }
+          if (onSessionChange) onSessionChange(newSession)
         } catch (error) {
           console.error('Failed to create session:', error)
           setError('Failed to create session')
           return
         }
       }
+
+      // --- Action Router: Decide if this is an upload or a chat message ---
       
-      // Add user message immediately if there's content
-      if (content.trim()) {
-        const userMessage = apiService.createMessage(content, 'user')
-        setMessages(prev => [...prev, userMessage])
-        
-        if (onNewMessage) {
-          onNewMessage(userMessage)
-        }
-      }
-
-      // Start loading
-      setIsLoading(true)
-
-      // Upload PDFs if any are attached
+      // A) UPLOAD ACTION: If files are attached, this action's priority is to upload. Ignore any text content.
       if (attachedFiles && attachedFiles.length > 0) {
+        setIsLoading(true)
         try {
           const files = attachedFiles.map(af => af.file)
-          const uploadResult = await apiService.uploadPDFs(activeSessionId, files)
-          console.log('✅ PDFs uploaded successfully:', uploadResult)
+          const uploadResult = await apiService.uploadFiles(activeSessionId, files)
+          console.log('✅ Files uploaded successfully:', uploadResult)
           
-          // Show upload success message  
+          setUploadedFiles(uploadResult.uploaded_files)
+          setIsIndexed(false)
+
           const uploadMessage = apiService.createMessage(
-            `📎 Uploaded ${uploadResult.uploaded_files.length} PDF file(s): ${uploadResult.uploaded_files.map(f => f.filename).join(', ')}`,
+            `📎 Uploaded ${uploadResult.uploaded_files.length} file(s): ${uploadResult.uploaded_files.map(f => f.filename).join(', ')}. Please click 'Index Documents' to chat with them.`,
             'assistant'
           )
           setMessages(prev => [...prev, uploadMessage])
-          
         } catch (error) {
-          console.error('❌ Failed to upload PDFs:', error)
-          const errorMessage = apiService.createMessage(
-            '❌ Failed to upload PDF files. Please try again.',
-            'assistant'
-          )
+          console.error('❌ Failed to upload files:', error)
+          const errorMessage = apiService.createMessage('❌ Failed to upload files. Please try again.', 'assistant')
           setMessages(prev => [...prev, errorMessage])
+        } finally {
+          setIsLoading(false)
         }
+        return; // End the function here.
       }
 
-      // Don't send API request if there's no content
-      if (!content.trim()) {
-        setIsLoading(false)
-        return
-      }
+      // B) CHAT ACTION: If no files, it's a standard chat message.
+      if (!content.trim()) return;
 
-      // Send to API
+      const userMessage = apiService.createMessage(content, 'user')
+      setMessages(prev => [...prev, userMessage])
+      if (onNewMessage) onNewMessage(userMessage)
+
+      setIsLoading(true)
+
       const response = await apiService.sendSessionMessage(activeSessionId, content)
       
-      // Add AI response
       const aiMessage: ChatMessage = {
-        id: response.ai_message_id,
+        id: response.ai_message_id || generateUUID(),
         content: response.response,
         sender: 'assistant',
         timestamp: new Date().toISOString(),
       }
-      
       setMessages(prev => [...prev, aiMessage])
       
-      // Update session info
       if (response.session) {
         setCurrentSession(response.session)
-        if (onSessionChange) {
-          onSessionChange(response.session)
-        }
+        if (onSessionChange) onSessionChange(response.session)
       }
-
-      if (onNewMessage) {
-        onNewMessage(aiMessage)
-      }
+      if (onNewMessage) onNewMessage(aiMessage)
 
     } catch (error) {
       console.error('Failed to send message:', error)
       setError('Failed to send message')
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleIndexDocuments = async () => {
+    if (!currentSession) return;
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await apiService.indexDocuments(currentSession.id);
+      console.log('✅ Indexing complete:', result);
+
+      const indexMessage = apiService.createMessage(
+        `✅ ${result.message}`,
+        'assistant'
+      );
+      setMessages(prev => [...prev, indexMessage]);
+      setIsIndexed(true);
+      setUploadedFiles([]); // Clear uploaded files after indexing
+
+    } catch (error) {
+      console.error('❌ Failed to index documents:', error);
+      const errorMessage = apiService.createMessage(
+        '❌ Failed to index documents. Please try again.',
+        'assistant'
+      );
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
     }
   }
 
@@ -226,9 +246,16 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
           />
           
           <div className="flex-shrink-0 sticky bottom-0 z-10">
+            {uploadedFiles.length > 0 && !isIndexed && (
+              <div className="p-2 text-center bg-yellow-100 dark:bg-yellow-900 border-t border-b border-gray-200 dark:border-gray-700">
+                <Button onClick={handleIndexDocuments} disabled={isLoading}>
+                  {isLoading ? 'Indexing...' : 'Index Documents to Enable Chat'}
+                </Button>
+              </div>
+            )}
             <ChatInput
               onSendMessage={sendMessage}
-              disabled={isLoading}
+              disabled={isLoading || (uploadedFiles.length > 0 && !isIndexed)}
               placeholder="Message localGPT..."
             />
           </div>

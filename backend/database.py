@@ -46,6 +46,18 @@ class ChatDatabase:
         conn.execute('CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions(updated_at)')
         
+        # Documents table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS session_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                indexed INTEGER DEFAULT 0,
+                FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE
+            )
+        ''')
+        conn.execute('CREATE INDEX IF NOT EXISTS idx_session_documents_session_id ON session_documents(session_id)')
+        
         conn.commit()
         conn.close()
         print("✅ Database initialized successfully")
@@ -243,6 +255,30 @@ class ChatDatabase:
             "total_messages": message_count,
             "most_used_model": most_used_model[0] if most_used_model else None
         }
+
+    def add_document_to_session(self, session_id: str, file_path: str) -> int:
+        """Adds a document file path to a session."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.execute(
+            "INSERT INTO session_documents (session_id, file_path) VALUES (?, ?)",
+            (session_id, file_path)
+        )
+        doc_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        print(f"📄 Added document '{file_path}' to session {session_id[:8]}...")
+        return doc_id
+
+    def get_documents_for_session(self, session_id: str) -> List[str]:
+        """Retrieves all document file paths for a given session."""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.execute(
+            "SELECT file_path FROM session_documents WHERE session_id = ?",
+            (session_id,)
+        )
+        paths = [row[0] for row in cursor.fetchall()]
+        conn.close()
+        return paths
 
 def generate_session_title(first_message: str, max_length: int = 50) -> str:
     """Generate a session title from the first message"""

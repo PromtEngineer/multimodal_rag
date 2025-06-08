@@ -1,5 +1,18 @@
 const API_BASE_URL = 'http://localhost:8000';
 
+// 🆕 Simple UUID generator for client-side message IDs
+export const generateUUID = () => {
+  if (typeof window !== 'undefined' && window.crypto && window.crypto.randomUUID) {
+    return window.crypto.randomUUID();
+  }
+  // Fallback for older browsers or non-secure contexts
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
 export interface ChatMessage {
   id: string;
   content: string;
@@ -214,6 +227,53 @@ class ChatAPI {
     }
   }
 
+  async uploadFiles(sessionId: string, files: File[]): Promise<{ 
+    message: string; 
+    uploaded_files: {filename: string, stored_path: string}[]; 
+  }> {
+    try {
+      const formData = new FormData();
+      files.forEach((file) => {
+        formData.append('files', file, file.name);
+      });
+
+      const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Upload failed' }));
+        throw new Error(`Upload error: ${errorData.error || response.statusText}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('File upload failed:', error);
+      throw error;
+    }
+  }
+
+  async indexDocuments(sessionId: string): Promise<{ message: string }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/index`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Indexing failed' }));
+        throw new Error(`Indexing error: ${errorData.error || response.statusText}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Indexing failed:', error);
+      throw error;
+    }
+  }
+
+  // Legacy upload function - can be removed if no longer needed
   async uploadPDFs(sessionId: string, files: File[]): Promise<{ 
     message: string; 
     uploaded_files: any[]; 
@@ -242,30 +302,21 @@ class ChatAPI {
       
       const formData = new FormData();
       
-      files.forEach((file, index) => {
-        formData.append(`file_${index}`, file);
-      });
-
-      console.log('🔧 Frontend: FormData created, sending request...');
-      
-      // Create abort controller for timeout (increased for large files)
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout for large PDFs
+      // Use a generic field name 'file' that the backend expects
+      let i = 0;
+      for (const file of files) {
+        formData.append(`file_${i}`, file, file.name);
+        i++;
+      }
       
       const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/upload`, {
         method: 'POST',
         body: formData,
-        signal: controller.signal,
-        headers: {
-          // Don't set Content-Type - let browser set it with boundary for multipart
-        }
       });
-      
-      clearTimeout(timeoutId);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(`PDF upload error: ${errorData.error || response.statusText}`);
+        throw new Error(`Upload error: ${errorData.error || response.statusText}`);
       }
 
       return await response.json();
@@ -293,7 +344,7 @@ class ChatAPI {
     isLoading = false
   ): ChatMessage {
     return {
-      id: crypto.randomUUID(),
+      id: generateUUID(),
       content,
       sender,
       timestamp: new Date().toISOString(),

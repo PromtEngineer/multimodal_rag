@@ -1,166 +1,123 @@
-# LocalGPT Chat Component Integration
+# Multimodal RAG Chat Application
 
-This project demonstrates the integration of a localGPT-style AI chat component built with React, TypeScript, Tailwind CSS, and shadcn/ui.
+This project is a sophisticated, full-stack multimodal chat application that leverages a local-first AI stack to provide a powerful and private Retrieval-Augmented Generation (RAG) experience.
 
-## 🚀 Project Setup
+It features a modular, configurable RAG pipeline, a robust API-driven architecture, and an intuitive user interface built with Next.js and Tailwind CSS.
 
-This project was set up with:
-- **Next.js 15** with TypeScript
-- **Tailwind CSS** for styling
-- **shadcn/ui** for component library
-- **lucide-react** for icons
+## 🌟 Key Features
 
-## 📁 Project Structure
+-   **🖥️ Full-Stack Architecture**: A complete solution with a Next.js frontend, a Python backend, and a separate, advanced RAG API server.
+-   **🤖 Advanced RAG Pipeline**: A modular and configurable RAG system that can be adapted for different retrieval strategies.
+-   **🧩 Modular Retrieval**: Easily enable or disable different retrieval techniques like **Graph-based RAG** and **Reranking** through simple configuration changes.
+-   **📤 Upload, Index, then Chat**: A robust and intuitive workflow. Users upload documents, explicitly trigger an indexing job, and only then can they chat with the newly ingested knowledge.
+-   **🧠 Agentic Triage**: The system intelligently routes user queries. General questions are answered directly by an LLM, while specific ones trigger the RAG pipeline.
+-   **🔒 100% Local & Private**: The entire stack, including LLMs and embedding models, runs locally using [Ollama](https://ollama.com/), ensuring your data never leaves your machine.
+-   **📝 Session-Based Chat**: Persistent, session-based conversations managed by a SQLite database.
 
-```
-src/
-├── app/
-│   ├── globals.css          # Global styles with Tailwind
-│   ├── layout.tsx           # Root layout
-│   └── page.tsx            # Main page showcasing the component
-├── components/
-│   ├── ui/
-│   │   ├── textarea.tsx     # shadcn/ui textarea component
-│   │   └── localgpt-chat.tsx   # Main AI chat component
-│   └── demo.tsx            # Demo wrapper component
-└── lib/
-    └── utils.ts            # Utility functions (cn helper)
-```
+## 🛠️ Tech Stack
 
-## 🎯 Component Features
+-   **Frontend**: Next.js, React, Tailwind CSS, Shadcn/ui
+-   **Backend**: Python (standard library `http.server`)
+-   **Advanced RAG System**: Python, LanceDB, PyMuPDF, `transformers`
+-   **Local AI**: Ollama (for running LLMs like Llama 3, Qwen, etc.)
+-   **Database**: SQLite
 
-The `LocalGPTChat` component includes:
+## 🚀 Getting Started
 
-- **Auto-resizing textarea** that expands as you type
-- **Keyboard shortcuts** (Enter to send, Shift+Enter for new line)
-- **Interactive buttons** with hover effects
-- **Modern dark theme** design
-- **Responsive layout** that works on all screen sizes
-- **Accessibility features** with proper ARIA labels
+### Prerequisites
 
-## 📦 Dependencies
+-   Python 3.8+
+-   Node.js and npm/yarn
+-   [Ollama](https://ollama.com/) installed and running.
 
-### Core Dependencies
-- `react` & `react-dom` - React framework
-- `next` - Next.js framework
-- `typescript` - TypeScript support
-- `tailwindcss` - Utility CSS framework
-- `lucide-react` - Icon library
+### Installation & Setup
 
-### shadcn/ui Dependencies (auto-installed)
-- `@radix-ui/react-*` - Headless UI components
-- `class-variance-authority` - CSS class utilities
-- `clsx` - Class name utility
-- `tailwind-merge` - Tailwind class merging
+1.  **Clone the repository:**
+    ```bash
+    git clone <repository-url>
+    cd multimodal-rag
+    ```
 
-## 🔧 How to Use the Component
+2.  **Set up the Backend & RAG System:**
+    -   Install Python dependencies for the main backend:
+      ```bash
+      pip install -r backend/requirements.txt
+      ```
+    -   Install Python dependencies for the RAG system:
+      ```bash
+      pip install -r rag_system/requirements.txt
+      ```
 
-### Basic Usage
+3.  **Set up the Frontend:**
+    ```bash
+    npm install
+    ```
 
-```tsx
-import { LocalGPTChat } from "@/components/ui/localgpt-chat";
+4.  **Pull Required Ollama Models:**
+    The system is configured to use specific models. Pull them using Ollama:
+    ```bash
+    ollama pull qwen2.5vl:7b  # Or your model of choice for generation/VLM
+    ollama pull qwen3-embedding-0.6b # For embeddings
+    ```
+    *Note: You can change the models used in `rag_system/main.py`.*
 
-export function MyPage() {
-    return (
-        <div className="min-h-screen bg-white dark:bg-black">
-            <LocalGPTChat />
-        </div>
-    );
-}
-```
+### Running the Application
 
-### Component Props
+The application consists of three main components that need to be running simultaneously: the **Frontend**, the **Backend**, and the **RAG API Server**.
 
-The `LocalGPTChat` component currently doesn't accept props, but you can customize it by:
+1.  **Start the Advanced RAG API Server:**
+    This server handles all the heavy lifting of indexing and retrieval.
+    ```bash
+    python -m rag_system.main api
+    ```
+    You should see output indicating it's running on port 8001.
 
-1. **Modifying the placeholder text**
-2. **Changing the action buttons**
-3. **Adjusting the auto-resize limits**
-4. **Customizing the styling**
+2.  **Start the Main Backend Server:**
+    This server handles sessions, database interactions, and communication with the frontend.
+    ```bash
+    python backend/server.py
+    ```
+    This will run on port 8000.
 
-### Customization Examples
+3.  **Start the Frontend Development Server:**
+    ```bash
+    npm run dev
+    ```
+    The application will be available at [http://localhost:3002](http://localhost:3002).
 
-#### Custom Placeholder
-```tsx
-// In localgpt-chat.tsx, line ~94
-placeholder="Ask me anything..."
-```
+## 📄 Workflow: Upload, Index, Chat
 
-#### Custom Auto-resize Limits
-```tsx
-// In localgpt-chat.tsx, line ~73-76
-const { textareaRef, adjustHeight } = useAutoResizeTextarea({
-    minHeight: 80,  // Increase minimum height
-    maxHeight: 300, // Increase maximum height
-});
-```
+1.  Open the application and start a "New Chat".
+2.  Use the attachment icon to select the PDF files you want to work with.
+3.  Upon selection, the files are automatically uploaded.
+4.  The UI will then prompt you to **"Index Documents"**. The chat input will be disabled.
+5.  Click the "Index Documents" button. The RAG server will process your files, extract text, and create vector embeddings.
+6.  Once indexing is complete, the chat input will be enabled, and you can start asking questions about your documents.
 
-## 🎨 Styling
+## 🔧 Configuration & Modularity
 
-The component uses Tailwind CSS with a dark theme design. Key styling features:
+The RAG pipeline is highly configurable via the `PIPELINE_CONFIGS` dictionary in `rag_system/main.py`.
 
-- **Neutral color palette** (neutral-800, neutral-900)
-- **Smooth transitions** on all interactive elements
-- **Responsive design** with mobile-first approach
-- **Dark mode support** built-in
+### Enabling/Disabling Retrieval Modules
 
-## 🔍 Component Analysis
+You can easily switch retrieval strategies on or off:
 
-### State Management
-- Uses `useState` for textarea value
-- Custom `useAutoResizeTextarea` hook for dynamic height
+-   **Graph RAG**: Set `graph_rag["enabled"]` to `true` or `false`.
+-   **Reranker**: Set `reranker["enabled"]` to `true` or `false`.
 
-### Key Features
-1. **Auto-resize textarea** - Grows with content up to max height
-2. **Submit on Enter** - Prevents submission on Shift+Enter
-3. **Action buttons** - Pre-defined quick actions
-4. **Interactive states** - Visual feedback on user interaction
-
-### Responsive Behavior
-- Mobile-friendly button layout
-- Flexible container sizing
-- Appropriate text sizing across devices
-
-## 🚀 Development
-
-### Running the Development Server
-```bash
-npm run dev
+```python
+# In rag_system/main.py
+...
+"retrieval": {
+    "graph_rag": {
+        "enabled": False, # <-- Toggle this
+        "graph_path": "./index_store/graph/knowledge_graph.gml"
+    },
+    "reranker": {
+        "enabled": False, # <-- Toggle this
+        "model_name": "Qwen/Qwen3-Reranker-0.6B",
+    },
+...
 ```
 
-### Building for Production
-```bash
-npm run build
-```
-
-### Type Checking
-```bash
-npm run type-check
-```
-
-## 📝 Future Enhancements
-
-Potential improvements for this component:
-
-1. **Props Interface** - Add customizable props for text, colors, etc.
-2. **Message History** - Add chat message display functionality  
-3. **File Upload** - Implement actual file attachment functionality
-4. **Theme Switching** - Add light/dark mode toggle
-5. **Animation** - Add smooth transitions for better UX
-6. **Accessibility** - Enhanced keyboard navigation and screen reader support
-
-## 🤝 Integration Notes
-
-### Why `/components/ui` folder?
-The `/components/ui` folder is the standard location for shadcn/ui components. This ensures:
-- Consistent project structure
-- Easy component discovery
-- Proper import paths with `@/components/ui/*`
-- Compatibility with shadcn/ui CLI commands
-
-### Import Path Configuration
-The project uses the `@/*` import alias configured in:
-- `tsconfig.json` - TypeScript path mapping
-- `components.json` - shadcn/ui configuration
-
-This allows clean imports like `@/components/ui/textarea` instead of relative paths.
+This modularity allows you to experiment with different RAG techniques to see what works best for your use case.

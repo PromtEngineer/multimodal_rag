@@ -2,11 +2,18 @@ import json
 import http.server
 import socketserver
 import cgi
+import os
+import uuid
 from urllib.parse import urlparse, parse_qs
+import requests  # 🆕 Import requests for making HTTP calls
 from ollama_client import OllamaClient
 from database import db, generate_session_title
 import simple_pdf_processor as pdf_module
 from simple_pdf_processor import initialize_simple_pdf_processor
+
+# 🆕 Reusable TCPServer with address reuse enabled
+class ReusableTCPServer(socketserver.TCPServer):
+    allow_reuse_address = True
 
 class ChatHandler(http.server.BaseHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
@@ -56,7 +63,10 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
             self.handle_session_chat(session_id)
         elif parsed_path.path.startswith('/sessions/') and parsed_path.path.endswith('/upload'):
             session_id = parsed_path.path.split('/')[-2]
-            self.handle_pdf_upload(session_id)
+            self.handle_file_upload(session_id)
+        elif parsed_path.path.startswith('/sessions/') and parsed_path.path.endswith('/index'):
+            session_id = parsed_path.path.split('/')[-2]
+            self.handle_index_documents(session_id)
         else:
             self.send_response(404)
             self.end_headers()
@@ -189,299 +199,168 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
             }, status_code=500)
     
     def handle_session_chat(self, session_id: str):
-        """Handle chat within a specific session"""
+        """
+        Handle chat within a specific session.
+        This now delegates RAG queries to the advanced RAG API server.
+        """
         try:
-            # Check if session exists
             session = db.get_session(session_id)
             if not session:
-                self.send_json_response({
-                    "error": "Session not found"
-                }, status_code=404)
+                self.send_json_response({"error": "Session not found"}, status_code=404)
                 return
             
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length)
             data = json.loads(post_data.decode('utf-8'))
-            
             message = data.get('message', '')
-            model = data.get('model', session['model_used'])
-            
+
             if not message:
-                self.send_json_response({
-                    "error": "Message is required"
-                }, status_code=400)
+                self.send_json_response({"error": "Message is required"}, status_code=400)
                 return
-            
-            # Check if Ollama is running
-            if not self.ollama_client.is_ollama_running():
-                self.send_json_response({
-                    "error": "Ollama is not running. Please start Ollama first."
-                }, status_code=503)
-                return
-            
-            # Add user message to database
+
+            # Add user message to database first
             user_message_id = db.add_message(session_id, message, "user")
             
-            # Auto-generate title from first message
             if session['message_count'] == 0:
                 title = generate_session_title(message)
                 db.update_session_title(session_id, title)
             
-            # Get conversation history
-            conversation_history = db.get_conversation_history(session_id)
-            
-            # Get all PDF content for this session if available
-            pdf_context = ""
-            if message.strip() and pdf_module.simple_pdf_processor:
-                session_documents = pdf_module.simple_pdf_processor.get_session_documents(session_id)
-                if session_documents:
-                    print(f"📄 Found {len(session_documents)} documents for context")
-                    context_parts = []
-                    for doc in session_documents:
-                        # Get the full document content from database
-                        doc_content = pdf_module.simple_pdf_processor.get_document_content(doc['id'])
-                        if doc_content:
-                            context_parts.append(f"=== Document: {doc['filename']} ===\n{doc_content}")
-                    
-                    if context_parts:
-                        pdf_context = "\n\n".join(context_parts)
-                        print(f"📄 Added {len(pdf_context)} characters of PDF context")
-            
-            # Augment message with full document context if available
-            augmented_message = message
-            if pdf_context:
-                augmented_message = f"""Based on the following document(s), please answer the question:
-
-DOCUMENT CONTENT:
-{pdf_context}
-
-QUESTION: {message}
-
-Please answer based on the provided document content."""
+            # 🆕 --- Delegate to Advanced RAG API ---
+            print(f"🤖 Delegating query to Advanced RAG API: '{message}'")
+            response_text = ""
+            try:
+                # The advanced RAG server runs on port 8001
+                rag_api_url = "http://localhost:8001/chat"
+                rag_response = requests.post(rag_api_url, json={"query": message})
                 
-                # Replace the last message in conversation history with augmented version
-                if conversation_history and conversation_history[-1]['role'] == 'user':
-                    conversation_history[-1]['content'] = augmented_message
-            
-            # Get response from Ollama
-            response = self.ollama_client.chat(augmented_message, model, conversation_history[:-1])  # Exclude the just-added user message
-            
+                if rag_response.status_code == 200:
+                    rag_data = rag_response.json()
+                    # Extract the final answer from the agent's response
+                    response_text = rag_data.get("answer", "No answer found in RAG response.")
+                    print(f"✅ Received response from Advanced RAG API.")
+                else:
+                    error_info = rag_response.text
+                    response_text = f"Error from Advanced RAG API: {error_info}"
+                    print(f"❌ Error from Advanced RAG API ({rag_response.status_code}): {error_info}")
+
+            except requests.exceptions.ConnectionError:
+                response_text = "Could not connect to the Advanced RAG API server. Please ensure it is running."
+                print("❌ Connection to Advanced RAG API failed. Is the server running on port 8001?")
+            # 🆕 --- End Delegation ---
+
             # Add AI response to database
-            ai_message_id = db.add_message(session_id, response, "assistant")
+            ai_message_id = db.add_message(session_id, response_text, "assistant")
             
-            # Get updated session info
             updated_session = db.get_session(session_id)
             
             self.send_json_response({
-                "response": response,
+                "response": response_text,
                 "session": updated_session,
                 "user_message_id": user_message_id,
                 "ai_message_id": ai_message_id
             })
             
         except json.JSONDecodeError:
-            self.send_json_response({
-                "error": "Invalid JSON"
-            }, status_code=400)
+            self.send_json_response({"error": "Invalid JSON"}, status_code=400)
         except Exception as e:
-            self.send_json_response({
-                "error": f"Server error: {str(e)}"
-            }, status_code=500)
+            self.send_json_response({"error": f"Server error: {str(e)}"}, status_code=500)
 
     def handle_delete_session(self, session_id: str):
-        """Delete a chat session and all its messages"""
+        """Delete a session"""
         try:
-            # Check if session exists
-            session = db.get_session(session_id)
-            if not session:
+            deleted = db.delete_session(session_id)
+            if deleted:
                 self.send_json_response({
-                    "error": "Session not found"
-                }, status_code=404)
-                return
-            
-            # Delete the session (will cascade delete messages)
-            success = db.delete_session(session_id)
-            
-            if success:
-                self.send_json_response({
-                    "message": "Session deleted successfully",
-                    "deleted_session_id": session_id
+                    "message": "Session deleted successfully"
                 })
             else:
                 self.send_json_response({
-                    "error": "Failed to delete session"
-                }, status_code=500)
-                
+                    "error": "Session not found"
+                }, status_code=404)
         except Exception as e:
             self.send_json_response({
                 "error": f"Failed to delete session: {str(e)}"
             }, status_code=500)
     
-    def handle_pdf_upload(self, session_id: str):
-        """Handle PDF file upload for a session"""
+    def handle_file_upload(self, session_id: str):
+        """Handle file uploads, save them, and associate with the session."""
+        form = cgi.FieldStorage(
+            fp=self.rfile,
+            headers=self.headers,
+            environ={'REQUEST_METHOD': 'POST', 'CONTENT_TYPE': self.headers['Content-Type']}
+        )
+
+        uploaded_files = []
+        if 'files' in form:
+            files = form['files']
+            if not isinstance(files, list):
+                files = [files]
+            
+            upload_dir = "shared_uploads"
+            os.makedirs(upload_dir, exist_ok=True)
+
+            for file_item in files:
+                if file_item.filename:
+                    # Create a unique filename to avoid overwrites
+                    unique_filename = f"{uuid.uuid4()}_{file_item.filename}"
+                    file_path = os.path.join(upload_dir, unique_filename)
+                    
+                    with open(file_path, 'wb') as f:
+                        f.write(file_item.file.read())
+                    
+                    # Store the absolute path for the indexing service
+                    absolute_file_path = os.path.abspath(file_path)
+                    db.add_document_to_session(session_id, absolute_file_path)
+                    uploaded_files.append({"filename": file_item.filename, "stored_path": absolute_file_path})
+
+        if not uploaded_files:
+            self.send_json_response({"error": "No files were uploaded"}, status_code=400)
+            return
+            
+        self.send_json_response({
+            "message": f"Successfully uploaded {len(uploaded_files)} files.",
+            "uploaded_files": uploaded_files
+        })
+
+    def handle_index_documents(self, session_id: str):
+        """Triggers indexing for all documents in a session."""
+        print(f"🔥 Received request to index documents for session {session_id[:8]}...")
         try:
-            # Check if PDF processor is available
-            print(f"🔍 PDF Upload Debug - simple_pdf_processor: {pdf_module.simple_pdf_processor}")
-            print(f"🔍 PDF Upload Debug - type: {type(pdf_module.simple_pdf_processor)}")
-            if not pdf_module.simple_pdf_processor:
-                print("❌ PDF processor is None/False - returning 503")
-                self.send_json_response({
-                    "error": "PDF processing is not available. Please check server logs."
-                }, status_code=503)
+            file_paths = db.get_documents_for_session(session_id)
+            if not file_paths:
+                self.send_json_response({"message": "No documents to index for this session."}, status_code=200)
                 return
+
+            print(f"Found {len(file_paths)} documents to index. Sending to RAG API...")
             
-            # Check if session exists
-            session = db.get_session(session_id)
-            if not session:
-                self.send_json_response({
-                    "error": "Session not found"
-                }, status_code=404)
-                return
-            
-            # Parse multipart form data
-            content_type = self.headers.get('Content-Type', '')
-            print(f"📤 Upload Content-Type: {content_type}")
-            if not content_type.startswith('multipart/form-data'):
-                self.send_json_response({
-                    "error": "Expected multipart/form-data"
-                }, status_code=400)
-                return
-            
-            # Parse the form data  
-            print("📤 Starting form data parsing...")
-            try:
-                # Set a larger max file size (50MB)
-                import tempfile
-                tempfile.tempdir = '/tmp'  # Ensure we have space
-                
-                form = cgi.FieldStorage(
-                    fp=self.rfile,
-                    headers=self.headers,
-                    environ={
-                        'REQUEST_METHOD': 'POST',
-                        'CONTENT_TYPE': self.headers['Content-Type'],
-                    },
-                    # Increase file size limits
-                    keep_blank_values=True,
-                )
-                print(f"📤 Form parsed successfully, found {len(form.keys())} fields")
-            except Exception as parse_error:
-                print(f"❌ Form parsing failed: {str(parse_error)}")
-                self.send_json_response({
-                    "error": f"Failed to parse form data: {str(parse_error)}"
-                }, status_code=400)
-                return
-            
-            uploaded_files = []
-            processing_results = []
-            
-            # Process each uploaded file
-            print(f"📤 Processing {len(form.keys())} form fields...")
-            for field_name in form.keys():
-                print(f"📤 Processing field: {field_name}")
-                field = form[field_name]
-                print(f"📤 Field has filename attr: {hasattr(field, 'filename')}")
-                if hasattr(field, 'filename'):
-                    print(f"📤 Filename: {field.filename}")
-                if hasattr(field, 'filename') and field.filename:
-                    # Check if it's a PDF file
-                    if not field.filename.lower().endswith('.pdf'):
-                        processing_results.append({
-                            "filename": field.filename,
-                            "success": False,
-                            "error": "Only PDF files are supported"
-                        })
-                        continue
-                    
-                    # Read file content
-                    print(f"📤 Field.file type: {type(field.file)}")
-                    print(f"📤 Field.file available methods: {[m for m in dir(field.file) if not m.startswith('_')]}")
-                    
-                    file_content = field.file.read()
-                    print(f"📤 File content size: {len(file_content)} bytes")
-                    
-                    # Try to get more info about the file
-                    if hasattr(field.file, 'tell'):
-                        print(f"📤 File position after read: {field.file.tell()}")
-                    if hasattr(field.file, 'seek'):
-                        field.file.seek(0)  # Reset to beginning
-                        file_content = field.file.read()  # Try reading again
-                        print(f"📤 File content size after seek/re-read: {len(file_content)} bytes")
-                    
-                    # Try getvalue() for BytesIO objects
-                    if hasattr(field.file, 'getvalue'):
-                        buffer_content = field.file.getvalue()
-                        print(f"📤 Buffer content via getvalue(): {len(buffer_content)} bytes")
-                        if buffer_content and not file_content:
-                            file_content = buffer_content
-                            print(f"📤 Using buffer content instead")
-                    
-                    if not file_content:
-                        processing_results.append({
-                            "filename": field.filename,
-                            "success": False,
-                            "error": "Empty file - frontend may not be sending file content properly"
-                        })
-                        continue
-                    
-                    # Process the PDF
-                    print(f"📄 Starting PDF processing for {field.filename} ({len(file_content)} bytes)")
-                    try:
-                        result = pdf_module.simple_pdf_processor.process_pdf(file_content, field.filename, session_id)
-                        print(f"📄 PDF processing result: {result}")
-                        processing_results.append(result)
-                    except Exception as pdf_error:
-                        print(f"❌ PDF processing failed: {str(pdf_error)}")
-                        processing_results.append({
-                            "filename": field.filename,
-                            "success": False,
-                            "error": f"PDF processing failed: {str(pdf_error)}"
-                        })
-                    
-                    if result.get("success", False):
-                        uploaded_files.append({
-                            "filename": field.filename,
-                            "file_id": result.get("file_id", ""),
-                            "chunks": result.get("chunks", 0),
-                            "text_length": result.get("text_length", 0)
-                        })
-            
-            if not processing_results:
-                self.send_json_response({
-                    "error": "No PDF files found in upload"
-                }, status_code=400)
-                return
-            
-            # Get updated session documents
-            session_documents = pdf_module.simple_pdf_processor.get_session_documents(session_id)
-            
-            print(f"✅ PDF processing complete. Attempting to send response...")
-            try:
-                self.send_json_response({
-                    "message": f"Processed {len(uploaded_files)} PDF files",
-                    "uploaded_files": uploaded_files,
-                    "processing_results": processing_results,
-                    "session_documents": session_documents,
-                    "total_session_documents": len(session_documents)
-                })
-                print(f"✅ Response sent successfully")
-            except Exception as response_error:
-                print(f"❌ Failed to send response: {str(response_error)}")
-                # The processing was successful even if response sending failed
-                print(f"📊 Processing summary: {len(uploaded_files)} files uploaded, {len(session_documents)} total docs")
-                pass
-            
+            rag_api_url = "http://localhost:8001/index"
+            rag_response = requests.post(rag_api_url, json={"file_paths": file_paths})
+
+            if rag_response.status_code == 200:
+                print("✅ RAG API successfully indexed documents.")
+                self.send_json_response(rag_response.json())
+            else:
+                error_info = rag_response.text
+                print(f"❌ RAG API indexing failed ({rag_response.status_code}): {error_info}")
+                self.send_json_response({"error": f"Indexing failed: {error_info}"}, status_code=500)
+
         except Exception as e:
-            print(f"❌ Error in PDF upload: {str(e)}")
-            try:
-                self.send_json_response({
-                    "error": f"Failed to process PDF upload: {str(e)}"
-                }, status_code=500)
-            except:
-                # Ignore broken pipe errors when sending error response
-                print("❌ Failed to send error response (broken pipe)")
-                pass
-    
+            print(f"❌ Exception during indexing: {str(e)}")
+            self.send_json_response({"error": f"An unexpected error occurred: {str(e)}"}, status_code=500)
+            
+    def handle_pdf_upload(self, session_id: str):
+        """
+        Processes PDF files: extracts text and stores it in the database.
+        DEPRECATED: This is the old method. Use handle_file_upload instead.
+        """
+        # This function is now deprecated in favor of the new indexing workflow
+        # but is kept for potential legacy/compatibility reasons.
+        # For new functionality, it should not be used.
+        self.send_json_response({
+            "warning": "This upload method is deprecated. Use the new file upload and indexing flow.",
+            "message": "No action taken."
+        }, status_code=410) # 410 Gone
+
     def send_json_response(self, data, status_code=200):
         """Send JSON response with CORS headers"""
         self.send_response(status_code)
@@ -498,47 +377,63 @@ Please answer based on the provided document content."""
         print(f"[{self.date_time_string()}] {format % args}")
 
 def main():
-    PORT = 8000
-    
-    print(f"✅ Database initialized successfully")
-    
-    # Initialize simple PDF processor
-    print("📄 Initializing simple PDF processing...")
-    pdf_initialized = initialize_simple_pdf_processor()
-    if pdf_initialized:
-        print("✅ Simple PDF processing ready")
-    else:
-        print("⚠️ PDF processing disabled - server will run without RAG functionality")
-    
-    # Clean up any empty sessions on startup
-    print("🧹 Cleaning up empty sessions...")
-    cleanup_count = db.cleanup_empty_sessions()
-    if cleanup_count == 0:
-        print("✨ No empty sessions to clean up")
-    
-    print(f"🚀 Starting localGPT backend server on port {PORT}")
-    print(f"📍 Chat endpoint: http://localhost:{PORT}/chat")
-    print(f"🔍 Health check: http://localhost:{PORT}/health")
-    
-    # Test Ollama connection
-    client = OllamaClient()
-    if client.is_ollama_running():
-        models = client.list_models()
-        print(f"✅ Ollama is running with {len(models)} models")
-        print(f"📋 Available models: {', '.join(models[:3])}{'...' if len(models) > 3 else ''}")
-    else:
-        print("⚠️  Ollama is not running. Please start Ollama:")
-        print("   Install: https://ollama.ai")
-        print("   Run: ollama serve")
-    
-    print(f"\n🌐 Frontend should connect to: http://localhost:{PORT}")
-    print("💬 Ready to chat!\n")
-    
-    with socketserver.TCPServer(("", PORT), ChatHandler) as httpd:
+    """Main function to initialize and start the server"""
+    PORT = 8000  # 🆕 Define port
+    try:
+        # Initialize the database
+        print("✅ Database initialized successfully")
+
+        # Initialize the PDF processor
         try:
+            pdf_module.initialize_simple_pdf_processor()
+            print("📄 Initializing simple PDF processing...")
+            if pdf_module.simple_pdf_processor:
+                print("✅ Simple PDF processor initialized")
+            else:
+                print("⚠️ PDF processing could not be initialized.")
+        except Exception as e:
+            print(f"❌ Error initializing PDF processor: {e}")
+            print("⚠️ PDF processing disabled - server will run without RAG functionality")
+
+        # Set a global reference to the initialized processor if needed elsewhere
+        global pdf_processor
+        pdf_processor = pdf_module.simple_pdf_processor
+        if pdf_processor:
+            print("✅ Global PDF processor initialized")
+        else:
+            print("⚠️ PDF processing disabled - server will run without RAG functionality")
+        
+        # Cleanup empty sessions on startup
+        print("🧹 Cleaning up empty sessions...")
+        cleanup_count = db.cleanup_empty_sessions()
+        if cleanup_count > 0:
+            print(f"✨ Cleaned up {cleanup_count} empty sessions")
+        else:
+            print("✨ No empty sessions to clean up")
+
+        # Start the server
+        with ReusableTCPServer(("", PORT), ChatHandler) as httpd:
+            print(f"🚀 Starting localGPT backend server on port {PORT}")
+            print(f"📍 Chat endpoint: http://localhost:{PORT}/chat")
+            print(f"🔍 Health check: http://localhost:{PORT}/health")
+            
+            # Test Ollama connection
+            client = OllamaClient()
+            if client.is_ollama_running():
+                models = client.list_models()
+                print(f"✅ Ollama is running with {len(models)} models")
+                print(f"📋 Available models: {', '.join(models[:3])}{'...' if len(models) > 3 else ''}")
+            else:
+                print("⚠️  Ollama is not running. Please start Ollama:")
+                print("   Install: https://ollama.ai")
+                print("   Run: ollama serve")
+            
+            print(f"\n🌐 Frontend should connect to: http://localhost:{PORT}")
+            print("💬 Ready to chat!\n")
+            
             httpd.serve_forever()
-        except KeyboardInterrupt:
-            print("\n🛑 Server stopped")
+    except KeyboardInterrupt:
+        print("\n🛑 Server stopped")
 
 if __name__ == "__main__":
     main() 
