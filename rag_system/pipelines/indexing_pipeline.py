@@ -7,6 +7,7 @@ from rag_system.indexing.representations import QwenEmbedder, EmbeddingGenerator
 from rag_system.indexing.embedders import LanceDBManager, VectorIndexer, BM25Indexer
 from rag_system.indexing.graph_extractor import GraphExtractor
 from rag_system.utils.ollama_client import OllamaClient
+from rag_system.indexing.contextualizer import ContextualEnricher
 
 class IndexingPipeline:
     def __init__(self, config: Dict[str, Any], ollama_client: OllamaClient, ollama_config: Dict[str, str]):
@@ -36,6 +37,12 @@ class IndexingPipeline:
                 llm_model=self.ollama_config["generation_model"]
             )
 
+        if self.config.get("contextual_enricher", {}).get("enabled"):
+            self.contextual_enricher = ContextualEnricher(
+                llm_client=self.ollama_client,
+                llm_model=self.ollama_config["generation_model"]
+            )
+
     def run(self, file_paths: List[str]):
         """
         Processes and indexes documents based on the pipeline's configuration.
@@ -58,6 +65,20 @@ class IndexingPipeline:
 
         retriever_configs = self.config.get("retrievers", {})
 
+        # --- Create BM25 Index from original chunks FIRST ---
+        if hasattr(self, 'bm25_indexer'):
+            index_name = retriever_configs.get("bm25", {}).get("index_name", "default_bm25_index")
+            print(f"\n--- Creating BM25 index from original chunk text: {index_name} ---")
+            self.bm25_indexer.index(index_name, all_chunks)
+
+        # --- Optional: Contextual Enrichment for vector-based retrieval---
+        if hasattr(self, 'contextual_enricher'):
+            enricher_config = self.config.get("contextual_enricher", {})
+            window_size = enricher_config.get("window_size", 1)
+            # This modifies the 'text' field in each chunk dictionary
+            all_chunks = self.contextual_enricher.enrich_chunks(all_chunks, window_size=window_size)
+            print(f"✅ Enriched {len(all_chunks)} chunks with context for vectorization.")
+
         if hasattr(self, 'vector_indexer') and hasattr(self, 'embedding_generator'):
             table_name = retriever_configs.get("dense", {}).get("lancedb_table_name", "default_text_table")
             print(f"\n--- Generating embeddings with {self.config.get('embedding_model_name')} ---")
@@ -65,10 +86,7 @@ class IndexingPipeline:
             print(f"\n--- Indexing {len(embeddings)} vectors into LanceDB table: {table_name} ---")
             self.vector_indexer.index(table_name, all_chunks, embeddings)
         
-        if hasattr(self, 'bm25_indexer'):
-            index_name = retriever_configs.get("bm25", {}).get("index_name", "default_bm25_index")
-            print(f"\n--- Creating BM25 index: {index_name} ---")
-            self.bm25_indexer.index(index_name, all_chunks)
+        # BM25 indexing is now done before enrichment.
             
         if hasattr(self, 'graph_extractor'):
             graph_path = retriever_configs.get("graph", {}).get("graph_path", "./index_store/graph/default_graph.gml")

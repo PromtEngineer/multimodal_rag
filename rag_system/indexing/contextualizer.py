@@ -1,52 +1,96 @@
 from typing import List, Dict, Any
 from rag_system.utils.ollama_client import OllamaClient
+from rag_system.ingestion.chunking import create_contextual_window
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Define the structured prompt templates, adapted from the example
+SYSTEM_PROMPT = "You are an expert at summarizing and providing context for document sections based on their local surroundings."
+
+LOCAL_CONTEXT_PROMPT_TEMPLATE = """<local_context>
+{local_context_text}
+</local_context>"""
+
+CHUNK_PROMPT_TEMPLATE = """Here is the specific chunk we want to situate within the local context provided:
+<chunk>
+{chunk_content}
+</chunk>
+
+Based *only* on the local context provided, give a very short (1-2 sentence) context summary to situate this specific chunk. Focus on the chunk's topic and its relation to the immediately surrounding text shown in the local context. Answer *only* with the succinct context and nothing else."""
+
 
 class ContextualEnricher:
     """
-    Enriches chunks with a prepended summary of their surrounding context using Ollama.
+    Enriches chunks with a prepended summary of their surrounding context using Ollama,
+    while preserving the original text.
     """
     def __init__(self, llm_client: OllamaClient, llm_model: str):
         self.llm_client = llm_client
         self.llm_model = llm_model
-        print(f"Initialized ContextualEnricher with Ollama model '{self.llm_model}'.")
+        logger.info(f"Initialized ContextualEnricher with Ollama model '{self.llm_model}'.")
 
-    def _generate_summary(self, text_window: str) -> str:
-        prompt = (
-            "You are an expert at creating concise summaries for context. "
-            "Summarize the key topic of the following text in one short sentence. "
-            "Do not add any preamble or explanation.\n\n"
-            f"Text: \"{text_window}\"\n\n"
-            "Summary:"
+    def _generate_summary(self, local_context_text: str, chunk_text: str) -> str:
+        """Generates a contextual summary using a structured, multi-part prompt."""
+        # Combine the templates to form the final content for the HumanMessage equivalent
+        human_prompt_content = (
+            f"{LOCAL_CONTEXT_PROMPT_TEMPLATE.format(local_context_text=local_context_text)}\n\n"
+            f"{CHUNK_PROMPT_TEMPLATE.format(chunk_content=chunk_text)}"
         )
-        response = self.llm_client.generate_completion(self.llm_model, prompt)
-        return response.get('response', '').strip()
 
-    def enrich_chunks(self, chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        try:
+            # Although we don't use LangChain's message objects, we can simulate the
+            # System + Human message structure in the single prompt for the Ollama client.
+            # A common way is to provide the system prompt and then the user's request.
+            full_prompt = f"{SYSTEM_PROMPT}\n\n{human_prompt_content}"
+            
+            response = self.llm_client.generate_completion(self.llm_model, full_prompt)
+            summary = response.get('response', '').strip()
+
+            if not summary or len(summary) < 5:
+                logger.warning("Generated context summary is too short or empty. Skipping enrichment for this chunk.")
+                return ""
+            
+            return summary
+
+        except Exception as e:
+            logger.error(f"LLM invocation failed during contextualization: {e}", exc_info=True)
+            return "" # Gracefully fail by returning no summary
+
+    def enrich_chunks(self, chunks: List[Dict[str, Any]], window_size: int = 1) -> List[Dict[str, Any]]:
         if not chunks:
             return []
 
-        print(f"Enriching {len(chunks)} chunks with contextual summaries using Ollama...")
+        logger.info(f"Enriching {len(chunks)} chunks with contextual summaries (window_size={window_size}) using Ollama...")
         enriched_chunks = []
         
-        # To prevent circular import, we define the window creator function locally
-        # if it's not passed in. A better design might be to move this to a shared utils file.
-        def create_contextual_window(all_chunks, chunk_index, window_size=1):
-            start = max(0, chunk_index - window_size)
-            end = min(len(all_chunks), chunk_index + window_size + 1)
-            return " ".join([c['text'] for c in all_chunks[start:end]])
-
         for i, chunk in enumerate(chunks):
-            context_window = create_contextual_window(chunks, chunk_index=i, window_size=1)
-            summary = self._generate_summary(context_window)
+            local_context_text = create_contextual_window(chunks, chunk_index=i, window_size=window_size)
             
+            # The summary is generated based on the original, unmodified text
             original_text = chunk['text']
-            enriched_text = f"Context: {summary}\n\n---\n\n{original_text}"
+            summary = self._generate_summary(local_context_text, original_text)
             
             new_chunk = chunk.copy()
-            new_chunk['text'] = enriched_text
+            
+            # Ensure metadata is a dictionary
+            if 'metadata' not in new_chunk or not isinstance(new_chunk['metadata'], dict):
+                new_chunk['metadata'] = {}
+
+            # Store original text and summary in metadata
             new_chunk['metadata']['original_text'] = original_text
-            new_chunk['metadata']['contextual_summary'] = summary
+            new_chunk['metadata']['contextual_summary'] = "N/A"
+
+            # Prepend the context summary ONLY if it was successfully generated
+            if summary:
+                new_chunk['text'] = f"Context: {summary}\n\n---\n\n{original_text}"
+                new_chunk['metadata']['contextual_summary'] = summary
             
             enriched_chunks.append(new_chunk)
+            
+            if (i + 1) % 10 == 0 or i == len(chunks) - 1:
+                logger.info(f"  ...processed {i+1}/{len(chunks)} chunks.")
             
         return enriched_chunks

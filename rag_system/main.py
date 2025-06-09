@@ -53,6 +53,10 @@ PIPELINE_CONFIGS = {
                 "graph_path": "./index_store/graph/knowledge_graph.gml"
             }
         },
+        "contextual_enricher": {
+            "enabled": True,
+            "window_size": 1
+        },
         "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
         "vision_model_name": None
     },
