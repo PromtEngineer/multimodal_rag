@@ -1,5 +1,5 @@
 import pymupdf
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from PIL import Image
 
 from rag_system.utils.ollama_client import OllamaClient
@@ -8,6 +8,7 @@ from rag_system.retrieval.reranker import QwenReranker
 from rag_system.indexing.multimodal import LocalVisionModel
 from rag_system.indexing.representations import QwenEmbedder
 from rag_system.indexing.embedders import LanceDBManager
+from rag_system.indexing.chunk_store import ChunkStore
 
 import os
 from PIL import Image
@@ -23,6 +24,11 @@ class RetrievalPipeline:
         
         retriever_configs = self.config.get("retrievers", {})
         storage_config = self.config["storage"]
+        
+        if storage_config.get("chunk_store_path"):
+            self.chunk_store = ChunkStore(store_path=storage_config["chunk_store_path"])
+        else:
+            self.chunk_store = None
         
         if retriever_configs.get("dense", {}).get("enabled"):
             db_manager = LanceDBManager(db_path=storage_config["lancedb_uri"])
@@ -45,10 +51,13 @@ class RetrievalPipeline:
                 graph_path=storage_config["graph_path"]
             )
         
-        if config.get("reranker", {}).get("enabled"):
+        reranker_config = self.config.get("reranker", {})
+        if reranker_config.get("enabled"):
             self.reranker = QwenReranker(
-                model_name=config.get("reranker", {}).get("model_name", "Qwen/Qwen-reranker")
+                model_name=reranker_config.get("model_name", "Qwen/Qwen-reranker")
             )
+        else:
+            self.reranker = None
 
     def _synthesize_final_answer(self, query: str, facts: str) -> str:
         """Uses a text LLM to synthesize a final answer from extracted facts."""
@@ -99,7 +108,30 @@ Final Answer:
                 if doc['chunk_id'] not in existing_ids:
                     retrieved_docs.append(doc)
 
-        # 2. Reranking
+        # 2. Parent-Child Context Expansion
+        if not self.chunk_store:
+            print("Chunk store not initialized, skipping context expansion.")
+            return retrieved_docs
+        
+        # Reload the chunk store to ensure it's up-to-date with the latest index
+        self.chunk_store.reload()
+
+        unique_chunks_by_id = {chunk['chunk_id']: chunk for chunk in retrieved_docs}
+        expanded_chunks = {}
+        window_size = self.config.get("context_window_size", 1)
+        if window_size > 0:
+            print(f"\n--- Expanding context with window size: {window_size}... ---")
+            for chunk in unique_chunks_by_id.values():
+                surrounding_chunks = self.chunk_store.get_surrounding_chunks(chunk['chunk_id'], window_size=window_size)
+                for surrounding_chunk in surrounding_chunks:
+                    # Use a dictionary to automatically handle duplicates
+                    expanded_chunks[surrounding_chunk['chunk_id']] = surrounding_chunk
+            
+            # The new set of documents is the unique, expanded set
+            retrieved_docs = list(expanded_chunks.values())
+            print(f"Expanded to {len(retrieved_docs)} unique chunks.")
+
+        # 3. Reranking
         if hasattr(self, 'reranker') and retrieved_docs:
             print(f"\n--- Reranking {len(retrieved_docs)} documents... ---")
             final_docs = self.reranker.rerank(query, retrieved_docs, top_k=self.config.get("reranker", {}).get("top_k", 3))
@@ -117,7 +149,7 @@ Final Answer:
                 print(f"      Text: \"{doc.get('text', '').strip()}\"")
         print("------------------------------------")
 
-        # 3. Final Answer Synthesis
+        # 4. Final Answer Synthesis
         if not final_docs:
             return {
                 "answer": "I could not find an answer in the documents.",

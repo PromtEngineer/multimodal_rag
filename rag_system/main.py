@@ -35,6 +35,7 @@ PIPELINE_CONFIGS = {
         "storage": {
             "lancedb_uri": "./index_store/lancedb",
             "bm25_path": "./index_store/bm25",
+            "chunk_store_path": "./index_store/chunk_store/chunks.pkl",
             "text_table_name": "local_text_pages_v3",
             "image_table_name": None,
             "graph_path": "./index_store/graph/knowledge_graph.gml"
@@ -84,6 +85,7 @@ PIPELINE_CONFIGS = {
         "storage": {
             "lancedb_uri": "./index_store/lancedb",
             "bm25_path": "./index_store/bm25",
+            "chunk_store_path": "./index_store/chunk_store/chunks.pkl",
             "text_table_name": "local_text_pages_v3",
             "image_table_name": None,
             "graph_path": "./index_store/graph/knowledge_graph.gml"
@@ -109,7 +111,8 @@ PIPELINE_CONFIGS = {
             "model_name": "Qwen/Qwen3-Reranker-0.6B",
             "top_k": 10
         },
-        "retrieval_k": 100
+        "retrieval_k": 100,
+        "context_window_size": 2
     },
     "bm25": {
         "enabled": True,

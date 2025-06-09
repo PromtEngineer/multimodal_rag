@@ -8,6 +8,7 @@ from rag_system.indexing.embedders import LanceDBManager, VectorIndexer, BM25Ind
 from rag_system.indexing.graph_extractor import GraphExtractor
 from rag_system.utils.ollama_client import OllamaClient
 from rag_system.indexing.contextualizer import ContextualEnricher
+from rag_system.indexing.chunk_store import ChunkStore
 
 class IndexingPipeline:
     def __init__(self, config: Dict[str, Any], ollama_client: OllamaClient, ollama_config: Dict[str, str]):
@@ -19,6 +20,9 @@ class IndexingPipeline:
 
         retriever_configs = self.config.get("retrievers", {})
         storage_config = self.config["storage"]
+
+        if storage_config.get("chunk_store_path"):
+            self.chunk_store = ChunkStore(store_path=storage_config["chunk_store_path"])
 
         if retriever_configs.get("dense", {}).get("enabled"):
             self.lancedb_manager = LanceDBManager(db_path=storage_config["lancedb_uri"])
@@ -64,6 +68,10 @@ class IndexingPipeline:
         print(f"\n✅ Generated {len(all_chunks)} text chunks.")
 
         retriever_configs = self.config.get("retrievers", {})
+
+        # --- Save original chunks to the chunk store ---
+        if hasattr(self, 'chunk_store'):
+            self.chunk_store.save(all_chunks)
 
         # --- Create BM25 Index from original chunks FIRST ---
         if hasattr(self, 'bm25_indexer'):
