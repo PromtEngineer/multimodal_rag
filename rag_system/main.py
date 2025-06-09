@@ -27,26 +27,34 @@ from rag_system.utils.ollama_client import OllamaClient
 OLLAMA_CONFIG = {
     "host": "http://localhost:11434",
     "generation_model": "qwen2.5vl:7b",
-    "vlm_model": "qwen2.5vl:7b" # Vision-Language Model for synthesis
+    "vlm_model": "qwen2.5vl:7b"
 }
 
 PIPELINE_CONFIGS = {
     "indexing": {
         "storage": {
-            "lancedb_path": "./index_store/lancedb",
-            "text_table_name": "local_text_pages_v2",
+            "lancedb_uri": "./index_store/lancedb",
+            "bm25_path": "./index_store/bm25",
+            "text_table_name": "local_text_pages_v3",
             "image_table_name": None,
+            "graph_path": "./index_store/graph/knowledge_graph.gml"
         },
-        "text_embedding": {
-            "provider": "huggingface",
-            "lancedb_table_name": "local_text_pages_v2"
+        "retrievers": {
+            "dense": { 
+                "enabled": True,
+                "lancedb_table_name": "local_text_pages_v3"
+            },
+            "bm25": { 
+                "enabled": True,
+                "index_name": "rag_bm25_index"
+            },
+            "graph": { 
+                "enabled": False,
+                "graph_path": "./index_store/graph/knowledge_graph.gml"
+            }
         },
         "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
-        "vision_model_name": None,
-        "graph_rag": {
-            "enabled": False,
-            "graph_path": "./index_store/graph/knowledge_graph.gml"
-        }
+        "vision_model_name": None
     },
     "retrieval": {
         "storage": {
@@ -70,23 +78,41 @@ PIPELINE_CONFIGS = {
     },
     "default": {
         "storage": {
-            "lancedb_path": "./index_store/lancedb",
-            "doc_path": "rag_system/documents", # Add path to docs for image retrieval
-            "text_table_name": "local_text_pages_v2",
+            "lancedb_uri": "./index_store/lancedb",
+            "bm25_path": "./index_store/bm25",
+            "text_table_name": "local_text_pages_v3",
             "image_table_name": None,
-        },
-        "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
-        "vision_model_name": None,
-        "graph_rag": {
-            "enabled": False,
             "graph_path": "./index_store/graph/knowledge_graph.gml"
         },
+        "retrievers": {
+            "dense": { 
+                "enabled": True,
+                "lancedb_table_name": "local_text_pages_v3"
+            },
+            "bm25": { 
+                "enabled": True,
+                "index_name": "rag_bm25_index"
+            },
+            "graph": { 
+                "enabled": False,
+                "graph_path": "./index_store/graph/knowledge_graph.gml"
+            }
+        },
+        "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
+        "vision_model_name": "Qwen/Qwen-VL-Chat",
         "reranker": {
-            "enabled": False, 
+            "enabled": True, 
             "model_name": "Qwen/Qwen3-Reranker-0.6B",
             "top_k": 3
         },
         "retrieval_k": 10
+    },
+    "bm25": {
+        "enabled": True,
+        "index_name": "rag_bm25_index"
+    },
+    "graph_rag": {
+        "enabled": False, # Keep disabled for now unless specified
     }
 }
 
@@ -142,7 +168,7 @@ def show_graph():
     import networkx as nx
     import matplotlib.pyplot as plt
 
-    graph_path = PIPELINE_CONFIGS["indexing"]["graph_rag"]["graph_path"]
+    graph_path = PIPELINE_CONFIGS["indexing"]["graph_path"]
     if not os.path.exists(graph_path):
         print("Knowledge graph not found. Please run the 'index' command first.")
         return

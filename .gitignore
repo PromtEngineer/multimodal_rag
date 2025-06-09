@@ -39,3 +39,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Python
+__pycache__/
+*.pyc
+
+# Local Data
+/index_store
+/shared_uploads
+chat_history.db
+*.pkl

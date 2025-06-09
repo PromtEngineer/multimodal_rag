@@ -1,4 +1,3 @@
-
 import lancedb
 import pickle
 import json
@@ -16,8 +15,65 @@ from rag_system.indexing.multimodal import LocalVisionModel
 
 # (BM25Retriever and GraphRetriever remain the same)
 class BM25Retriever:
-    # ... (code as before)
-    pass
+    def __init__(self, index_path: str, index_name: str):
+        self.index_path = os.path.join(index_path, f"{index_name}.pkl")
+        self.bm25 = None
+        self.chunks = None
+        self._load_index()
+
+    def _load_index(self):
+        """Loads the BM25 index and chunks from a pickle file."""
+        if not os.path.exists(self.index_path):
+            print(f"Warning: BM25 index file not found at {self.index_path}. BM25 retrieval will be skipped.")
+            return
+        
+        try:
+            with open(self.index_path, "rb") as f:
+                data = pickle.load(f)
+                self.bm25 = data["index"]
+                self.chunks = data["chunks"]
+            print(f"✅ BM25 index loaded successfully from {self.index_path}")
+        except Exception as e:
+            print(f"Error loading BM25 index: {e}")
+
+    def retrieve(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
+        if not self.bm25 or not self.chunks:
+            return []
+
+        print(f"\n--- Performing BM25 Retrieval for query: '{query}' ---")
+        tokenized_query = query.lower().split()
+        
+        # Use get_top_n for efficient retrieval and scoring
+        top_chunks = self.bm25.get_top_n(tokenized_query, self.chunks, n=k)
+
+        results = []
+        # The rank_bm25 library already returns sorted chunks.
+        # We just need to format them and add the score.
+        # To get the scores, we need to re-score the top results.
+        # This is a known behavior of the library's get_top_n method.
+        if top_chunks:
+            doc_scores = self.bm25.get_scores(tokenized_query)
+            chunk_texts = [chunk['text'] for chunk in self.chunks]
+            
+            for chunk in top_chunks:
+                try:
+                    # Find the original index to get the score
+                    original_index = chunk_texts.index(chunk['text'])
+                    score = float(doc_scores[original_index])
+                    if score > 0:
+                        results.append({
+                            'chunk_id': chunk.get('chunk_id'),
+                            'text': chunk.get('text'),
+                            'score': score,
+                            'metadata': chunk.get('metadata', {})
+                        })
+                except ValueError:
+                    # This case should ideally not happen if chunks are unique
+                    continue
+
+        print(f"Retrieved {len(results)} documents using BM25.")
+        return results
+
 from fuzzywuzzy import process
 
 class GraphRetriever:
@@ -52,7 +108,7 @@ class MultiVectorRetriever:
     """
     Performs hybrid retrieval across separate text and image vector indexes.
     """
-    def __init__(self, db_manager: LanceDBManager, text_embedder: OllamaEmbedder, vision_model: LocalVisionModel):
+    def __init__(self, db_manager: LanceDBManager, text_embedder: OllamaEmbedder, vision_model: LocalVisionModel = None):
         self.db_manager = db_manager
         self.text_embedder = text_embedder
         self.vision_model = vision_model

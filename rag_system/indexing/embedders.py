@@ -1,4 +1,3 @@
-
 import lancedb
 import pyarrow as pa
 from typing import List, Dict, Any
@@ -85,7 +84,7 @@ class BM25Indexer:
         
         if bm25_index:
             data_to_save = {"index": bm25_index, "chunks": chunks}
-            file_path = os.path.join(self.index_path, index_name)
+            file_path = os.path.join(self.index_path, f"{index_name}.pkl")
             with open(file_path, "wb") as f:
                 pickle.dump(data_to_save, f)
             print(f"BM25 index and chunk data saved to {file_path}")
