@@ -13,3 +13,4 @@ transformers
 sentencepiece
 accelerate
 docling
+ocrmac
