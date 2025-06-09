@@ -103,9 +103,9 @@ PIPELINE_CONFIGS = {
         "reranker": {
             "enabled": True, 
             "model_name": "Qwen/Qwen3-Reranker-0.6B",
-            "top_k": 3
+            "top_k": 10
         },
-        "retrieval_k": 10
+        "retrieval_k": 100
     },
     "bm25": {
         "enabled": True,
@@ -115,6 +115,19 @@ PIPELINE_CONFIGS = {
         "enabled": False, # Keep disabled for now unless specified
     }
 }
+
+def get_agent():
+    """Initializes and returns a single instance of the RAG Agent."""
+    try:
+        ollama_client = OllamaClient(OLLAMA_CONFIG["host"])
+    except ConnectionError as e:
+        print(e)
+        # In a real application, you might want to exit or handle this more gracefully
+        return None
+    
+    # Pass the 'default' config, which is the most complete one
+    agent = Agent(PIPELINE_CONFIGS['default'], ollama_client, OLLAMA_CONFIG)
+    return agent
 
 def run_indexing(file_paths: list = None):
     print("\n--- Running Multimodal Indexing Pipeline ---")

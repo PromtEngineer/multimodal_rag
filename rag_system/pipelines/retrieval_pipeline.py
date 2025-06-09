@@ -101,9 +101,21 @@ Final Answer:
 
         # 2. Reranking
         if hasattr(self, 'reranker') and retrieved_docs:
-            final_docs = self.reranker.rerank(query, retrieved_docs, top_k=self.config["reranker"].get("top_k", 3))
+            print(f"\n--- Reranking {len(retrieved_docs)} documents... ---")
+            final_docs = self.reranker.rerank(query, retrieved_docs, top_k=self.config.get("reranker", {}).get("top_k", 3))
         else:
             final_docs = retrieved_docs
+
+        print("\n--- Final Documents for Synthesis ---")
+        if not final_docs:
+            print("No documents to synthesize.")
+        else:
+            for i, doc in enumerate(final_docs):
+                print(f"  [{i+1}] Chunk ID: {doc.get('chunk_id')}")
+                print(f"      Score: {doc.get('score', 'N/A')}")
+                print(f"      Rerank Score: {doc.get('rerank_score', 'N/A')}")
+                print(f"      Text: \"{doc.get('text', '').strip()}\"")
+        print("------------------------------------")
 
         # 3. Final Answer Synthesis
         if not final_docs:

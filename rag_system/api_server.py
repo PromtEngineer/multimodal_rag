@@ -4,7 +4,18 @@ import socketserver
 from urllib.parse import urlparse, parse_qs
 
 # Import the core logic from the main RAG system script
-from rag_system.main import run_indexing, run_chat
+from rag_system.main import run_indexing, get_agent
+
+# --- Global Singleton for the RAG Agent ---
+# The agent is initialized once when the server starts.
+# This avoids reloading all the models on every request.
+print("🧠 Initializing RAG Agent... (This may take a moment)")
+RAG_AGENT = get_agent()
+if RAG_AGENT is None:
+    print("❌ Critical error: RAG Agent could not be initialized. Exiting.")
+    exit(1)
+print("✅ RAG Agent initialized successfully.")
+# ---
 
 class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -38,15 +49,11 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 self.send_json_response({"error": "Query is required"}, status_code=400)
                 return
 
-            # run_chat now returns a JSON string
-            result_json_string = run_chat(query)
+            # Use the single, persistent agent instance to run the query
+            result = RAG_AGENT.run(query)
             
-            # The result is already a JSON string, so no need to dump it again
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            self.wfile.write(result_json_string.encode('utf-8'))
+            # The result is a dict, so we need to dump it to a JSON string
+            self.send_json_response(result)
 
         except json.JSONDecodeError:
             self.send_json_response({"error": "Invalid JSON"}, status_code=400)

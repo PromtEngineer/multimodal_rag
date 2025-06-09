@@ -17,6 +17,9 @@ class Agent:
         
         gen_model = self.ollama_config["generation_model"]
         
+        # Initialize the single, persistent retrieval pipeline for this agent
+        self.retrieval_pipeline = RetrievalPipeline(pipeline_configs, self.llm_client, self.ollama_config)
+        
         self.verifier = Verifier(llm_client, gen_model)
         self.query_decomposer = QueryDecomposer(llm_client, gen_model)
         
@@ -48,43 +51,36 @@ JSON Output:
         except json.JSONDecodeError:
             return "rag_query"
 
-    def _run_pipeline(self, config_name: str, query: str) -> Dict[str, Any]:
-        config = self.pipeline_configs[config_name]
-        pipeline = RetrievalPipeline(config, self.llm_client, self.ollama_config)
-        return pipeline.run(query)
-
     def _run_graph_query(self, query: str) -> Dict[str, Any]:
         structured_query = self.graph_query_translator.translate(query)
         if not structured_query.get("start_node"):
-            return self._run_pipeline("default", query)
+            return self.retrieval_pipeline.run(query)
         results = self.graph_retriever.retrieve(structured_query)
         if not results:
-            return self._run_pipeline("default", query)
+            return self.retrieval_pipeline.run(query)
         answer = ", ".join([res['details']['node_id'] for res in results])
         return {"answer": f"From the knowledge graph: {answer}", "source_documents": results}
 
-    def run(self, query: str, max_retries: int = 1):
-        triage_result = self._triage_query(query)
-        print(f"Agent Triage Decision: '{triage_result}'")
+    def run(self, query: str, max_retries: int = 1) -> Dict[str, Any]:
+        query_type = self._triage_query(query)
+        print(f"Agent Triage Decision: '{query_type}'")
 
-        if triage_result == "direct_answer":
+        if query_type == "direct_answer":
             prompt = f"You are a helpful assistant. Answer the user's question directly.\n\nUser: {query}\n\nAssistant:"
             response = self.llm_client.generate_completion(self.ollama_config["generation_model"], prompt)
             return {"answer": response.get('response'), "source_documents": []}
         
-        if triage_result == "graph_query" and hasattr(self, 'graph_retriever'):
+        if query_type == "graph_query" and hasattr(self, 'graph_retriever'):
             return self._run_graph_query(query)
 
         # --- Standard RAG is required ---
-        for attempt in range(max_retries + 1):
-            result = self._run_pipeline("default", query)
-            context_str = "\n".join([doc['text'] for doc in result['source_documents']])
-            verification = self.verifier.verify(query, context_str, result['answer'])
+        result = self.retrieval_pipeline.run(query)
+        
+        # Verification step (simplified for now)
+        context_str = "\n".join([doc['text'] for doc in result['source_documents']])
+        verification = self.verifier.verify(query, context_str, result['answer'])
+        
+        if not verification.is_grounded:
+            result['answer'] += " [Warning: This answer could not be fully verified.]"
             
-            if verification.is_grounded:
-                return result
-            if attempt == max_retries:
-                result['answer'] += " [Warning: This answer could not be fully verified.]"
-                return result
-            print("Answer not grounded. Retrying is not yet implemented, returning best effort.")
-            return result
+        return result
