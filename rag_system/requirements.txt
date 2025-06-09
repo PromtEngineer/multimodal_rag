@@ -8,3 +8,8 @@ lancedb
 rank_bm25
 fuzzywuzzy
 python-Levenshtein
+torchaudio
+transformers
+sentencepiece
+accelerate
+docling

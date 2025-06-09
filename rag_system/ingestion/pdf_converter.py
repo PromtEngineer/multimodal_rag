@@ -1,23 +1,39 @@
-import pymupdf
 from typing import List, Tuple, Dict, Any
+from docling.document_converter import DocumentConverter
 
 class PDFConverter:
     """
-    A class to convert PDF files and extract their text content page by page.
+    A class to convert PDF files to structured Markdown using the docling library.
     """
+    def __init__(self):
+        """Initializes the docling document converter."""
+        try:
+            self.converter = DocumentConverter()
+            print("docling DocumentConverter initialized successfully.")
+        except Exception as e:
+            print(f"Error initializing docling DocumentConverter: {e}")
+            self.converter = None
+
     def convert_to_markdown(self, pdf_path: str) -> List[Tuple[str, Dict[str, Any]]]:
         """
-        Extracts text from each page of a PDF, preserving layout.
+        Converts a PDF to a single Markdown string, preserving layout and tables.
         """
-        print(f"Extracting text from {pdf_path} using PyMuPDF...")
+        if not self.converter:
+            print("docling converter not available. Skipping conversion.")
+            return []
+            
+        print(f"Converting {pdf_path} to Markdown using docling...")
         pages_data = []
         try:
-            with pymupdf.open(pdf_path) as doc:
-                for page_num, page in enumerate(doc):
-                    text_content = page.get_text("text")
-                    metadata = {"page_number": page_num + 1}
-                    pages_data.append((text_content, metadata))
+            # docling converts the entire document at once
+            result = self.converter.convert(pdf_path)
+            markdown_content = result.document.export_to_markdown()
+            
+            # Return as a single item list to match the pipeline's expected format
+            metadata = {"source": pdf_path}
+            pages_data.append((markdown_content, metadata))
+            print(f"Successfully converted {pdf_path} with docling.")
             return pages_data
         except Exception as e:
-            print(f"Error processing PDF {pdf_path} with PyMuPDF: {e}")
+            print(f"Error processing PDF {pdf_path} with docling: {e}")
             return []
