@@ -111,6 +111,10 @@ PIPELINE_CONFIGS = {
             "model_name": "Qwen/Qwen3-Reranker-0.6B",
             "top_k": 10
         },
+        "query_decomposition": {
+            "enabled": True,
+            "max_sub_queries": 3
+        },
         "retrieval_k": 100,
         "context_window_size": 2
     },
@@ -177,7 +181,7 @@ def run_chat(query: str):
         print(e)
         return json.dumps({"error": str(e)}, indent=2)
 
-    agent = Agent(PIPELINE_CONFIGS, ollama_client, OLLAMA_CONFIG)
+    agent = Agent(PIPELINE_CONFIGS['default'], ollama_client, OLLAMA_CONFIG)
     result = agent.run(query)
     return json.dumps(result, indent=2, ensure_ascii=False)
 

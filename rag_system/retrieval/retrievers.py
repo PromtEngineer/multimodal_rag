@@ -41,7 +41,13 @@ class BM25Retriever:
             return []
 
         print(f"\n--- Performing BM25 Retrieval for query: '{query}' ---")
-        tokenized_query = query.lower().split()
+        import re
+        def tokenize_text(text):
+            # Use regex to split on whitespace and punctuation, then lowercase
+            tokens = re.findall(r'\b\w+\b', text.lower())
+            return tokens
+        
+        tokenized_query = tokenize_text(query)
         
         # Use get_top_n for efficient retrieval and scoring
         top_chunks = self.bm25.get_top_n(tokenized_query, self.chunks, n=k)
@@ -60,13 +66,13 @@ class BM25Retriever:
                     # Find the original index to get the score
                     original_index = chunk_texts.index(chunk['text'])
                     score = float(doc_scores[original_index])
-                    if score > 0:
-                        results.append({
-                            'chunk_id': chunk.get('chunk_id'),
-                            'text': chunk.get('text'),
-                            'score': score,
-                            'metadata': chunk.get('metadata', {})
-                        })
+                    # BM25 scores can be negative - what matters is relative ranking
+                    results.append({
+                        'chunk_id': chunk.get('chunk_id'),
+                        'text': chunk.get('text'),
+                        'score': score,
+                        'metadata': chunk.get('metadata', {})
+                    })
                 except ValueError:
                     # This case should ideally not happen if chunks are unique
                     continue

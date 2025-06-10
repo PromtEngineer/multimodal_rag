@@ -41,10 +41,19 @@ class RetrievalPipeline:
             self.dense_retriever = None
 
         if retriever_configs.get("bm25", {}).get("enabled"):
-            self.bm25_retriever = BM25Retriever(
-                index_path=storage_config["bm25_path"],
-                index_name=retriever_configs["bm25"]["index_name"]
-            )
+            print(f"🔧 Initializing BM25 retriever with path: {storage_config['bm25_path']}, index: {retriever_configs['bm25']['index_name']}")
+            try:
+                self.bm25_retriever = BM25Retriever(
+                    index_path=storage_config["bm25_path"],
+                    index_name=retriever_configs["bm25"]["index_name"]
+                )
+                print("✅ BM25 retriever initialized successfully")
+            except Exception as e:
+                print(f"❌ Failed to initialize BM25 retriever: {e}")
+                self.bm25_retriever = None
+        else:
+            print(f"❌ BM25 retriever disabled in config: {retriever_configs.get('bm25', {})}")
+            self.bm25_retriever = None
         
         if retriever_configs.get("graph", {}).get("enabled"):
             self.graph_retriever = GraphRetriever(
@@ -94,12 +103,15 @@ Final Answer:
             )
             retrieved_docs.extend(dense_docs)
 
-        if hasattr(self, 'bm25_retriever'):
+        if hasattr(self, 'bm25_retriever') and self.bm25_retriever is not None:
+            print(f"🔧 Running BM25 retrieval for query: '{query}'")
             bm25_docs = self.bm25_retriever.retrieve(query, k=retrieval_k)
             existing_ids = {doc['chunk_id'] for doc in retrieved_docs}
             for doc in bm25_docs:
                 if doc['chunk_id'] not in existing_ids:
                     retrieved_docs.append(doc)
+        else:
+            print(f"⚠️ BM25 retriever not available or not initialized")
 
         if hasattr(self, 'graph_retriever'):
             graph_docs = self.graph_retriever.retrieve(query, k=retrieval_k)

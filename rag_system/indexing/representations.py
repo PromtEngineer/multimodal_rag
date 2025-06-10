@@ -52,7 +52,13 @@ class OllamaEmbedder(EmbeddingModel):
 
 class BM25Generator:
     def generate(self, chunks: List[Dict[str, Any]]):
-        tokenized_corpus = [chunk['text'].split(" ") for chunk in chunks]
+        import re
+        def tokenize_text(text):
+            # Use regex to split on whitespace and punctuation, then lowercase
+            tokens = re.findall(r'\b\w+\b', text.lower())
+            return tokens
+        
+        tokenized_corpus = [tokenize_text(chunk['text']) for chunk in chunks]
         if not tokenized_corpus: return None
         return BM25Okapi(tokenized_corpus)
 

@@ -9,17 +9,44 @@ class QueryDecomposer:
 
     def decompose(self, query: str) -> List[str]:
         prompt = f"""
-You are a query decomposition expert. Break the following user query into 1 to 3 simple, self-contained questions that can be answered independently.
-Return a JSON object with a single key "sub_queries" which is a list of strings.
+You are a query decomposition expert. Analyze the user query and decide if it should be broken down into sub-questions.
+
+WHEN TO DECOMPOSE:
+- Complex queries with multiple distinct aspects (e.g., "What are the costs and benefits of DeepSeek?")
+- Queries asking for comparisons (e.g., "Compare the pricing between invoice 1039 and 1041")
+- Multi-part questions (e.g., "Who is the CEO and what is the company's revenue?")
+- Questions with conjunctions like "and", "or", "also" (e.g., "What is the address and phone number?")
+
+WHEN NOT TO DECOMPOSE:
+- Simple, direct questions (e.g., "What is the invoice amount?")
+- Single-concept queries (e.g., "What is DeepSeek?")
+- Questions asking for a specific piece of information (e.g., "What is the due date?")
+
+If the query should be decomposed, break it into 2-3 simple, independent sub-questions that together cover the original query.
+If not, return the original query as the only item.
+
+Each sub-question should:
+- Be answerable independently
+- Cover a specific aspect of the original query
+- Be clear and unambiguous
 
 Query: "{query}"
+
+Return a JSON object with a single key "sub_queries" which is a list of strings.
 
 JSON Output:
 """
         response = self.llm_client.generate_completion(self.llm_model, prompt, format="json")
         try:
             data = json.loads(response.get('response', '{}'))
-            return data.get('sub_queries', [query])
+            sub_queries = data.get('sub_queries', [query])
+            
+            # Ensure we always have at least the original query
+            if not sub_queries or len(sub_queries) == 0:
+                return [query]
+            
+            # Limit to maximum 3 sub-queries to avoid excessive API calls
+            return sub_queries[:3]
         except json.JSONDecodeError:
             return [query]
 

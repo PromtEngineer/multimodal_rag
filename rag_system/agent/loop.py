@@ -73,8 +73,51 @@ JSON Output:
         if query_type == "graph_query" and hasattr(self, 'graph_retriever'):
             return self._run_graph_query(query)
 
-        # --- Standard RAG is required ---
-        result = self.retrieval_pipeline.run(query)
+        # --- RAG Query Processing with Optional Query Decomposition ---
+        query_decomp_config = self.pipeline_configs.get("query_decomposition", {})
+        if query_decomp_config.get("enabled", False):
+            print(f"\n--- Query Decomposition Enabled ---")
+            sub_queries = self.query_decomposer.decompose(query)
+            print(f"Original query: '{query}'")
+            print(f"Decomposed into {len(sub_queries)} sub-queries: {sub_queries}")
+            
+            if len(sub_queries) > 1:
+                # Multi-query retrieval
+                all_source_docs = []
+                seen_chunk_ids = set()
+                
+                for i, sub_query in enumerate(sub_queries):
+                    print(f"\n--- Processing Sub-Query {i+1}: '{sub_query}' ---")
+                    sub_result = self.retrieval_pipeline.run(sub_query)
+                    
+                    # Collect unique documents from this sub-query
+                    for doc in sub_result['source_documents']:
+                        if doc['chunk_id'] not in seen_chunk_ids:
+                            all_source_docs.append(doc)
+                            seen_chunk_ids.add(doc['chunk_id'])
+                
+                print(f"\n--- Aggregated {len(all_source_docs)} unique documents from all sub-queries ---")
+                
+                # Synthesize final answer using original query and aggregated context
+                if all_source_docs:
+                    aggregated_context = "\n\n".join([doc['text'] for doc in all_source_docs])
+                    final_answer = self.retrieval_pipeline._synthesize_final_answer(query, aggregated_context)
+                    result = {
+                        "answer": final_answer,
+                        "source_documents": all_source_docs
+                    }
+                else:
+                    result = {
+                        "answer": "I could not find relevant information to answer your question.",
+                        "source_documents": []
+                    }
+            else:
+                # Single query - standard flow
+                print("Query does not need decomposition, proceeding with standard retrieval.")
+                result = self.retrieval_pipeline.run(query)
+        else:
+            # Standard RAG without decomposition
+            result = self.retrieval_pipeline.run(query)
         
         # Verification step (simplified for now)
         context_str = "\n".join([doc['text'] for doc in result['source_documents']])
