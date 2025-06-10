@@ -1,0 +1,37 @@
+{
+  "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
+  "indexing": {
+    "embedding_batch_size": 50,
+    "enrichment_batch_size": 10,
+    "enable_progress_tracking": true,
+    "memory_monitoring": true
+  },
+  "chunking": {
+    "max_chunk_size": 1500,
+    "min_chunk_size": 200,
+    "chunk_overlap": 100
+  },
+  "contextual_enricher": {
+    "enabled": true,
+    "window_size": 1
+  },
+  "retrievers": {
+    "dense": {
+      "enabled": true,
+      "lancedb_table_name": "batch_text_embeddings"
+    },
+    "bm25": {
+      "enabled": true,
+      "index_name": "batch_bm25_index"
+    },
+    "graph": {
+      "enabled": false,
+      "graph_path": "./index_store/graph/batch_graph.gml"
+    }
+  },
+  "storage": {
+    "chunk_store_path": "./index_store/chunks/batch_chunks.pkl",
+    "lancedb_uri": "./index_store/lancedb_batch",
+    "bm25_path": "./index_store/bm25_batch"
+  }
+} 

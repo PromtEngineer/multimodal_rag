@@ -74,10 +74,43 @@ class HyDEGenerator:
         return response.get('response', '')
 
 class EmbeddingGenerator:
-    def __init__(self, embedding_model: EmbeddingModel):
+    def __init__(self, embedding_model: EmbeddingModel, batch_size: int = 50):
         self.model = embedding_model
+        self.batch_size = batch_size
 
     def generate(self, chunks: List[Dict[str, Any]]) -> List[np.ndarray]:
+        """Generate embeddings for all chunks using batch processing"""
+        texts_to_embed = [chunk['text'] for chunk in chunks]
+        if not texts_to_embed: 
+            return []
+        
+        # Import here to avoid circular imports
+        from rag_system.utils.batch_processor import BatchProcessor, estimate_memory_usage
+        
+        # Estimate memory usage and log it
+        memory_mb = estimate_memory_usage(chunks)
+        print(f"Estimated memory usage for {len(chunks)} chunks: {memory_mb:.1f}MB")
+        
+        # Process embeddings in batches
+        batch_processor = BatchProcessor(batch_size=self.batch_size)
+        
+        def process_text_batch(text_batch):
+            """Process a batch of texts into embeddings"""
+            if not text_batch:
+                return []
+            batch_embeddings = self.model.create_embeddings(text_batch)
+            return [embedding for embedding in batch_embeddings]
+        
+        all_embeddings = batch_processor.process_in_batches(
+            texts_to_embed,
+            process_text_batch,
+            "Embedding Generation"
+        )
+        
+        return all_embeddings
+    
+    def generate_single_batch(self, chunks: List[Dict[str, Any]]) -> List[np.ndarray]:
+        """Generate embeddings for chunks as a single batch (legacy method)"""
         texts_to_embed = [chunk['text'] for chunk in chunks]
         if not texts_to_embed: return []
         embeddings = self.model.create_embeddings(texts_to_embed)
