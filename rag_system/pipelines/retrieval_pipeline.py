@@ -228,7 +228,18 @@ Final Answer:
                         print(f"Error expanding context for a chunk: {e}")
 
             final_docs = list(expanded_chunks.values())
-            final_docs.sort(key=lambda c: (c.get('document_id', ''), c.get('chunk_index', 0)))
+            # Sort by reranker score if present, otherwise by raw score/distance
+            if any('rerank_score' in d for d in final_docs):
+                final_docs.sort(key=lambda c: c.get('rerank_score', -1), reverse=True)
+            elif any('_distance' in d for d in final_docs):
+                # For vector search smaller distance is better
+                final_docs.sort(key=lambda c: c.get('_distance', 1e9))
+            elif any('score' in d for d in final_docs):
+                final_docs.sort(key=lambda c: c.get('score', 0), reverse=True)
+            else:
+                # Fallback to document order
+                final_docs.sort(key=lambda c: (c.get('document_id', ''), c.get('chunk_index', 0)))
+
             print(f"Expanded to {len(final_docs)} unique chunks for synthesis.")
         else:
             final_docs = reranked_docs

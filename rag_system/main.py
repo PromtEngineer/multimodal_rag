@@ -78,7 +78,7 @@ PIPELINE_CONFIGS = {
             "model_name": "BAAI/bge-reranker-base",
             "top_k": 3
         },
-        "retrieval_k": 10
+        "retrieval_k": 20
     },
     "fast": {
         "storage": {
@@ -113,7 +113,7 @@ PIPELINE_CONFIGS = {
             "enabled": False,
             "max_sub_queries": 1
         },
-        "retrieval_k": 10,
+        "retrieval_k": 20,
         "context_window_size": 0,
         "verification": {
             "enabled": False
@@ -153,8 +153,8 @@ PIPELINE_CONFIGS = {
             "enabled": True,
             "max_sub_queries": 3
         },
-        "retrieval_k": 100,
-        "context_window_size": 2
+        "retrieval_k": 20,
+        "context_window_size": 0
     },
     "bm25": {
         "enabled": True,
