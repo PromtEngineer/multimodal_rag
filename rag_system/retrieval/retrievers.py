@@ -49,35 +49,25 @@ class BM25Retriever:
         
         tokenized_query = tokenize_text(query)
         
-        # Use get_top_n for efficient retrieval and scoring
-        top_chunks = self.bm25.get_top_n(tokenized_query, self.chunks, n=k)
-
+        # 🚀 OPTIMIZED: Get scores for all documents once, then get top-k efficiently
+        doc_scores = self.bm25.get_scores(tokenized_query)
+        
+        # Create (score, index) pairs and get top-k
+        scored_indices = [(score, idx) for idx, score in enumerate(doc_scores)]
+        # Sort by score descending and take top k
+        top_scored_indices = sorted(scored_indices, key=lambda x: x[0], reverse=True)[:k]
+        
         results = []
-        # The rank_bm25 library already returns sorted chunks.
-        # We just need to format them and add the score.
-        # To get the scores, we need to re-score the top results.
-        # This is a known behavior of the library's get_top_n method.
-        if top_chunks:
-            doc_scores = self.bm25.get_scores(tokenized_query)
-            chunk_texts = [chunk['text'] for chunk in self.chunks]
-            
-            for chunk in top_chunks:
-                try:
-                    # Find the original index to get the score
-                    original_index = chunk_texts.index(chunk['text'])
-                    score = float(doc_scores[original_index])
-                    # BM25 scores can be negative - what matters is relative ranking
-                    results.append({
-                        'chunk_id': chunk.get('chunk_id'),
-                        'text': chunk.get('text'),
-                        'score': score,
-                        'metadata': chunk.get('metadata', {})
-                    })
-                except ValueError:
-                    # This case should ideally not happen if chunks are unique
-                    continue
+        for score, original_index in top_scored_indices:
+            chunk = self.chunks[original_index]
+            results.append({
+                'chunk_id': chunk.get('chunk_id'),
+                'text': chunk.get('text'),
+                'score': float(score),
+                'metadata': chunk.get('metadata', {})
+            })
 
-        print(f"Retrieved {len(results)} documents using BM25.")
+        print(f"Retrieved {len(results)} documents using BM25 (optimized).")
         return results
 
 from fuzzywuzzy import process

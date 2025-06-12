@@ -111,15 +111,7 @@ class IndexingPipeline:
                     self.chunk_store.save(all_chunks)
                     print("✅ Saved chunks to chunk store")
 
-            # Step 3: Create BM25 Index from original chunks FIRST
-            if hasattr(self, 'bm25_indexer'):
-                with timer("BM25 Index Creation"):
-                    index_name = retriever_configs.get("bm25", {}).get("index_name", "default_bm25_index")
-                    print(f"\n--- Creating BM25 index from original chunk text: {index_name} ---")
-                    self.bm25_indexer.index(index_name, all_chunks)
-                    print("✅ BM25 index created successfully")
-
-            # Step 4: Optional Contextual Enrichment for vector-based retrieval
+            # Step 3: Optional Contextual Enrichment (before indexing for consistency)
             if hasattr(self, 'contextual_enricher'):
                 with timer("Contextual Enrichment"):
                     enricher_config = self.config.get("contextual_enricher", {})
@@ -128,7 +120,15 @@ class IndexingPipeline:
                     
                     # This modifies the 'text' field in each chunk dictionary
                     all_chunks = self.contextual_enricher.enrich_chunks(all_chunks, window_size=window_size)
-                    print(f"✅ Enriched {len(all_chunks)} chunks with context for vectorization.")
+                    print(f"✅ Enriched {len(all_chunks)} chunks with context for indexing.")
+
+            # Step 4: Create BM25 Index from enriched chunks (for consistency with vector index)
+            if hasattr(self, 'bm25_indexer'):
+                with timer("BM25 Index Creation"):
+                    index_name = retriever_configs.get("bm25", {}).get("index_name", "default_bm25_index")
+                    print(f"\n--- Creating BM25 index from enriched chunk text: {index_name} ---")
+                    self.bm25_indexer.index(index_name, all_chunks)
+                    print("✅ BM25 index created successfully")
 
             # Step 5: Vector Embedding Generation and Indexing
             if hasattr(self, 'vector_indexer') and hasattr(self, 'embedding_generator'):

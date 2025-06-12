@@ -9,12 +9,12 @@ from rag_system.main import run_indexing, get_agent
 # --- Global Singleton for the RAG Agent ---
 # The agent is initialized once when the server starts.
 # This avoids reloading all the models on every request.
-print("🧠 Initializing RAG Agent... (This may take a moment)")
-RAG_AGENT = get_agent()
+print("🧠 Initializing RAG Agent with MAXIMUM ACCURACY... (This may take a moment)")
+RAG_AGENT = get_agent("default")  # 🎯 Use accurate default configuration
 if RAG_AGENT is None:
     print("❌ Critical error: RAG Agent could not be initialized. Exiting.")
     exit(1)
-print("✅ RAG Agent initialized successfully.")
+print("✅ RAG Agent initialized successfully with MAXIMUM ACCURACY.")
 # ---
 
 class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):

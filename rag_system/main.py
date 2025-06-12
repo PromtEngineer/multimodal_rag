@@ -34,11 +34,11 @@ PIPELINE_CONFIGS = {
     "indexing": {
         "storage": {
             "lancedb_uri": "./index_store/lancedb",
-            "bm25_path": "./index_store/bm25",
-            "chunk_store_path": "./index_store/chunk_store/chunks.pkl",
+            "doc_path": "rag_system/documents",
             "text_table_name": "local_text_pages_v3",
             "image_table_name": None,
-            "graph_path": "./index_store/graph/knowledge_graph.gml"
+            "chunk_store_path": "./index_store/chunk_store/chunks.pkl",
+            "bm25_path": "./index_store/bm25"
         },
         "retrievers": {
             "dense": { 
@@ -63,9 +63,9 @@ PIPELINE_CONFIGS = {
     },
     "retrieval": {
         "storage": {
-            "lancedb_path": "./index_store/lancedb",
+            "lancedb_uri": "./index_store/lancedb",
             "doc_path": "rag_system/documents", # Add path to docs for image retrieval
-            "text_table_name": "local_text_pages_v2",
+            "text_table_name": "local_text_pages_v3",
             "image_table_name": None,
         },
         "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
@@ -80,6 +80,46 @@ PIPELINE_CONFIGS = {
             "top_k": 3
         },
         "retrieval_k": 10
+    },
+    "fast": {
+        "storage": {
+            "lancedb_uri": "./index_store/lancedb",
+            "bm25_path": "./index_store/bm25",
+            "chunk_store_path": "./index_store/chunk_store/chunks.pkl",
+            "text_table_name": "local_text_pages_v3",
+            "image_table_name": None,
+            "graph_path": "./index_store/graph/knowledge_graph.gml"
+        },
+        "retrievers": {
+            "dense": { 
+                "enabled": True,
+                "lancedb_table_name": "local_text_pages_v3"
+            },
+            "bm25": { 
+                "enabled": False,
+                "index_name": "rag_bm25_index"
+            },
+            "graph": { 
+                "enabled": False,
+                "graph_path": "./index_store/graph/knowledge_graph.gml"
+            }
+        },
+        "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
+        "vision_model_name": "Qwen/Qwen-VL-Chat",
+        "reranker": {
+            "enabled": False, 
+            "model_name": "Qwen/Qwen3-Reranker-0.6B",
+            "top_k": 5
+        },
+        "query_decomposition": {
+            "enabled": False,
+            "max_sub_queries": 1
+        },
+        "retrieval_k": 10,
+        "context_window_size": 0,
+        "verification": {
+            "enabled": False
+        }
     },
     "default": {
         "storage": {
@@ -127,7 +167,7 @@ PIPELINE_CONFIGS = {
     }
 }
 
-def get_agent():
+def get_agent(mode="default"):
     """Initializes and returns a single instance of the RAG Agent."""
     try:
         ollama_client = OllamaClient(OLLAMA_CONFIG["host"])
@@ -136,8 +176,9 @@ def get_agent():
         # In a real application, you might want to exit or handle this more gracefully
         return None
     
-    # Pass the 'default' config, which is the most complete one
-    agent = Agent(PIPELINE_CONFIGS['default'], ollama_client, OLLAMA_CONFIG)
+    # Pass the specified config mode
+    config = PIPELINE_CONFIGS.get(mode, PIPELINE_CONFIGS['default'])
+    agent = Agent(config, ollama_client, OLLAMA_CONFIG)
     return agent
 
 def run_indexing(file_paths: list = None):

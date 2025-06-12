@@ -1,6 +1,8 @@
 import pymupdf
 from typing import List, Dict, Any, Tuple
 from PIL import Image
+import concurrent.futures
+import time
 
 from rag_system.utils.ollama_client import OllamaClient
 from rag_system.retrieval.retrievers import MultiVectorRetriever, GraphRetriever, BM25Retriever
@@ -90,35 +92,52 @@ Final Answer:
         return response.get('response', 'Failed to generate a final answer.')
 
     def run(self, query: str) -> Dict[str, Any]:
+        start_time = time.time()
         retrieved_docs = []
         retrieval_k = self.config.get("retrieval_k", 10)
 
-        # 1. Retrieval (now fully modular)
-        if hasattr(self, 'dense_retriever'):
-            dense_docs = self.dense_retriever.retrieve(
-                text_query=query,
-                text_table=self.config["storage"]["text_table_name"],
-                image_table=self.config["storage"]["image_table_name"],
-                k=retrieval_k
-            )
-            retrieved_docs.extend(dense_docs)
+        # 🚀 OPTIMIZED: Parallel retrieval execution
+        print(f"\n--- Running parallel retrieval for query: '{query}' ---")
+        
+        retrieval_futures = {}
+        
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            # Submit all retrieval tasks in parallel
+            if hasattr(self, 'dense_retriever'):
+                future = executor.submit(
+                    self.dense_retriever.retrieve,
+                    text_query=query,
+                    text_table=self.config["storage"]["text_table_name"],
+                    image_table=self.config["storage"]["image_table_name"],
+                    k=retrieval_k
+                )
+                retrieval_futures['dense'] = future
 
-        if hasattr(self, 'bm25_retriever') and self.bm25_retriever is not None:
-            print(f"🔧 Running BM25 retrieval for query: '{query}'")
-            bm25_docs = self.bm25_retriever.retrieve(query, k=retrieval_k)
-            existing_ids = {doc['chunk_id'] for doc in retrieved_docs}
-            for doc in bm25_docs:
-                if doc['chunk_id'] not in existing_ids:
-                    retrieved_docs.append(doc)
-        else:
-            print(f"⚠️ BM25 retriever not available or not initialized")
+            if hasattr(self, 'bm25_retriever') and self.bm25_retriever is not None:
+                future = executor.submit(self.bm25_retriever.retrieve, query, retrieval_k)
+                retrieval_futures['bm25'] = future
 
-        if hasattr(self, 'graph_retriever'):
-            graph_docs = self.graph_retriever.retrieve(query, k=retrieval_k)
-            existing_ids = {doc['chunk_id'] for doc in retrieved_docs}
-            for doc in graph_docs:
-                if doc['chunk_id'] not in existing_ids:
-                    retrieved_docs.append(doc)
+            if hasattr(self, 'graph_retriever'):
+                future = executor.submit(self.graph_retriever.retrieve, query, retrieval_k)
+                retrieval_futures['graph'] = future
+            
+            # Collect results as they complete
+            seen_chunk_ids = set()
+            for retrieval_type, future in retrieval_futures.items():
+                try:
+                    docs = future.result()
+                    print(f"✅ {retrieval_type.capitalize()} retrieval completed: {len(docs)} docs")
+                    
+                    # Add unique documents
+                    for doc in docs:
+                        if doc['chunk_id'] not in seen_chunk_ids:
+                            retrieved_docs.append(doc)
+                            seen_chunk_ids.add(doc['chunk_id'])
+                except Exception as e:
+                    print(f"❌ {retrieval_type.capitalize()} retrieval failed: {e}")
+        
+        retrieval_time = time.time() - start_time
+        print(f"🚀 Parallel retrieval completed in {retrieval_time:.2f}s - {len(retrieved_docs)} total docs")
 
         # 2. Parent-Child Context Expansion
         if not self.chunk_store:
