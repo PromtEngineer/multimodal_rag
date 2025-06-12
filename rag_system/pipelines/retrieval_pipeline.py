@@ -139,35 +139,43 @@ Final Answer:
         retrieval_time = time.time() - start_time
         print(f"🚀 Parallel retrieval completed in {retrieval_time:.2f}s - {len(retrieved_docs)} total docs")
 
-        # 2. Parent-Child Context Expansion
-        if not self.chunk_store:
-            print("Chunk store not initialized, skipping context expansion.")
-            return retrieved_docs
-        
-        # Reload the chunk store to ensure it's up-to-date with the latest index
-        self.chunk_store.reload()
-
-        unique_chunks_by_id = {chunk['chunk_id']: chunk for chunk in retrieved_docs}
-        expanded_chunks = {}
-        window_size = self.config.get("context_window_size", 1)
-        if window_size > 0:
-            print(f"\n--- Expanding context with window size: {window_size}... ---")
-            for chunk in unique_chunks_by_id.values():
-                surrounding_chunks = self.chunk_store.get_surrounding_chunks(chunk['chunk_id'], window_size=window_size)
-                for surrounding_chunk in surrounding_chunks:
-                    # Use a dictionary to automatically handle duplicates
-                    expanded_chunks[surrounding_chunk['chunk_id']] = surrounding_chunk
-            
-            # The new set of documents is the unique, expanded set
-            retrieved_docs = list(expanded_chunks.values())
-            print(f"Expanded to {len(retrieved_docs)} unique chunks.")
-
+        # 🚀 OPTIMIZATION: Rerank BEFORE context expansion
         # 3. Reranking
         if hasattr(self, 'reranker') and retrieved_docs:
-            print(f"\n--- Reranking {len(retrieved_docs)} documents... ---")
-            final_docs = self.reranker.rerank(query, retrieved_docs, top_k=self.config.get("reranker", {}).get("top_k", 3))
+            print(f"\n--- Reranking {len(retrieved_docs)} documents before expansion... ---")
+            # Rerank the initial list of docs and keep the top N
+            reranked_docs = self.reranker.rerank(query, retrieved_docs, top_k=self.config.get("reranker", {}).get("top_k", 10))
         else:
-            final_docs = retrieved_docs
+            # If no reranker, just use the initial retrieved docs
+            reranked_docs = retrieved_docs
+
+        # 4. Parent-Child Context Expansion on RERANKED documents
+        if not self.chunk_store:
+            print("Chunk store not initialized, skipping context expansion.")
+            final_docs = reranked_docs
+        else:
+            # Reload the chunk store to ensure it's up-to-date with the latest index
+            self.chunk_store.reload()
+
+            unique_chunks_by_id = {chunk['chunk_id']: chunk for chunk in reranked_docs}
+            expanded_chunks = {}
+            window_size = self.config.get("context_window_size", 1)
+
+            if window_size > 0 and reranked_docs:
+                print(f"\n--- Expanding context for {len(reranked_docs)} top documents (window size: {window_size})... ---")
+                for chunk in unique_chunks_by_id.values():
+                    # Important: Use the chunk ID from the reranked doc to get surrounding chunks
+                    surrounding_chunks = self.chunk_store.get_surrounding_chunks(chunk['chunk_id'], window_size=window_size)
+                    for surrounding_chunk in surrounding_chunks:
+                        # Use a dictionary to automatically handle duplicates
+                        if surrounding_chunk['chunk_id'] not in expanded_chunks:
+                             expanded_chunks[surrounding_chunk['chunk_id']] = surrounding_chunk
+                
+                # The final set of documents is the unique, expanded set
+                final_docs = list(expanded_chunks.values())
+                print(f"Expanded to {len(final_docs)} unique chunks for synthesis.")
+            else:
+                final_docs = reranked_docs
 
         print("\n--- Final Documents for Synthesis ---")
         if not final_docs:
