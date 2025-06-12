@@ -4,7 +4,7 @@ import networkx as nx
 from rag_system.ingestion.pdf_converter import PDFConverter
 from rag_system.ingestion.chunking import MarkdownRecursiveChunker
 from rag_system.indexing.representations import QwenEmbedder, EmbeddingGenerator
-from rag_system.indexing.embedders import LanceDBManager, VectorIndexer, BM25Indexer
+from rag_system.indexing.embedders import LanceDBManager, VectorIndexer
 from rag_system.indexing.graph_extractor import GraphExtractor
 from rag_system.utils.ollama_client import OllamaClient
 from rag_system.indexing.contextualizer import ContextualEnricher
@@ -37,9 +37,6 @@ class IndexingPipeline:
                 batch_size=self.embedding_batch_size
             )
 
-        if retriever_configs.get("bm25", {}).get("enabled"):
-            self.bm25_indexer = BM25Indexer(index_path=storage_config["bm25_path"])
-        
         if retriever_configs.get("graph", {}).get("enabled"):
             self.graph_extractor = GraphExtractor(
                 llm_client=self.ollama_client,
@@ -119,14 +116,6 @@ class IndexingPipeline:
                     print(f"✅ Enriched {len(all_chunks)} chunks with context for indexing.")
 
             # Step 4: Create BM25 Index from enriched chunks (for consistency with vector index)
-            if hasattr(self, 'bm25_indexer'):
-                with timer("BM25 Index Creation"):
-                    index_name = retriever_configs.get("bm25", {}).get("index_name", "default_bm25_index")
-                    print(f"\n--- Creating BM25 index from enriched chunk text: {index_name} ---")
-                    self.bm25_indexer.index(index_name, all_chunks)
-                    print("✅ BM25 index created successfully")
-
-            # Step 5: Vector Embedding Generation and Indexing
             if hasattr(self, 'vector_indexer') and hasattr(self, 'embedding_generator'):
                 with timer("Vector Embedding & Indexing"):
                     table_name = retriever_configs.get("dense", {}).get("lancedb_table_name", "default_text_table")
@@ -137,6 +126,16 @@ class IndexingPipeline:
                     print(f"\n--- Indexing {len(embeddings)} vectors into LanceDB table: {table_name} ---")
                     self.vector_indexer.index(table_name, all_chunks, embeddings)
                     print("✅ Vector embeddings indexed successfully")
+
+                    # Create FTS index on the 'text' field after adding data
+                    print(f"\n--- Creating Full-Text Search (FTS) index on table '{table_name}' ---")
+                    try:
+                        tbl = self.lancedb_manager.get_table(table_name)
+                        # Use Lance native FTS instead of tantivy to avoid the "Expected a list column" error
+                        tbl.create_fts_index("text", use_tantivy=False, replace=True)
+                        print("✅ FTS index created successfully (using Lance native FTS).")
+                    except Exception as e:
+                        print(f"❌ Failed to create FTS index: {e}")
                 
             # Step 6: Knowledge Graph Extraction (Optional)
             if hasattr(self, 'graph_extractor'):
@@ -167,12 +166,10 @@ class IndexingPipeline:
         
         # Component status
         components = []
-        if hasattr(self, 'bm25_indexer'):
-            components.append("✅ BM25 Index")
         if hasattr(self, 'contextual_enricher'):
             components.append("✅ Contextual Enrichment")
         if hasattr(self, 'vector_indexer'):
-            components.append("✅ Vector Index")
+            components.append("✅ Vector & FTS Index")
         if hasattr(self, 'graph_extractor'):
             components.append("✅ Knowledge Graph")
             

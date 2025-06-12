@@ -145,6 +145,7 @@ PIPELINE_CONFIGS = {
         "vision_model_name": "Qwen/Qwen-VL-Chat",
         "reranker": {
             "enabled": True, 
+            "type": "ai",
             "model_name": "Qwen/Qwen3-Reranker-0.6B",
             "top_k": 10
         },

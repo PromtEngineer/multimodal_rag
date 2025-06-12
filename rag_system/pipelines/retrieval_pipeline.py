@@ -4,13 +4,14 @@ from PIL import Image
 import concurrent.futures
 import time
 import json
+import lancedb
 
 from rag_system.utils.ollama_client import OllamaClient
-from rag_system.retrieval.retrievers import MultiVectorRetriever, GraphRetriever, BM25Retriever
-from rag_system.retrieval.reranker import QwenReranker
+from rag_system.retrieval.retrievers import MultiVectorRetriever, GraphRetriever
 from rag_system.indexing.multimodal import LocalVisionModel
 from rag_system.indexing.representations import QwenEmbedder
 from rag_system.indexing.embedders import LanceDBManager
+from rag_system.rerankers.reranker import QwenReranker
 # from rag_system.indexing.chunk_store import ChunkStore
 
 import os
@@ -35,6 +36,7 @@ class RetrievalPipeline:
         self.bm25_retriever = None
         self.graph_retriever = None
         self.reranker = None
+        self.ai_reranker = None
 
     def _get_db_manager(self):
         if self.db_manager is None:
@@ -75,12 +77,28 @@ class RetrievalPipeline:
         return self.graph_retriever
 
     def _get_reranker(self):
+        """Initializes the reranker for hybrid search score fusion."""
         reranker_config = self.config.get("reranker", {})
-        if self.reranker is None and reranker_config.get("enabled"):
-            self.reranker = QwenReranker(
-                model_name=reranker_config.get("model_name", "Qwen/Qwen-reranker")
-            )
+        # This is for the LanceDB internal reranker, not the AI one.
+        if self.reranker is None and reranker_config.get("type") == "linear_combination":
+            rerank_weight = reranker_config.get("weight", 0.5) 
+            self.reranker = lancedb.rerankers.LinearCombinationReranker(weight=rerank_weight)
+            print(f"✅ Initialized LinearCombinationReranker with weight {rerank_weight}")
         return self.reranker
+
+    def _get_ai_reranker(self):
+        """Initializes a dedicated AI-based reranker."""
+        reranker_config = self.config.get("reranker", {})
+        if self.ai_reranker is None and reranker_config.get("enabled") and reranker_config.get("type") == "ai":
+            try:
+                print(f"🔧 Lazily initializing AI reranker ({reranker_config.get('model_name')})...")
+                self.ai_reranker = QwenReranker(
+                    model_name=reranker_config.get("model_name")
+                )
+                print("✅ AI reranker initialized successfully.")
+            except Exception as e:
+                print(f"❌ Failed to initialize AI reranker: {e}")
+        return self.ai_reranker
 
     def _get_surrounding_chunks_lancedb(self, chunk: Dict[str, Any], window_size: int) -> List[Dict[str, Any]]:
         """
@@ -154,66 +172,44 @@ Final Answer:
 
     def run(self, query: str) -> Dict[str, Any]:
         start_time = time.time()
-        retrieved_docs = []
         retrieval_k = self.config.get("retrieval_k", 10)
 
-        # 🚀 OPTIMIZED: Parallel retrieval execution
-        print(f"\n--- Running parallel retrieval for query: '{query}' ---")
+        print(f"\n--- Running Hybrid Search for query: '{query}' ---")
         
-        retrieval_futures = {}
+        # Unified retrieval using the refactored MultiVectorRetriever
+        dense_retriever = self._get_dense_retriever()
+        # Get the LanceDB reranker for initial score fusion
+        lancedb_reranker = self._get_reranker()
         
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-            dense_retriever = self._get_dense_retriever()
-            if dense_retriever:
-                future = executor.submit(
-                    dense_retriever.retrieve,
-                    text_query=query,
-                    text_table=self.storage_config["text_table_name"],
-                    image_table=self.storage_config.get("image_table_name"),
-                    k=retrieval_k
-                )
-                retrieval_futures['dense'] = future
-
-            bm25_retriever = self._get_bm25_retriever()
-            if bm25_retriever:
-                future = executor.submit(bm25_retriever.retrieve, query, retrieval_k)
-                retrieval_futures['bm25'] = future
-
-            graph_retriever = self._get_graph_retriever()
-            if graph_retriever:
-                future = executor.submit(graph_retriever.retrieve, query, retrieval_k)
-                retrieval_futures['graph'] = future
-            
-            seen_chunk_ids = set()
-            for retrieval_type, future in retrieval_futures.items():
-                try:
-                    docs = future.result()
-                    if docs:
-                        print(f"✅ {retrieval_type.capitalize()} retrieval completed: {len(docs)} docs")
-                        for doc in docs:
-                            if doc['chunk_id'] not in seen_chunk_ids:
-                                retrieved_docs.append(doc)
-                                seen_chunk_ids.add(doc['chunk_id'])
-                except Exception as e:
-                    print(f"❌ {retrieval_type.capitalize()} retrieval failed: {e}")
+        retrieved_docs = []
+        if dense_retriever:
+            retrieved_docs = dense_retriever.retrieve(
+                text_query=query,
+                table_name=self.storage_config["text_table_name"],
+                k=retrieval_k,
+                reranker=lancedb_reranker # Pass the reranker to enable hybrid search
+            )
         
         retrieval_time = time.time() - start_time
-        print(f"🚀 Parallel retrieval completed in {retrieval_time:.2f}s - {len(retrieved_docs)} total docs")
+        print(f"🚀 Initial retrieval completed in {retrieval_time:.2f}s - {len(retrieved_docs)} total docs")
 
-        reranker = self._get_reranker()
-        if reranker and retrieved_docs:
-            print(f"\n--- Reranking {len(retrieved_docs)} documents before expansion... ---")
-            reranked_docs = reranker.rerank(query, retrieved_docs, top_k=self.config.get("reranker", {}).get("top_k", 10))
+        # --- AI Reranking Step ---
+        ai_reranker = self._get_ai_reranker()
+        if ai_reranker and retrieved_docs:
+            print(f"\n--- Reranking top {len(retrieved_docs)} docs with AI model... ---")
+            start_rerank_time = time.time()
+            top_k = self.config.get("reranker", {}).get("top_k", 5)
+            reranked_docs = ai_reranker.rerank(query, retrieved_docs, top_k=top_k)
+            rerank_time = time.time() - start_rerank_time
+            print(f"✅ Reranking completed in {rerank_time:.2f}s. Refined to {len(reranked_docs)} docs.")
         else:
+            # If no AI reranker, proceed with the initially retrieved docs
             reranked_docs = retrieved_docs
 
-        # 4. Parent-Child Context Expansion using LanceDB
         window_size = self.config.get("context_window_size", 1)
         if window_size > 0 and reranked_docs:
             print(f"\n--- Expanding context for {len(reranked_docs)} top documents (window size: {window_size})... ---")
             expanded_chunks = {}
-            
-            # Use a thread pool to expand context in parallel for efficiency
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 future_to_chunk = {executor.submit(self._get_surrounding_chunks_lancedb, chunk, window_size): chunk for chunk in reranked_docs}
                 for future in concurrent.futures.as_completed(future_to_chunk):
@@ -238,20 +234,13 @@ Final Answer:
             for i, doc in enumerate(final_docs):
                 print(f"  [{i+1}] Chunk ID: {doc.get('chunk_id')}")
                 print(f"      Score: {doc.get('score', 'N/A')}")
-                print(f"      Rerank Score: {doc.get('rerank_score', 'N/A')}")
                 print(f"      Text: \"{doc.get('text', '').strip()}\"")
         print("------------------------------------")
 
         if not final_docs:
-            return {
-                "answer": "I could not find an answer in the documents.",
-                "source_documents": []
-            }
+            return {"answer": "I could not find an answer in the documents.", "source_documents": []}
         
         context = "\n\n".join([doc['text'] for doc in final_docs])
         final_answer = self._synthesize_final_answer(query, context)
         
-        return {
-            "answer": final_answer,
-            "source_documents": final_docs
-        }
+        return {"answer": final_answer, "source_documents": final_docs}

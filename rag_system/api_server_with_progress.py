@@ -411,9 +411,10 @@ class EnhancedRagApiHandler(http.server.BaseHTTPRequestHandler):
         response = json.dumps(data, indent=2)
         self.wfile.write(response.encode('utf-8'))
 
-def start_enhanced_server(port=8001):
-    """Starts the enhanced API server with SSE support."""
+def start_enhanced_server(port=8000):
+    """Start the enhanced API server with a reusable TCP socket."""
     
+    # Use a custom TCPServer that allows address reuse
     class ReusableTCPServer(socketserver.TCPServer):
         allow_reuse_address = True
 
@@ -426,5 +427,18 @@ def start_enhanced_server(port=8001):
         print(f"📈 Real-time progress tracking enabled via Server-Sent Events!")
         httpd.serve_forever()
 
-if __name__ == "__main__":
-    start_enhanced_server() 
+if __name__ == '__main__':
+    # Start the server on a dedicated thread
+    server_thread = threading.Thread(target=start_enhanced_server)
+    server_thread.daemon = True
+    server_thread.start()
+    
+    print("🚀 Enhanced RAG API server with progress tracking is running.")
+    print("Press Ctrl+C to stop.")
+    
+    # Keep the main thread alive
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nStopping server...") 
