@@ -43,9 +43,11 @@ class VectorIndexer:
         # and the full metadata object as a JSON string.
         schema = pa.schema([
             pa.field("vector", pa.list_(pa.float32(), vector_dim)),
-            pa.field("text", pa.string()), # This is the text that was embedded
+            pa.field("text", pa.string()),
             pa.field("chunk_id", pa.string()),
-            pa.field("metadata", pa.string()) # Contains original_text, summary, etc.
+            pa.field("document_id", pa.string()),
+            pa.field("chunk_index", pa.int32()),
+            pa.field("metadata", pa.string())
         ])
 
         data = []
@@ -54,22 +56,25 @@ class VectorIndexer:
             if 'original_text' not in chunk['metadata']:
                 chunk['metadata']['original_text'] = chunk['text']
 
+            # Extract document_id and chunk_index for top-level storage
+            doc_id = chunk.get("metadata", {}).get("document_id", "unknown")
+            chunk_idx = chunk.get("metadata", {}).get("chunk_index", -1)
+
             data.append({
                 "vector": vector.tolist(),
-                "text": chunk["text"], # This is the enriched text
+                "text": chunk["text"],
                 "chunk_id": chunk["chunk_id"],
+                "document_id": doc_id,
+                "chunk_index": chunk_idx,
                 "metadata": json.dumps(chunk.get("metadata", {}))
             })
 
-        table_names = self.db_manager.db.table_names()
-        if table_name in table_names:
-            tbl = self.db_manager.get_table(table_name)
-            tbl.add(data, mode="overwrite") 
-            print(f"Overwrote {len(data)} vectors in table '{table_name}'.")
-        else:
-            tbl = self.db_manager.create_table(table_name, schema=schema, mode="create")
-            tbl.add(data)
-            print(f"Created table '{table_name}' and indexed {len(data)} vectors.")
+        # Always overwrite the table to ensure the schema is up-to-date.
+        # This is simpler and more robust for this project's workflow.
+        print(f"Creating/Overwriting table '{table_name}'...")
+        tbl = self.db_manager.create_table(table_name, schema=schema, mode="overwrite")
+        tbl.add(data)
+        print(f"Indexed {len(data)} vectors into table '{table_name}'.")
 
 
 class BM25Indexer:

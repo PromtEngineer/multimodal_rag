@@ -37,7 +37,6 @@ PIPELINE_CONFIGS = {
             "doc_path": "rag_system/documents",
             "text_table_name": "local_text_pages_v3",
             "image_table_name": None,
-            "chunk_store_path": "./index_store/chunk_store/chunks.pkl",
             "bm25_path": "./index_store/bm25"
         },
         "retrievers": {
@@ -85,7 +84,6 @@ PIPELINE_CONFIGS = {
         "storage": {
             "lancedb_uri": "./index_store/lancedb",
             "bm25_path": "./index_store/bm25",
-            "chunk_store_path": "./index_store/chunk_store/chunks.pkl",
             "text_table_name": "local_text_pages_v3",
             "image_table_name": None,
             "graph_path": "./index_store/graph/knowledge_graph.gml"
@@ -125,7 +123,6 @@ PIPELINE_CONFIGS = {
         "storage": {
             "lancedb_uri": "./index_store/lancedb",
             "bm25_path": "./index_store/bm25",
-            "chunk_store_path": "./index_store/chunk_store/chunks.pkl",
             "text_table_name": "local_text_pages_v3",
             "image_table_name": None,
             "graph_path": "./index_store/graph/knowledge_graph.gml"

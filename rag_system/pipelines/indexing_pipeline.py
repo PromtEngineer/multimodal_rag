@@ -8,7 +8,6 @@ from rag_system.indexing.embedders import LanceDBManager, VectorIndexer, BM25Ind
 from rag_system.indexing.graph_extractor import GraphExtractor
 from rag_system.utils.ollama_client import OllamaClient
 from rag_system.indexing.contextualizer import ContextualEnricher
-from rag_system.indexing.chunk_store import ChunkStore
 
 class IndexingPipeline:
     def __init__(self, config: Dict[str, Any], ollama_client: OllamaClient, ollama_config: Dict[str, str]):
@@ -26,9 +25,6 @@ class IndexingPipeline:
         self.embedding_batch_size = indexing_config.get("embedding_batch_size", 50)
         self.enrichment_batch_size = indexing_config.get("enrichment_batch_size", 10)
         self.enable_progress_tracking = indexing_config.get("enable_progress_tracking", True)
-
-        if storage_config.get("chunk_store_path"):
-            self.chunk_store = ChunkStore(store_path=storage_config["chunk_store_path"])
 
         if retriever_configs.get("dense", {}).get("enabled"):
             self.lancedb_manager = LanceDBManager(db_path=storage_config["lancedb_uri"])
@@ -84,6 +80,12 @@ class IndexingPipeline:
                             chunks = self.chunker.chunk(markdown_text, document_id, metadata)
                             file_chunks.extend(chunks)
                         
+                        # Add a sequential chunk_index to each chunk within the document
+                        for i, chunk in enumerate(file_chunks):
+                            if 'metadata' not in chunk:
+                                chunk['metadata'] = {}
+                            chunk['metadata']['chunk_index'] = i
+                        
                         all_chunks.extend(file_chunks)
                         print(f"  Generated {len(file_chunks)} chunks from {document_id}")
                         file_tracker.update(1)
@@ -104,12 +106,6 @@ class IndexingPipeline:
             print(f"📊 Estimated memory usage: {memory_mb:.1f}MB")
 
             retriever_configs = self.config.get("retrievers", {})
-
-            # Step 2: Save original chunks to the chunk store
-            if hasattr(self, 'chunk_store'):
-                with timer("Chunk Store Save"):
-                    self.chunk_store.save(all_chunks)
-                    print("✅ Saved chunks to chunk store")
 
             # Step 3: Optional Contextual Enrichment (before indexing for consistency)
             if hasattr(self, 'contextual_enricher'):
@@ -171,8 +167,6 @@ class IndexingPipeline:
         
         # Component status
         components = []
-        if hasattr(self, 'chunk_store'):
-            components.append("✅ Chunk Store")
         if hasattr(self, 'bm25_indexer'):
             components.append("✅ BM25 Index")
         if hasattr(self, 'contextual_enricher'):
