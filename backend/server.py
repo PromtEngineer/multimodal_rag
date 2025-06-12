@@ -231,7 +231,8 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
             try:
                 # The advanced RAG server runs on port 8001
                 rag_api_url = "http://localhost:8001/chat"
-                rag_response = requests.post(rag_api_url, json={"query": message})
+                conversation_history = db.get_conversation_history(session_id)
+                rag_response = requests.post(rag_api_url, json={"query": message, "session_id": session_id})
                 
                 if rag_response.status_code == 200:
                     rag_data = rag_response.json()
@@ -334,7 +335,7 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
             print(f"Found {len(file_paths)} documents to index. Sending to RAG API...")
             
             rag_api_url = "http://localhost:8001/index"
-            rag_response = requests.post(rag_api_url, json={"file_paths": file_paths})
+            rag_response = requests.post(rag_api_url, json={"file_paths": file_paths, "session_id": session_id})
 
             if rag_response.status_code == 200:
                 print("✅ RAG API successfully indexed documents.")

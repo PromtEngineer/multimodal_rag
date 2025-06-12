@@ -5,6 +5,7 @@ import concurrent.futures
 import time
 import json
 import lancedb
+import logging
 
 from rag_system.utils.ollama_client import OllamaClient
 from rag_system.retrieval.retrievers import MultiVectorRetriever, GraphRetriever
@@ -46,7 +47,7 @@ class RetrievalPipeline:
     def _get_text_embedder(self):
         if self.text_embedder is None:
             self.text_embedder = QwenEmbedder(
-                model_name=self.config.get("embedding_model_name", "Qwen/Qwen2-7B-instruct")
+                model_name=self.config.get("embedding_model_name", "BAAI/bge-small-en-v1.5")
             )
         return self.text_embedder
 
@@ -170,12 +171,17 @@ Final Answer:
         )
         return response.get('response', 'Failed to generate a final answer.')
 
-    def run(self, query: str) -> Dict[str, Any]:
+    def run(self, query: str, table_name: str = None) -> Dict[str, Any]:
         start_time = time.time()
         retrieval_k = self.config.get("retrieval_k", 10)
 
-        print(f"\n--- Running Hybrid Search for query: '{query}' ---")
+        logger = logging.getLogger(__name__)
+        logger.debug("--- Running Hybrid Search for query '%s' (table=%s) ---", query, table_name or self.storage_config.get("text_table_name"))
         
+        # If a custom table_name is provided, propagate it to storage config so helper methods use it
+        if table_name:
+            self.storage_config["text_table_name"] = table_name
+
         # Unified retrieval using the refactored MultiVectorRetriever
         dense_retriever = self._get_dense_retriever()
         # Get the LanceDB reranker for initial score fusion
@@ -185,13 +191,13 @@ Final Answer:
         if dense_retriever:
             retrieved_docs = dense_retriever.retrieve(
                 text_query=query,
-                table_name=self.storage_config["text_table_name"],
+                table_name=table_name or self.storage_config["text_table_name"],
                 k=retrieval_k,
                 reranker=lancedb_reranker # Pass the reranker to enable hybrid search
             )
         
         retrieval_time = time.time() - start_time
-        print(f"🚀 Initial retrieval completed in {retrieval_time:.2f}s - {len(retrieved_docs)} total docs")
+        logger.debug("Retrieved %s chunks in %.2fs", len(retrieved_docs), retrieval_time)
 
         # --- AI Reranking Step ---
         ai_reranker = self._get_ai_reranker()

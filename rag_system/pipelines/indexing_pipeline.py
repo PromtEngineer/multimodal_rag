@@ -30,7 +30,7 @@ class IndexingPipeline:
             self.lancedb_manager = LanceDBManager(db_path=storage_config["lancedb_uri"])
             self.vector_indexer = VectorIndexer(self.lancedb_manager)
             embedding_model = QwenEmbedder(
-                model_name=self.config.get("embedding_model_name", "Qwen/Qwen2-7B-instruct")
+                model_name=self.config.get("embedding_model_name", "BAAI/bge-small-en-v1.5")
             )
             self.embedding_generator = EmbeddingGenerator(
                 embedding_model=embedding_model, 
@@ -128,14 +128,18 @@ class IndexingPipeline:
                     print("✅ Vector embeddings indexed successfully")
 
                     # Create FTS index on the 'text' field after adding data
-                    print(f"\n--- Creating Full-Text Search (FTS) index on table '{table_name}' ---")
+                    print(f"\n--- Ensuring Full-Text Search (FTS) index on table '{table_name}' ---")
                     try:
                         tbl = self.lancedb_manager.get_table(table_name)
-                        # Use Lance native FTS instead of tantivy to avoid the "Expected a list column" error
-                        tbl.create_fts_index("text", use_tantivy=False, replace=True)
-                        print("✅ FTS index created successfully (using Lance native FTS).")
+                        # Create FTS index only if it does not already exist
+                        existing_indices = [idx.name for idx in tbl.list_indices()]
+                        if "fts_text" not in existing_indices:
+                            tbl.create_fts_index("text", use_tantivy=False, replace=False)
+                            print("✅ FTS index created successfully (using Lance native FTS).")
+                        else:
+                            print("ℹ️  FTS index already exists – skipped creation.")
                     except Exception as e:
-                        print(f"❌ Failed to create FTS index: {e}")
+                        print(f"❌ Failed to create/verify FTS index: {e}")
                 
             # Step 6: Knowledge Graph Extraction (Optional)
             if hasattr(self, 'graph_extractor'):

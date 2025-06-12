@@ -84,7 +84,7 @@ JSON Output:
             'timestamp': time.time()
         }
 
-    def run(self, query: str, max_retries: int = 1) -> Dict[str, Any]:
+    def run(self, query: str, table_name: str = None, max_retries: int = 1) -> Dict[str, Any]:
         start_time = time.time()
         
         query_type = self._triage_query(query)
@@ -133,7 +133,7 @@ JSON Output:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=min(3, len(sub_queries))) as executor:
                     # Submit all sub-queries for parallel processing
                     future_to_query = {
-                        executor.submit(self.retrieval_pipeline.run, sub_query): (i, sub_query)
+                        executor.submit(self.retrieval_pipeline.run, sub_query, table_name): (i, sub_query)
                         for i, sub_query in enumerate(sub_queries)
                     }
                     
@@ -172,10 +172,10 @@ JSON Output:
             else:
                 # Single query - standard flow
                 print("Query does not need decomposition, proceeding with standard retrieval.")
-                result = self.retrieval_pipeline.run(query)
+                result = self.retrieval_pipeline.run(query, table_name)
         else:
             # Standard RAG without decomposition
-            result = self.retrieval_pipeline.run(query)
+            result = self.retrieval_pipeline.run(query, table_name)
         
         # Verification step (simplified for now) - Skip in fast mode
         if self.pipeline_configs.get("verification", {}).get("enabled", True):

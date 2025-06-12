@@ -45,12 +45,17 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             data = json.loads(post_data.decode('utf-8'))
             
             query = data.get('query')
+            session_id = data.get('session_id')
             if not query:
                 self.send_json_response({"error": "Query is required"}, status_code=400)
                 return
 
+            table_name = None
+            if session_id:
+                table_name = f"text_pages_{session_id}"
+
             # Use the single, persistent agent instance to run the query
-            result = RAG_AGENT.run(query)
+            result = RAG_AGENT.run(query, table_name=table_name)
             
             # The result is a dict, so we need to dump it to a JSON string
             self.send_json_response(result)
@@ -68,17 +73,23 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             data = json.loads(post_data.decode('utf-8'))
             
             file_paths = data.get('file_paths')
+            session_id = data.get('session_id')
             if not file_paths or not isinstance(file_paths, list):
                 self.send_json_response({
                     "error": "A 'file_paths' list is required."
                 }, status_code=400)
                 return
 
+            table_name = None
+            if session_id:
+                table_name = f"text_pages_{session_id}"
+
             # run_indexing is synchronous and prints progress to console
-            run_indexing(file_paths=file_paths)
+            run_indexing(file_paths=file_paths, table_name=table_name)
 
             self.send_json_response({
-                "message": f"Indexing process for {len(file_paths)} file(s) completed successfully."
+                "message": f"Indexing process for {len(file_paths)} file(s) completed successfully.",
+                "table_name": table_name or "default_text_table"
             })
         except json.JSONDecodeError:
             self.send_json_response({"error": "Invalid JSON"}, status_code=400)

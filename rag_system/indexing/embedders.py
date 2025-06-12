@@ -77,10 +77,16 @@ class VectorIndexer:
                 "metadata": json.dumps(chunk)
             })
 
-        # Always overwrite the table to ensure the schema is up-to-date.
-        # This is simpler and more robust for this project's workflow.
-        print(f"Creating/Overwriting table '{table_name}'...")
-        tbl = self.db_manager.create_table(table_name, schema=schema, mode="overwrite")
+        # Incremental indexing: append to existing table if present, otherwise create it
+        db = self.db_manager.db  # underlying LanceDB connection
+
+        if hasattr(db, "table_names") and table_name in db.table_names():
+            tbl = self.db_manager.get_table(table_name)
+            print(f"Appending {len(data)} vectors to existing table '{table_name}'.")
+        else:
+            print(f"Creating table '{table_name}' (new) and adding {len(data)} vectors...")
+            tbl = self.db_manager.create_table(table_name, schema=schema, mode="create")
+
         tbl.add(data)
         print(f"Indexed {len(data)} vectors into table '{table_name}'.")
 

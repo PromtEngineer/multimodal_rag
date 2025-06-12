@@ -8,6 +8,8 @@ import os
 from PIL import Image
 from transformers import CLIPProcessor, CLIPModel
 import torch
+import logging
+import pandas as pd
 
 from rag_system.indexing.embedders import LanceDBManager
 from rag_system.indexing.representations import QwenEmbedder
@@ -68,18 +70,53 @@ class MultiVectorRetriever:
             # Create text embedding for the query
             text_query_embedding = self.text_embedder.create_embeddings([text_query])[0]
             
-            # Choose search method based on whether reranker is provided
-            if reranker:
-                print("Performing hybrid search with reranking...")
-                # For hybrid search, use the query parameter with query_type="hybrid"
-                search_query = tbl.search(query=text_query, query_type="hybrid")
-                search_query = search_query.rerank(reranker=reranker)
-            else:
-                print("Performing vector-only search...")
-                # For vector-only search, use the vector parameter
-                search_query = tbl.search(query=text_query_embedding)
+            logger = logging.getLogger(__name__)
 
-            results_df = search_query.limit(k).to_df()
+            # Always perform hybrid lexical + vector search
+            logger.debug(
+                "Running hybrid search on table '%s' (k=%s, have_reranker=%s)",
+                table_name,
+                k,
+                bool(reranker),
+            )
+
+            if reranker:
+                logger.debug("Hybrid + reranker path not yet implemented with manual fusion; proceeding without extra reranker.")
+
+            # Manual two-leg hybrid: take half from each modality
+            fts_k = k // 2
+            vec_k = k - fts_k
+
+            fts_df = (
+                tbl.search(query=text_query, query_type="fts")
+                   .limit(fts_k)
+                   .to_df()
+            )
+
+            vec_df = (
+                tbl.search(text_query_embedding)
+                   .limit(vec_k * 2)  # fetch extra to allow for dedup
+                   .to_df()
+            ) if vec_k > 0 else None
+
+            if vec_df is not None:
+                combined = pd.concat([fts_df, vec_df])
+            else:
+                combined = fts_df
+
+            # Remove duplicates preserving first occurrence, then trim to k
+            dedup_subset = ["_rowid"] if "_rowid" in combined.columns else (["chunk_id"] if "chunk_id" in combined.columns else None)
+            if dedup_subset:
+                combined = combined.drop_duplicates(subset=dedup_subset, keep="first")
+            combined = combined.head(k)
+
+            results_df = combined
+            logger.debug(
+                "Hybrid (fts=%s, vec=%s) → %s unique chunks",
+                len(fts_df),
+                0 if vec_df is None else len(vec_df),
+                len(results_df),
+            )
             
             retrieved_docs = []
             for _, row in results_df.iterrows():
@@ -97,6 +134,7 @@ class MultiVectorRetriever:
                     'metadata': metadata
                 })
 
+            logger.debug("Hybrid search returned %s results", len(retrieved_docs))
             print(f"Retrieved {len(retrieved_docs)} documents.")
             return retrieved_docs
         

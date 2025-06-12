@@ -12,9 +12,16 @@ class QwenEmbedder(EmbeddingModel):
     """
     An embedding model that uses a local Hugging Face transformer model.
     """
-    def __init__(self, model_name: str = "Qwen/Qwen3-Embedding-0.6B"):
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"Initializing QwenEmbedder with model '{model_name}' on device '{self.device}'.")
+    def __init__(self, model_name: str = "BAAI/bge-small-en-v1.5"):
+        # Auto-select the best available device: CUDA > MPS > CPU
+        if torch.cuda.is_available():
+            self.device = "cuda"
+        elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+            self.device = "mps"
+        else:
+            self.device = "cpu"
+
+        print(f"Initializing HF Embedder with model '{model_name}' on device '{self.device}'.")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
         self.model = AutoModel.from_pretrained(model_name, trust_remote_code=True).to(self.device).eval()
         print("QwenEmbedder loaded successfully.")

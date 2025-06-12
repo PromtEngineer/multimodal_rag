@@ -57,7 +57,7 @@ PIPELINE_CONFIGS = {
             "enabled": True,
             "window_size": 1
         },
-        "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
+        "embedding_model_name": "BAAI/bge-small-en-v1.5",
         "vision_model_name": None
     },
     "retrieval": {
@@ -67,7 +67,7 @@ PIPELINE_CONFIGS = {
             "text_table_name": "local_text_pages_v3",
             "image_table_name": None,
         },
-        "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
+        "embedding_model_name": "BAAI/bge-small-en-v1.5",
         "vision_model_name": None,
         "graph_rag": {
             "enabled": False,
@@ -75,7 +75,7 @@ PIPELINE_CONFIGS = {
         },
         "reranker": {
             "enabled": False, 
-            "model_name": "Qwen/Qwen3-Reranker-0.6B",
+            "model_name": "BAAI/bge-reranker-base",
             "top_k": 3
         },
         "retrieval_k": 10
@@ -102,11 +102,11 @@ PIPELINE_CONFIGS = {
                 "graph_path": "./index_store/graph/knowledge_graph.gml"
             }
         },
-        "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
+        "embedding_model_name": "BAAI/bge-small-en-v1.5",
         "vision_model_name": "Qwen/Qwen-VL-Chat",
         "reranker": {
             "enabled": False, 
-            "model_name": "Qwen/Qwen3-Reranker-0.6B",
+            "model_name": "BAAI/bge-reranker-base",
             "top_k": 5
         },
         "query_decomposition": {
@@ -141,12 +141,12 @@ PIPELINE_CONFIGS = {
                 "graph_path": "./index_store/graph/knowledge_graph.gml"
             }
         },
-        "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
+        "embedding_model_name": "BAAI/bge-small-en-v1.5",
         "vision_model_name": "Qwen/Qwen-VL-Chat",
         "reranker": {
             "enabled": True, 
             "type": "ai",
-            "model_name": "Qwen/Qwen3-Reranker-0.6B",
+            "model_name": "BAAI/bge-reranker-base",
             "top_k": 10
         },
         "query_decomposition": {
@@ -179,7 +179,7 @@ def get_agent(mode="default"):
     agent = Agent(config, ollama_client, OLLAMA_CONFIG)
     return agent
 
-def run_indexing(file_paths: list = None):
+def run_indexing(file_paths: list = None, table_name: str | None = None):
     print("\n--- Running Multimodal Indexing Pipeline ---")
     config = PIPELINE_CONFIGS["indexing"]
     
@@ -189,7 +189,15 @@ def run_indexing(file_paths: list = None):
         print(e)
         return
 
-    pipeline = IndexingPipeline(config, ollama_client, OLLAMA_CONFIG)
+    import copy
+    config_override = copy.deepcopy(config)
+    if table_name:
+        # Override the dense retriever table name for this indexing run
+        config_override["retrievers"]["dense"]["lancedb_table_name"] = table_name
+        # Also update storage text_table_name to keep things consistent
+        config_override["storage"]["text_table_name"] = table_name
+
+    pipeline = IndexingPipeline(config_override, ollama_client, OLLAMA_CONFIG)
     
     pdf_files = []
     if file_paths:
