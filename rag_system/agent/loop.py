@@ -273,8 +273,13 @@ FINAL ANSWER:
             context_str = "\n".join([doc['text'] for doc in result['source_documents']])
             verification = await self.verifier.verify_async(contextual_query, context_str, result['answer'])
             
-            if not verification.is_grounded:
-                result['answer'] += " [Warning: This answer could not be fully verified.]"
+            # Append confidence score to the answer
+            score = verification.confidence_score
+            result['answer'] += f" [Confidence: {score}%]"
+            
+            # Optional: a more nuanced warning based on score
+            if not verification.is_grounded or score < 50:
+                 result['answer'] += f" [Warning: Low confidence. Groundedness: {verification.is_grounded}]"
         else:
             print("🚀 Skipping verification for speed or lack of sources")
         
