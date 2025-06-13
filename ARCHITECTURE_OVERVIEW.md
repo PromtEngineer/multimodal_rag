@@ -1,6 +1,6 @@
 # Multimodal RAG System – Architecture & Code Walk-Through
 
-*Last updated: 12 Jun 2025*
+*Last updated: 13 Jun 2025*
 
 ---
 
@@ -29,9 +29,9 @@ User ↔ Frontend  ↔  │ localGPT backend 8000│ ← uploads / chat
              │  • NetworkX graph      │
              └────────────────────────┘
 ```
-* Two FastAPI servers run side-by-side for development:
-  * **backend/server.py** (8000) – compatibility wrapper around localGPT UI workflows.
-  * **rag_system/api_server.py** (8001) – exposes `/chat`, `/index`, etc. and holds the actual RAG logic.
+* Two execution modes during development:
+  * **Dual-process**: run **backend/server.py** (8000) + **rag_system/api_server.py** (8001) as before.
+  * **Single-process**: run **combined_server.py** which boots *both* back-ends in separate threads – handy on limited ports / Heroku-style dynos.
 * All heavyweight processing lives inside the `rag_system` package so it can be reused offline or via CLI (`python rag_system/main.py`).
 
 ---
@@ -115,6 +115,9 @@ python rag_system/main.py index --mode default --path /docs/*.pdf
 # 4. Start servers (two terminals)
 cd backend && RAG_LOG_LEVEL=DEBUG python server.py | cat &
 HF_TOKEN=$HF_TOKEN RAG_LOG_LEVEL=DEBUG python -m rag_system.api_server | cat &
+
+# Single-process option
+HF_TOKEN=$HF_TOKEN RAG_LOG_LEVEL=DEBUG python combined_server.py | cat &
 ```
 
 Open `localhost:8000` for the localGPT UI; it will proxy chat to port 8001.
@@ -134,10 +137,25 @@ Open `localhost:8000` for the localGPT UI; it will proxy chat to port 8001.
 
 ## 9  Known limitations / TODO
 * LanceDB hybrid API lacks native "vector+fts" → manual fusion.
-* Sanitisation converts NaN/Inf scores to 0 – could mask issues.
+* Score sanitisation now drops NaN/Inf before JSON serialisation (fixed in `retrieval_pipeline.py`).
+* `_TOKENIZER` / `_MODEL` globals initialised on module import (fixed QwenEmbedder crash).
 * Memory leak: occasional semaphore warning from `multiprocessing` when API server exits.
 * Frontend currently drops citation metadata – UI not showing sources.
 
 ---
 
 Happy hacking!  Feel free to extend this doc as the system evolves. 
+
+## 10  Optimisation roadmap (June 2025)
+
+The following four milestones will be tackled sequentially; each is protected behind feature flags so the system stays deployable at every step.
+
+| Milestone | Focus | Key changes |
+|-----------|-------|-------------|
+| **0 – Baseline** | Measurement | Benchmark harness, feature-flag skeleton |
+| **1 – Retrieval latency** | Parallel FTS + vector search, query embedding LRU, bottleneck ≥ 1.3.7 | Expected ‑40 % mean latency |
+| **2 – Candidate quality** | LanceDB native hybrid recall, learned fusion weights, short-query wildcard boost | +3–4 pp Recall@20 |
+| **3 – Rerank & Context** | Batched cross-encoder with early-exit, single-shot SQL window for context, fp16 unit-norm embeddings | 3× reranker speed |
+| **4 – Polish** | RRF option, 4-bit larger embeddings, prune dead BM25 path | Accuracy + misc cleanup |
+
+Each milestone will land as an independent PR and will update this document upon merge. 

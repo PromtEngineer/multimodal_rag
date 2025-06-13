@@ -57,7 +57,8 @@ class RetrievalPipeline:
         if self.dense_retriever is None and self.retriever_configs.get("dense", {}).get("enabled"):
             db_manager = self._get_db_manager()
             text_embedder = self._get_text_embedder()
-            self.dense_retriever = MultiVectorRetriever(db_manager, text_embedder, vision_model=None)
+            fusion_cfg = self.config.get("fusion", {})
+            self.dense_retriever = MultiVectorRetriever(db_manager, text_embedder, vision_model=None, fusion_config=fusion_cfg)
         return self.dense_retriever
 
     def _get_bm25_retriever(self):
@@ -220,7 +221,7 @@ ORIGINAL QUESTION: "{query}"
             print(f"\n--- Reranking top {len(retrieved_docs)} docs with AI model... ---")
             start_rerank_time = time.time()
             top_k = self.config.get("reranker", {}).get("top_k", 5)
-            reranked_docs = ai_reranker.rerank(query, retrieved_docs, top_k=top_k)
+            reranked_docs = ai_reranker.rerank(query, retrieved_docs, top_k=top_k, early_exit=False)
             rerank_time = time.time() - start_rerank_time
             print(f"✅ Reranking completed in {rerank_time:.2f}s. Refined to {len(reranked_docs)} docs.")
         else:

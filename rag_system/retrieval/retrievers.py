@@ -11,6 +11,8 @@ import torch
 import logging
 import pandas as pd
 import math
+import concurrent.futures
+from functools import lru_cache
 
 from rag_system.indexing.embedders import LanceDBManager
 from rag_system.indexing.representations import QwenEmbedder
@@ -48,14 +50,23 @@ class GraphRetriever:
         print(f"Retrieved {len(retrieved_docs)} documents from the graph.")
         return retrieved_docs[:k]
 
+# region === MultiVectorRetriever ===
 class MultiVectorRetriever:
     """
     Performs hybrid (vector + FTS) or vector-only retrieval.
     """
-    def __init__(self, db_manager: LanceDBManager, text_embedder: QwenEmbedder, vision_model: LocalVisionModel = None):
+    def __init__(self, db_manager: LanceDBManager, text_embedder: QwenEmbedder, vision_model: LocalVisionModel = None, *, fusion_config: Dict[str, Any] | None = None):
         self.db_manager = db_manager
         self.text_embedder = text_embedder
         self.vision_model = vision_model
+        self.fusion_config = fusion_config or {"method": "linear", "bm25_weight": 0.5, "vec_weight": 0.5}
+
+        # Lightweight in-memory LRU cache for single-query embeddings (256 entries)
+        @lru_cache(maxsize=256)
+        def _embed_single(q: str):
+            return self.text_embedder.create_embeddings([q])[0]
+
+        self._embed_single = _embed_single
 
     def retrieve(self, text_query: str, table_name: str, k: int, reranker=None) -> List[Dict[str, Any]]:
         """
@@ -68,8 +79,8 @@ class MultiVectorRetriever:
         try:
             tbl = self.db_manager.get_table(table_name)
             
-            # Create text embedding for the query
-            text_query_embedding = self.text_embedder.create_embeddings([text_query])[0]
+            # Create / fetch cached text embedding for the query
+            text_query_embedding = self._embed_single(text_query)
             
             logger = logging.getLogger(__name__)
 
@@ -88,17 +99,32 @@ class MultiVectorRetriever:
             fts_k = k // 2
             vec_k = k - fts_k
 
-            fts_df = (
-                tbl.search(query=text_query, query_type="fts")
-                   .limit(fts_k)
-                   .to_df()
-            )
+            # Run FTS and vector search in parallel to cut latency
+            def _run_fts():
+                # Very short queries often underperform → add fuzzy wildcard
+                fts_query = text_query
+                if len(text_query.split()) == 1:
+                    fts_query = f"{text_query}* OR {text_query}~"
+                return (
+                     tbl.search(query=fts_query, query_type="fts")
+                        .limit(fts_k)
+                        .to_df()
+                 )
 
-            vec_df = (
-                tbl.search(text_query_embedding)
-                   .limit(vec_k * 2)  # fetch extra to allow for dedup
-                   .to_df()
-            ) if vec_k > 0 else None
+            def _run_vec():
+                if vec_k == 0:
+                    return None
+                return (
+                    tbl.search(text_query_embedding)
+                       .limit(vec_k * 2)  # fetch extra to allow for dedup
+                       .to_df()
+                )
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                fts_future = executor.submit(_run_fts)
+                vec_future = executor.submit(_run_vec)
+                fts_df = fts_future.result()
+                vec_df = vec_future.result()
 
             if vec_df is not None:
                 combined = pd.concat([fts_df, vec_df])
@@ -134,10 +160,24 @@ class MultiVectorRetriever:
                 except Exception:
                     raw_score = 0.0
 
+                combined_score = raw_score
+                # Optional linear-weight fusion if both FTS & vector scores exist
+                if '_distance' in row and 'score' in row:
+                    try:
+                        bm25 = row.get('score', 0.0)
+                        vec_sim = 1.0 / (1.0 + row.get('_distance', 1.0))  # convert distance to similarity
+                        w_bm25 = float(self.fusion_config.get('bm25_weight', 0.5))
+                        w_vec = float(self.fusion_config.get('vec_weight', 0.5))
+                        combined_score = w_bm25 * bm25 + w_vec * vec_sim
+                    except Exception:
+                        pass
+
                 retrieved_docs.append({
                     'chunk_id': row.get('chunk_id'),
                     'text': metadata.get('original_text', row.get('text')),
-                    'score': raw_score,
+                    'score': combined_score,
+                    'bm25': row.get('score'),
+                    '_distance': row.get('_distance'),
                     'document_id': row.get('document_id'),
                     'chunk_index': row.get('chunk_index'),
                     'metadata': metadata
@@ -150,6 +190,7 @@ class MultiVectorRetriever:
         except Exception as e:
             print(f"Could not search table '{table_name}': {e}")
             return []
+# endregion
 
 if __name__ == '__main__':
     print("retrievers.py updated for LanceDB FTS Hybrid Search.")

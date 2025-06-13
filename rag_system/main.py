@@ -117,6 +117,11 @@ PIPELINE_CONFIGS = {
         "context_window_size": 0,
         "verification": {
             "enabled": False
+        },
+        "fusion": {
+            "method": "linear",
+            "bm25_weight": 0.5,
+            "vec_weight": 0.5
         }
     },
     "default": {
