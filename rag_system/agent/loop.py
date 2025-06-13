@@ -1,9 +1,10 @@
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import json
 import concurrent.futures
 import time
 import asyncio
 from cachetools import TTLCache, LRUCache
+import numpy as np
 from rag_system.utils.ollama_client import OllamaClient
 from rag_system.pipelines.retrieval_pipeline import RetrievalPipeline
 from rag_system.agent.verifier import Verifier
@@ -27,8 +28,9 @@ class Agent:
         self.verifier = Verifier(llm_client, gen_model)
         self.query_decomposer = QueryDecomposer(llm_client, gen_model)
         
-        # 🚀 OPTIMIZED: TTL cache (5-minute) for repeated queries
+        # 🚀 OPTIMIZED: TTL cache now stores embeddings for semantic matching
         self._query_cache: TTLCache = TTLCache(maxsize=100, ttl=300)
+        self.semantic_cache_threshold = self.pipeline_configs.get("semantic_cache_threshold", 0.98)
         
         # 🚀 NEW: In-memory store for conversational history per session
         self.chat_histories: LRUCache = LRUCache(maxsize=100) # Stores history for 100 recent sessions
@@ -40,6 +42,49 @@ class Agent:
             print("Agent initialized with live GraphRAG capabilities.")
         else:
             print("Agent initialized (GraphRAG disabled).")
+
+    def _cosine_similarity(self, v1: np.ndarray, v2: np.ndarray) -> float:
+        """Computes cosine similarity between two vectors."""
+        if not isinstance(v1, np.ndarray): v1 = np.array(v1)
+        if not isinstance(v2, np.ndarray): v2 = np.array(v2)
+        
+        if v1.shape != v2.shape:
+            raise ValueError("Vectors must have the same shape for cosine similarity.")
+
+        if np.all(v1 == 0) or np.all(v2 == 0):
+            return 0.0
+            
+        dot_product = np.dot(v1, v2)
+        norm_v1 = np.linalg.norm(v1)
+        norm_v2 = np.linalg.norm(v2)
+        
+        # Avoid division by zero
+        if norm_v1 == 0 or norm_v2 == 0:
+            return 0.0
+        
+        return dot_product / (norm_v1 * norm_v2)
+
+    def _find_in_semantic_cache(self, query_embedding: np.ndarray) -> Optional[Dict[str, Any]]:
+        """Finds a semantically similar query in the cache."""
+        if not self._query_cache or query_embedding is None:
+            return None
+
+        for key, cached_item in self._query_cache.items():
+            cached_embedding = cached_item.get('embedding')
+            if cached_embedding is None:
+                continue
+
+            try:
+                similarity = self._cosine_similarity(query_embedding, cached_embedding)
+
+                if similarity >= self.semantic_cache_threshold:
+                    print(f"🚀 Semantic cache hit! Similarity: {similarity:.3f} with cached query '{key}'")
+                    return cached_item.get('result')
+            except ValueError:
+                # In case of shape mismatch, just skip
+                continue
+
+        return None
 
     def _format_query_with_history(self, query: str, history: list) -> str:
         """Formats the user query with conversation history for context."""
@@ -133,18 +178,23 @@ User query: "{query}"
         # Create a contextual query that includes history for most operations
         contextual_query = self._format_query_with_history(query, history)
         
-        # 🚀 OPTIMIZED: Check cache first for non-direct answers
+        query_embedding = None
+        # 🚀 OPTIMIZED: Semantic Cache Check
         if query_type != "direct_answer":
-            # Use contextual_query for caching to handle follow-ups
-            cache_key = self._get_cache_key(contextual_query, query_type)
-            if cache_key in self._query_cache:
-                cached_entry = self._query_cache[cache_key]
-                print("🚀 Cache hit! Returning cached result")
-                # Update history even on cache hit
-                if session_id:
-                    history.append({"query": query, "answer": cached_entry['answer']})
-                    self.chat_histories[session_id] = history
-                return cached_entry
+            text_embedder = self.retrieval_pipeline._get_text_embedder()
+            if text_embedder:
+                # The embedder expects a list, so we wrap the query
+                query_embedding_list = text_embedder.create_embeddings([contextual_query])
+                if query_embedding_list.any():
+                    query_embedding = query_embedding_list[0]
+                    cached_result = self._find_in_semantic_cache(query_embedding)
+                    
+                    if cached_result:
+                        # Update history even on cache hit
+                        if session_id:
+                            history.append({"query": query, "answer": cached_result.get('answer', 'Cached answer not found.')})
+                            self.chat_histories[session_id] = history
+                        return cached_result
 
         if query_type == "direct_answer":
             prompt = f"You are a helpful assistant. Answer the user's question directly.\n\nUser: {contextual_query}\n\nAssistant:"
@@ -289,9 +339,9 @@ FINAL ANSWER:
             self.chat_histories[session_id] = history
             
         # 🚀 OPTIMIZED: Cache the result for future queries
-        if query_type != "direct_answer":
-            cache_key = self._get_cache_key(contextual_query, query_type)
-            self._query_cache[cache_key] = result
+        if query_type != "direct_answer" and query_embedding is not None:
+            cache_key = contextual_query # Key is for logging/debugging
+            self._query_cache[cache_key] = {"embedding": query_embedding, "result": result}
         
         total_time = time.time() - start_time
         print(f"🚀 Total query processing time: {total_time:.2f}s")
