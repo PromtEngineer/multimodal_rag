@@ -296,3 +296,47 @@ ORIGINAL QUESTION: "{query}"
         final_answer = self._synthesize_final_answer(query, context)
         
         return {"answer": final_answer, "source_documents": final_docs}
+
+    # ------------------------------------------------------------------
+    # Public utility
+    # ------------------------------------------------------------------
+    def list_document_titles(self, max_items: int = 25) -> List[str]:
+        """Return up to *max_items* distinct document titles (or IDs).
+
+        This is used only for prompt-routing, so we favour robustness over
+        perfect recall. If anything goes wrong we return an empty list so
+        the caller can degrade gracefully.
+        """
+        try:
+            tbl_name = self.storage_config.get("text_table_name")
+            if not tbl_name:
+                return []
+
+            tbl = self._get_db_manager().get_table(tbl_name)
+
+            field_name = "document_title" if "document_title" in tbl.schema.names else "document_id"
+
+            # Use a cheap SQL filter to grab distinct values; fall back to a
+            # simple scan if the driver lacks DISTINCT support.
+            try:
+                sql = f"SELECT DISTINCT {field_name} FROM tbl LIMIT {max_items}"
+                rows = tbl.search().where("true").sql(sql).to_list()  # type: ignore
+                titles = [r[field_name] for r in rows if r.get(field_name)]
+            except Exception:
+                # Fallback: scan first N rows
+                rows = tbl.search().select(field_name).limit(max_items * 4).to_list()
+                seen = set()
+                titles = []
+                for r in rows:
+                    val = r.get(field_name)
+                    if val and val not in seen:
+                        titles.append(val)
+                        seen.add(val)
+                        if len(titles) >= max_items:
+                            break
+
+            # Ensure we don't exceed max_items
+            return titles[:max_items]
+        except Exception:
+            # Any issues (missing table, bad schema, etc.) –> just return []
+            return []

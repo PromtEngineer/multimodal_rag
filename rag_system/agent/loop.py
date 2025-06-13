@@ -2,6 +2,8 @@ from typing import Dict, Any
 import json
 import concurrent.futures
 import time
+import asyncio
+from cachetools import TTLCache
 from rag_system.utils.ollama_client import OllamaClient
 from rag_system.pipelines.retrieval_pipeline import RetrievalPipeline
 from rag_system.agent.verifier import Verifier
@@ -25,9 +27,8 @@ class Agent:
         self.verifier = Verifier(llm_client, gen_model)
         self.query_decomposer = QueryDecomposer(llm_client, gen_model)
         
-        # 🚀 OPTIMIZED: Simple query cache for repeated queries
-        self._query_cache = {}
-        self._cache_max_size = 100  # Limit cache size to prevent memory bloat
+        # 🚀 OPTIMIZED: TTL cache (5-minute) for repeated queries
+        self._query_cache: TTLCache = TTLCache(maxsize=1000, ttl=300)
         
         graph_config = self.pipeline_configs.get("graph_strategy", {})
         if graph_config.get("enabled"):
@@ -37,22 +38,24 @@ class Agent:
         else:
             print("Agent initialized (GraphRAG disabled).")
 
-    def _triage_query(self, query: str) -> str:
+    # ---------------- Asynchronous triage using Ollama ----------------
+    async def _triage_query_async(self, query: str) -> str:
         prompt = f"""
-You are a query routing expert. Analyze the user's query and classify it into one of three categories:
-1. "graph_query": If the query is asking for a specific factual relationship that would likely be found in a knowledge graph (e.g., "Who is the CEO of X?", "What did Company Y announce?").
-2. "rag_query": If the query is asking a question that requires searching specific uploaded documents for an answer (e.g., "What is the total of the invoice?", "Summarize the report on Q3 earnings.").
-3. "direct_answer": If the query is a general conversational question, a philosophical question, or anything that does not require knowledge of specific uploaded documents (e.g., "Hello", "What is the meaning of life?", "What is the capital of France?").
+You are a query routing expert. Analyse the user's question and decide which backend should handle it. Choose **exactly one** of the following categories:
 
-Respond with a single JSON object with one key, "category".
+1. "graph_query" – The user asks for a specific factual relation best served by a knowledge-graph lookup (e.g. "Who is the CEO of Apple?", "Which company acquired DeepMind?").
+2. "rag_query" – The answer is most likely inside the user's uploaded documents (reports, PDFs, slide decks, invoices, research papers, etc.). Examples: "What is the total on invoice 1041?", "Summarise the Q3 earnings report".
+3. "direct_answer" – General chit-chat or open-domain knowledge that does **not** rely on the user's private documents or the knowledge graph (e.g. "Hello", "What is the capital of France?", "Explain quantum entanglement").
 
-Query: "{query}"
+Respond with JSON of the form: {{"category": "<your_choice>"}}
 
-JSON Output:
+User query: "{query}"
 """
-        response = self.llm_client.generate_completion(self.ollama_config["generation_model"], prompt, format="json")
+        resp = await self.llm_client.generate_completion_async(
+            self.ollama_config["generation_model"], prompt, format="json"
+        )
         try:
-            data = json.loads(response.get('response', '{}'))
+            data = json.loads(resp.get("response", "{}"))
             return data.get("category", "rag_query")
         except json.JSONDecodeError:
             return "rag_query"
@@ -84,10 +87,15 @@ JSON Output:
             'timestamp': time.time()
         }
 
+    # ---------------- Public sync API (kept for backwards compatibility) --------------
     def run(self, query: str, table_name: str = None, max_retries: int = 1) -> Dict[str, Any]:
+        return asyncio.run(self._run_async(query, table_name, max_retries))
+
+    # ---------------- Main async implementation --------------------------------------
+    async def _run_async(self, query: str, table_name: str = None, max_retries: int = 1) -> Dict[str, Any]:
         start_time = time.time()
         
-        query_type = self._triage_query(query)
+        query_type = await self._triage_query_async(query)
         print(f"Agent Triage Decision: '{query_type}'")
         
         # 🚀 OPTIMIZED: Check cache first for non-direct answers
@@ -95,19 +103,12 @@ JSON Output:
             cache_key = self._get_cache_key(query, query_type)
             if cache_key in self._query_cache:
                 cached_entry = self._query_cache[cache_key]
-                cache_age = time.time() - cached_entry['timestamp']
-                
-                # Use cache if less than 5 minutes old
-                if cache_age < 300:
-                    print(f"🚀 Cache hit! Returning cached result (age: {cache_age:.1f}s)")
-                    return cached_entry['result']
-                else:
-                    # Remove stale cache entry
-                    del self._query_cache[cache_key]
+                print("🚀 Cache hit! Returning cached result")
+                return cached_entry
 
         if query_type == "direct_answer":
             prompt = f"You are a helpful assistant. Answer the user's question directly.\n\nUser: {query}\n\nAssistant:"
-            response = self.llm_client.generate_completion(self.ollama_config["generation_model"], prompt)
+            response = await self.llm_client.generate_completion_async(self.ollama_config["generation_model"], prompt)
             return {"answer": response.get('response'), "source_documents": []}
         
         if query_type == "graph_query" and hasattr(self, 'graph_retriever'):
@@ -194,7 +195,7 @@ SUB-ANSWERS (JSON):
 ------
 FINAL ANSWER:
 """
-                    compose_resp = self.llm_client.generate_completion(
+                    compose_resp = await self.llm_client.generate_completion_async(
                         self.ollama_config["generation_model"], compose_prompt
                     )
                     final_answer = compose_resp.get('response', 'Unable to generate an answer.')
@@ -229,7 +230,7 @@ FINAL ANSWER:
         # Verification step (simplified for now) - Skip in fast mode
         if self.pipeline_configs.get("verification", {}).get("enabled", True):
             context_str = "\n".join([doc['text'] for doc in result['source_documents']])
-            verification = self.verifier.verify(query, context_str, result['answer'])
+            verification = await self.verifier.verify_async(query, context_str, result['answer'])
             
             if not verification.is_grounded:
                 result['answer'] += " [Warning: This answer could not be fully verified.]"
@@ -239,7 +240,7 @@ FINAL ANSWER:
         # 🚀 OPTIMIZED: Cache the result for future queries
         if query_type != "direct_answer":
             cache_key = self._get_cache_key(query, query_type)
-            self._cache_result(cache_key, result)
+            self._query_cache[cache_key] = result
         
         total_time = time.time() - start_time
         print(f"🚀 Total query processing time: {total_time:.2f}s")
