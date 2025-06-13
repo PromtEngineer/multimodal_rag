@@ -55,7 +55,7 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 table_name = f"text_pages_{session_id}"
 
             # Use the single, persistent agent instance to run the query
-            result = RAG_AGENT.run(query, table_name=table_name)
+            result = RAG_AGENT.run(query, table_name=table_name, session_id=session_id)
             
             # The result is a dict, so we need to dump it to a JSON string
             self.send_json_response(result)
