@@ -10,6 +10,7 @@ from transformers import CLIPProcessor, CLIPModel
 import torch
 import logging
 import pandas as pd
+import math
 
 from rag_system.indexing.embedders import LanceDBManager
 from rag_system.indexing.representations import QwenEmbedder
@@ -125,10 +126,18 @@ class MultiVectorRetriever:
                 metadata.setdefault('document_id', row.get('document_id'))
                 metadata.setdefault('chunk_index', row.get('chunk_index'))
                 
+                # Determine score (vector distance or FTS). Replace NaN with 0.0
+                raw_score = row.get('_distance') if '_distance' in row else row.get('score')
+                try:
+                    if raw_score is None or (isinstance(raw_score, float) and math.isnan(raw_score)):
+                        raw_score = 0.0
+                except Exception:
+                    raw_score = 0.0
+
                 retrieved_docs.append({
                     'chunk_id': row.get('chunk_id'),
                     'text': metadata.get('original_text', row.get('text')),
-                    'score': row.get('_distance') or row.get('score'), # Reranker might produce 'score'
+                    'score': raw_score,
                     'document_id': row.get('document_id'),
                     'chunk_index': row.get('chunk_index'),
                     'metadata': metadata

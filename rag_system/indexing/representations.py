@@ -12,7 +12,7 @@ class QwenEmbedder(EmbeddingModel):
     """
     An embedding model that uses a local Hugging Face transformer model.
     """
-    def __init__(self, model_name: str = "BAAI/bge-small-en-v1.5"):
+    def __init__(self, model_name: str = "Qwen/Qwen3-Embedding-0.6B"):
         # Auto-select the best available device: CUDA > MPS > CPU
         if torch.cuda.is_available():
             self.device = "cuda"
@@ -21,17 +21,32 @@ class QwenEmbedder(EmbeddingModel):
         else:
             self.device = "cpu"
 
-        print(f"Initializing HF Embedder with model '{model_name}' on device '{self.device}'.")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-        self.model = AutoModel.from_pretrained(model_name, trust_remote_code=True).to(self.device).eval()
-        print("QwenEmbedder loaded successfully.")
+        # Global cache so the HF model loads only once per process
+        global _TOKENIZER, _MODEL
+        if _TOKENIZER is None or _MODEL is None:
+            print(f"Initializing HF Embedder with model '{model_name}' on device '{self.device}'. (first load)")
+            _TOKENIZER = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True, padding_side="left")
+            _MODEL = AutoModel.from_pretrained(
+                model_name,
+                trust_remote_code=True,
+                torch_dtype=torch.float16 if self.device != "cpu" else None,
+            ).to(self.device).eval()
+            print("QwenEmbedder weights loaded and cached.")
+        else:
+            print("Reusing cached QwenEmbedder weights.")
+        self.tokenizer = _TOKENIZER
+        self.model = _MODEL
 
     def create_embeddings(self, texts: List[str]) -> np.ndarray:
         print(f"Generating {len(texts)} embeddings with Qwen model...")
         inputs = self.tokenizer(texts, padding=True, truncation=True, return_tensors="pt").to(self.device)
         with torch.no_grad():
             outputs = self.model(**inputs)
-            embeddings = outputs.last_hidden_state.mean(dim=1)
+            last_hidden = outputs.last_hidden_state  # [B, seq, dim]
+            # Pool via last valid token per sequence (recommended for Qwen3)
+            seq_len = inputs["attention_mask"].sum(dim=1) - 1  # index of last token
+            batch_indices = torch.arange(last_hidden.size(0), device=self.device)
+            embeddings = last_hidden[batch_indices, seq_len]
         return embeddings.cpu().numpy()
 
 class EmbeddingGenerator:
@@ -65,6 +80,9 @@ class EmbeddingGenerator:
         )
         
         return all_embeddings
+
+_TOKENIZER = None  # Will hold the shared HF tokenizer instance
+_MODEL = None      # Will hold the shared HF model instance
 
 if __name__ == '__main__':
     print("representations.py cleaned up.")

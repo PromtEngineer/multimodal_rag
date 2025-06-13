@@ -16,7 +16,10 @@ class QwenReranker:
             self.device = "cpu"
         print(f"Initializing BGE Reranker with model '{model_name}' on device '{self.device}'.")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSequenceClassification.from_pretrained(model_name).to(self.device).eval()
+        self.model = AutoModelForSequenceClassification.from_pretrained(
+            model_name,
+            torch_dtype=torch.float16 if self.device != "cpu" else None,
+        ).to(self.device).eval()
         
         print("BGE Reranker loaded successfully.")
 

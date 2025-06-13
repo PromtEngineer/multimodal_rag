@@ -6,6 +6,8 @@ import time
 import json
 import lancedb
 import logging
+import math
+import numpy as np
 
 from rag_system.utils.ollama_client import OllamaClient
 from rag_system.retrieval.retrievers import MultiVectorRetriever, GraphRetriever
@@ -153,17 +155,30 @@ class RetrievalPipeline:
     def _synthesize_final_answer(self, query: str, facts: str) -> str:
         """Uses a text LLM to synthesize a final answer from extracted facts."""
         prompt = f"""
-You are a helpful assistant. Synthesize a final, comprehensive answer from the following verified facts.
-If the facts are empty, state that you could not find an answer in the documents.
+You are an AI assistant specialised in answering questions from retrieved context.
 
-Verified Facts:
----
+Context you receive
+• VERIFIED FACTS – text snippets retrieved from the user's documents. Some may be irrelevant noise.  
+• ORIGINAL QUESTION – the user's actual query.
+
+Instructions
+1. Evaluate each snippet for relevance to the ORIGINAL QUESTION; ignore those that do not help answer it.  
+2. Synthesise an answer **using only information from the relevant snippets**.  
+3. If snippets contradict one another, mention the contradiction explicitly.  
+4. If the snippets do not contain the needed information, reply exactly with:  
+   "I could not find that information in the provided documents."  
+5. Provide a thorough, well-structured answer. Use paragraphs or bullet points where helpful, and include any relevant numbers/names exactly as they appear. There is **no strict sentence limit**, but aim for clarity over brevity.  
+6. Do **not** introduce external knowledge unless step 4 applies; in that case you may add a clearly-labelled "General knowledge" sentence after the required statement.
+
+Output format
+Answer:
+<your answer here>
+
+–––––  Retrieved Snippets  –––––
 {facts}
----
+––––––––––––––––––––––––––––––
 
-Query: "{query}"
-
-Final Answer:
+ORIGINAL QUESTION: "{query}"
 """
         response = self.ollama_client.generate_completion(
             model=self.ollama_config["generation_model"],
@@ -257,6 +272,25 @@ Final Answer:
         if not final_docs:
             return {"answer": "I could not find an answer in the documents.", "source_documents": []}
         
+        # --- Sanitize docs for JSON serialization (no NaN/Inf types) ---
+        def _clean_val(v):
+            if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                return None
+            if isinstance(v, (np.floating,)):
+                try:
+                    f = float(v)
+                    if math.isnan(f) or math.isinf(f):
+                        return None
+                    return f
+                except Exception:
+                    return None
+            return v
+
+        for doc in final_docs:
+            for key in ['score', '_distance', 'rerank_score']:
+                if key in doc:
+                    doc[key] = _clean_val(doc[key])
+
         context = "\n\n".join([doc['text'] for doc in final_docs])
         final_answer = self._synthesize_final_answer(query, context)
         

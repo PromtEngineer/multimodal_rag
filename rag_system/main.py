@@ -151,7 +151,8 @@ PIPELINE_CONFIGS = {
         },
         "query_decomposition": {
             "enabled": True,
-            "max_sub_queries": 3
+            "max_sub_queries": 3,
+            "compose_from_sub_answers": True
         },
         "retrieval_k": 20,
         "context_window_size": 0

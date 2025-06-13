@@ -9,38 +9,91 @@ class QueryDecomposer:
 
     def decompose(self, query: str) -> List[str]:
         prompt = f"""
-You are a query decomposition expert. Analyze the user query and decide if it should be broken down into sub-questions.
+You are an expert at query decomposition for a Retrieval-Augmented Generation (RAG) system. Your goal is to break down a complex user query into a series of simpler, standalone sub-queries. Each sub-query will be used to retrieve relevant documents independently.
 
-WHEN TO DECOMPOSE:
-- Complex queries with multiple distinct aspects (e.g., "What are the costs and benefits of DeepSeek?")
-- Queries asking for comparisons (e.g., "Compare the pricing between invoice 1039 and 1041")
-- Multi-part questions (e.g., "Who is the CEO and what is the company's revenue?")
-- Questions with conjunctions like "and", "or", "also" (e.g., "What is the address and phone number?")
+First, analyze the user's query to determine if it requires decomposition.
 
-WHEN NOT TO DECOMPOSE:
-- Simple, direct questions (e.g., "What is the invoice amount?")
-- Single-concept queries (e.g., "What is DeepSeek?")
-- Questions asking for a specific piece of information (e.g., "What is the due date?")
+**Decomposition is necessary for:**
+- **Multi-part questions:** Queries containing "and", "or", "also" that join distinct informational needs. (e.g., "What are the performance and training costs of DeepSeek-V3?")
+- **Comparative questions:** Queries that ask to compare or contrast two or more items. For these, break the query into separate fact-finding questions for each item. The final synthesis step will handle the comparison.
+- **Temporal or sequential questions:** Queries asking about a sequence of events or changes over time.
 
-If the query should be decomposed, break it into 2-3 simple, independent sub-questions that together cover the original query.
-If not, return the original query as the only item.
+**Decomposition is NOT necessary for:**
+- **Simple, factual questions:** Queries asking for a single piece of information. (e.g., "What is the architecture of DeepSeek-V3?")
+- **Ambiguous queries that need clarification, not decomposition.** (e.g., "Tell me about the model.")
 
-Each sub-question should:
-- Be answerable independently
-- Cover a specific aspect of the original query
-- Be clear and unambiguous
+**Instructions:**
+1.  **Analyze the query step-by-step.** First, decide if decomposition is needed and explain why in your reasoning.
+2.  If decomposition is needed, generate self-contained sub-queries. Each must be answerable on its own without context from the others.
+3.  If decomposition is not needed, the `sub_queries` list should contain only the original, unmodified query.
+4.  The sub-queries should be phrased as clear, simple questions.
 
-Query: "{query}"
+**Query:** "{query}"
 
-Return a JSON object with a single key "sub_queries" which is a list of strings.
+---
+**EXAMPLES**
+
+**Example 1: Multi-Part Query**
+Query: "What were the main findings of the aiconfig report and how do they compare to the results from the RAG paper?"
+JSON Output:
+{{
+  "reasoning": "The query asks for two distinct pieces of information: the findings from one report and a comparison to another. This requires two separate retrieval steps.",
+  "sub_queries": [
+    "What were the main findings of the aiconfig report?",
+    "How do the findings of the aiconfig report compare to the results from the RAG paper?"
+  ]
+}}
+
+**Example 2: Simple Query**
+Query: "Summarize the contributions of the DeepSeek-V3 paper."
+JSON Output:
+{{
+  "reasoning": "This is a direct request for a summary of a single document and does not contain multiple parts.",
+  "sub_queries": [
+    "Summarize the contributions of the DeepSeek-V3 paper."
+  ]
+}}
+
+**Example 3: Comparative Query**
+Query: "Did Microsoft or Google make more money last year?"
+JSON Output:
+{{
+  "reasoning": "This is a comparative query that requires fetching the profit for each company before a comparison can be made.",
+  "sub_queries": [
+    "How much profit did Microsoft make last year?",
+    "How much profit did Google make last year?"
+  ]
+}}
+
+**Example 4: Comparative Query with different phrasing**
+Query: "Who has more siblings, Jamie or Sansa?"
+JSON Output:
+{{
+  "reasoning": "This comparative query needs the sibling count for both individuals to be answered.",
+  "sub_queries": [
+    "How many siblings does Jamie have?",
+    "How many siblings does Sansa have?"
+  ]
+}}
+---
+
+Now, provide your response for the query above. Return a JSON object with "reasoning" and "sub_queries" keys.
 
 JSON Output:
 """
         response = self.llm_client.generate_completion(self.llm_model, prompt, format="json")
+        response_text = response.get('response', '{}')
         try:
-            data = json.loads(response.get('response', '{}'))
+            # Handle potential markdown code blocks in the response
+            if response_text.strip().startswith("```json"):
+                response_text = response_text.strip()[7:-4]
+
+            data = json.loads(response_text)
             sub_queries = data.get('sub_queries', [query])
+            reasoning = data.get('reasoning', 'No reasoning provided.')
             
+            print(f"Query Decomposition Reasoning: {reasoning}")
+
             # Ensure we always have at least the original query
             if not sub_queries or len(sub_queries) == 0:
                 return [query]
@@ -48,6 +101,7 @@ JSON Output:
             # Limit to maximum 3 sub-queries to avoid excessive API calls
             return sub_queries[:3]
         except json.JSONDecodeError:
+            print(f"Failed to decode JSON from query decomposer: {response_text}")
             return [query]
 
 class HyDEGenerator:
