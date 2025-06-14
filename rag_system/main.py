@@ -1,6 +1,7 @@
 import os
 import json
 import sys
+import argparse
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -11,25 +12,17 @@ load_dotenv()
 # python -m rag_system.main api
 
 from rag_system.agent.loop import Agent
+from rag_system.agent.react_agent import ReActAgent
 from rag_system.indexing.representations import QwenEmbedder
 from rag_system.indexing.embedders import LanceDBManager
 from rag_system.indexing.multimodal import MultimodalProcessor, LocalVisionModel
 from rag_system.pipelines.indexing_pipeline import IndexingPipeline
 from rag_system.pipelines.retrieval_pipeline import RetrievalPipeline
 from rag_system.utils.ollama_client import OllamaClient
+from rag_system.factory import get_agent
+from rag_system.config import PIPELINE_CONFIGS
 
-# --- Configuration ---
-# This defines the models and storage locations for our advanced RAG system.
-# The embedding and reranker models are now loaded locally via Hugging Face.
-# Ensure you have run:
-# ollama pull llama3            (for text generation)
-# ollama pull qwen2.5vl:7b       (for vision-language tasks)
-OLLAMA_CONFIG = {
-    "host": "http://localhost:11434",
-    "generation_model": "qwen2.5vl:7b",
-    "vlm_model": "qwen2.5vl:7b"
-}
-
+# Define pipeline configurations
 PIPELINE_CONFIGS = {
     "indexing": {
         "storage": {
@@ -168,60 +161,72 @@ PIPELINE_CONFIGS = {
     },
     "graph_rag": {
         "enabled": False, # Keep disabled for now unless specified
+    },
+    "react": {
+        "description": "A ReAct-style agent that uses tools to answer queries.",
+        "retrieval": {
+            "retriever": "multivector",
+            "embeddings": "qwen",
+            "search_type": "hybrid",
+            "reranker": "qwen", 
+            "context_expansion": True,
+        },
+        "react": {
+            "max_iterations": 5
+        }
     }
 }
 
-def get_agent(mode="default"):
-    """Initializes and returns a single instance of the RAG Agent."""
-    try:
-        ollama_client = OllamaClient(OLLAMA_CONFIG["host"])
-    except ConnectionError as e:
-        print(e)
-        # In a real application, you might want to exit or handle this more gracefully
-        return None
+OLLAMA_CONFIG = {
+    "host": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
+    "embedding_model": "nomic-embed-text",
+    "generation_model": "qwen:7b",
+    "rerank_model": "qwen:7b",
+    "qwen_vl_model": "qwen-vl-chat"
+}
+
+def get_agent(mode: str = "default") -> Agent | ReActAgent:
+    """
+    Factory function to get an instance of the RAG agent based on the specified mode.
+    """
+    load_dotenv()
     
-    # Pass the specified config mode
+    # Initialize the Ollama client with the host from config
+    llm_client = OllamaClient(host=OLLAMA_CONFIG["host"])
+    
+    # Get the configuration for the specified mode
     config = PIPELINE_CONFIGS.get(mode, PIPELINE_CONFIGS['default'])
-    agent = Agent(config, ollama_client, OLLAMA_CONFIG)
+    
+    # Determine which agent class to instantiate
+    if mode == "react":
+        agent_class = ReActAgent
+    else:
+        agent_class = Agent
+        
+    agent = agent_class(
+        pipeline_configs=config, 
+        llm_client=llm_client, 
+        ollama_config=OLLAMA_CONFIG
+    )
     return agent
 
-def run_indexing(file_paths: list = None, table_name: str | None = None):
-    print("\n--- Running Multimodal Indexing Pipeline ---")
-    config = PIPELINE_CONFIGS["indexing"]
+def run_indexing(docs_path: str, config_mode: str = "default"):
+    """Runs the indexing pipeline for the specified documents."""
+    print(f"📚 Starting indexing for documents in: {docs_path}")
     
-    try:
-        ollama_client = OllamaClient(OLLAMA_CONFIG["host"])
-    except ConnectionError as e:
-        print(e)
+    # Get the appropriate indexing pipeline from the factory
+    indexing_pipeline = IndexingPipeline(PIPELINE_CONFIGS[config_mode])
+    
+    # Find all PDF files in the directory
+    pdf_files = [os.path.join(docs_path, f) for f in os.listdir(docs_path) if f.endswith(".pdf")]
+    
+    if not pdf_files:
+        print("No PDF files found to index.")
         return
 
-    import copy
-    config_override = copy.deepcopy(config)
-    if table_name:
-        # Override the dense retriever table name for this indexing run
-        config_override["retrievers"]["dense"]["lancedb_table_name"] = table_name
-        # Also update storage text_table_name to keep things consistent
-        config_override["storage"]["text_table_name"] = table_name
-
-    pipeline = IndexingPipeline(config_override, ollama_client, OLLAMA_CONFIG)
-    
-    pdf_files = []
-    if file_paths:
-        pdf_files = [f for f in file_paths if f.endswith('.pdf')]
-        if not pdf_files:
-            print("Warning: No PDF files found in the provided file paths.")
-            return
-    else:
-        # Default behavior: Get all PDF files from the documents directory
-        doc_dir = "rag_system/documents"
-        if os.path.exists(doc_dir):
-            pdf_files = [os.path.join(doc_dir, f) for f in os.listdir(doc_dir) if f.endswith('.pdf')]
-        if not pdf_files:
-            print(f"Warning: No PDF files found in the default directory '{doc_dir}'.")
-            return
-
-    pipeline.run(pdf_files)
-    print("\n--- Indexing Complete ---")
+    # Process all documents through the pipeline
+    indexing_pipeline.process_documents(pdf_files)
+    print("✅ Indexing complete.")
 
 def run_chat(query: str):
     """
@@ -298,4 +303,30 @@ def main():
         print(f"Unknown command: {command}")
 
 if __name__ == "__main__":
-    main()
+    # This allows running the script from the command line to index documents.
+    parser = argparse.ArgumentParser(description="Main entry point for the RAG system.")
+    parser.add_argument(
+        '--index',
+        type=str,
+        help='Path to the directory containing documents to index.'
+    )
+    parser.add_argument(
+        '--config',
+        type=str,
+        default='default',
+        help='The configuration profile to use (e.g., "default", "fast").'
+    )
+
+    args = parser.parse_args()
+
+    # Load environment variables
+    load_dotenv()
+
+    if args.index:
+        run_indexing(args.index, args.config)
+    else:
+        # This is where you might start a server or interactive session
+        print("No action specified. Use --index to process documents.")
+        # Example of how to get an agent instance
+        # agent = get_agent(args.config)
+        # print(f"Agent loaded with '{args.config}' config.")

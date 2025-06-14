@@ -29,7 +29,8 @@ class RetrievalPipeline:
         self.ollama_config = ollama_config
         self.ollama_client = ollama_client
         
-        self.retriever_configs = self.config.get("retrievers", {})
+        # Support both legacy "retrievers" key and newer "retrieval" key
+        self.retriever_configs = self.config.get("retrievers") or self.config.get("retrieval", {})
         self.storage_config = self.config["storage"]
         
         # Defer initialization to just-in-time methods
@@ -37,13 +38,18 @@ class RetrievalPipeline:
         self.text_embedder = None
         self.dense_retriever = None
         self.bm25_retriever = None
-        self.graph_retriever = None
+        # Use a private attribute to avoid clashing with the public property
+        self._graph_retriever = None
         self.reranker = None
         self.ai_reranker = None
 
     def _get_db_manager(self):
         if self.db_manager is None:
-            self.db_manager = LanceDBManager(db_path=self.storage_config["lancedb_uri"])
+            # Accept either "db_path" (preferred) or legacy "lancedb_uri"
+            db_path = self.storage_config.get("db_path") or self.storage_config.get("lancedb_uri")
+            if not db_path:
+                raise ValueError("Storage config must contain 'db_path' or 'lancedb_uri'.")
+            self.db_manager = LanceDBManager(db_path=db_path)
         return self.db_manager
 
     def _get_text_embedder(self):
@@ -54,11 +60,25 @@ class RetrievalPipeline:
         return self.text_embedder
 
     def _get_dense_retriever(self):
-        if self.dense_retriever is None and self.retriever_configs.get("dense", {}).get("enabled"):
-            db_manager = self._get_db_manager()
-            text_embedder = self._get_text_embedder()
-            fusion_cfg = self.config.get("fusion", {})
-            self.dense_retriever = MultiVectorRetriever(db_manager, text_embedder, vision_model=None, fusion_config=fusion_cfg)
+        """Ensure a dense MultiVectorRetriever is always available unless explicitly disabled."""
+        if self.dense_retriever is None:
+            # If the config explicitly sets dense.enabled to False, respect it
+            if self.retriever_configs.get("dense", {}).get("enabled", True) is False:
+                return None
+
+            try:
+                db_manager = self._get_db_manager()
+                text_embedder = self._get_text_embedder()
+                fusion_cfg = self.config.get("fusion", {})
+                self.dense_retriever = MultiVectorRetriever(
+                    db_manager,
+                    text_embedder,
+                    vision_model=None,
+                    fusion_config=fusion_cfg,
+                )
+            except Exception as e:
+                print(f"❌ Failed to initialise dense retriever: {e}")
+                self.dense_retriever = None
         return self.dense_retriever
 
     def _get_bm25_retriever(self):
@@ -76,9 +96,9 @@ class RetrievalPipeline:
         return self.bm25_retriever
 
     def _get_graph_retriever(self):
-        if self.graph_retriever is None and self.retriever_configs.get("graph", {}).get("enabled"):
-            self.graph_retriever = GraphRetriever(graph_path=self.storage_config["graph_path"])
-        return self.graph_retriever
+        if self._graph_retriever is None and self.retriever_configs.get("graph", {}).get("enabled"):
+            self._graph_retriever = GraphRetriever(graph_path=self.storage_config["graph_path"])
+        return self._graph_retriever
 
     def _get_reranker(self):
         """Initializes the reranker for hybrid search score fusion."""
@@ -340,3 +360,17 @@ ORIGINAL QUESTION: "{query}"
         except Exception:
             # Any issues (missing table, bad schema, etc.) –> just return []
             return []
+
+    # -------------------- Public helper properties --------------------
+    @property
+    def retriever(self):
+        """Lazily exposes the main (dense) retriever so external components
+        like the ReAct agent tools can call `.retrieve()` directly without
+        reaching into private helpers. If the retriever has not yet been
+        instantiated, it is created on first access via `_get_dense_retriever`."""
+        return self._get_dense_retriever()
+
+    @property
+    def graph_retriever(self):
+        """Lazily exposes the graph retriever (if configured)."""
+        return self._get_graph_retriever()

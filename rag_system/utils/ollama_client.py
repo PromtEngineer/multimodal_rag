@@ -4,6 +4,7 @@ from typing import List, Dict, Any
 import base64
 from io import BytesIO
 from PIL import Image
+import httpx, asyncio
 
 class OllamaClient:
     """
@@ -33,11 +34,13 @@ class OllamaClient:
             return []
 
     def generate_completion(
-        self, 
-        model: str, 
-        prompt: str, 
-        format: str = "", 
-        images: List[Image.Image] = None
+        self,
+        model: str,
+        prompt: str,
+        *,
+        format: str = "",
+        images: List[Image.Image] | None = None,
+        enable_thinking: bool | None = None,
     ) -> Dict[str, Any]:
         """
         Generates a completion, now with optional support for images.
@@ -47,6 +50,7 @@ class OllamaClient:
             prompt: The text prompt for the model.
             format: The format for the response, e.g., "json".
             images: A list of Pillow Image objects to send to the VLM.
+            enable_thinking: Optional flag to disable chain-of-thought for Qwen models.
         """
         try:
             payload = {
@@ -54,11 +58,15 @@ class OllamaClient:
                 "prompt": prompt,
                 "stream": False
             }
-            if format == "json":
-                payload["format"] = "json"
+            if format:
+                payload["format"] = format
             
             if images:
                 payload["images"] = [self._image_to_base64(img) for img in images]
+
+            # Optional: disable thinking mode for Qwen3 / DeepSeek models
+            if enable_thinking is not None:
+                payload["chat_template_kwargs"] = {"enable_thinking": enable_thinking}
 
             response = requests.post(
                 f"{self.api_url}/generate",
@@ -71,6 +79,40 @@ class OllamaClient:
 
         except requests.exceptions.RequestException as e:
             print(f"Error generating completion: {e}")
+            return {}
+
+    # -------------------------------------------------------------
+    # Async variant – uses httpx so the caller can await multiple
+    # LLM calls concurrently (triage, verification, etc.).
+    # -------------------------------------------------------------
+    async def generate_completion_async(
+        self,
+        model: str,
+        prompt: str,
+        *,
+        format: str = "",
+        images: List[Image.Image] | None = None,
+        enable_thinking: bool | None = None,
+        timeout: int = 60,
+    ) -> Dict[str, Any]:
+        """Asynchronous version of generate_completion using httpx."""
+
+        payload = {"model": model, "prompt": prompt, "stream": False}
+        if format:
+            payload["format"] = format
+        if images:
+            payload["images"] = [self._image_to_base64(img) for img in images]
+
+        if enable_thinking is not None:
+            payload["chat_template_kwargs"] = {"enable_thinking": enable_thinking}
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(f"{self.api_url}/generate", json=payload)
+                resp.raise_for_status()
+                return json.loads(resp.text.strip().split("\n")[-1])
+        except (httpx.HTTPError, asyncio.CancelledError) as e:
+            print(f"Async Ollama completion error: {e}")
             return {}
 
 if __name__ == '__main__':

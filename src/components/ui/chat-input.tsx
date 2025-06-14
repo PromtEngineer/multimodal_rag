@@ -145,7 +145,7 @@ export function ChatInput({
           </div>
         )}
 
-        <div className="relative flex items-end gap-3">
+        <div className="relative flex items-center gap-3">
           {/* Hidden file input */}
           <input
             ref={fileInputRef}
@@ -181,7 +181,7 @@ export function ChatInput({
             />
             
             {/* Send button positioned inside textarea */}
-            <div className="absolute right-2 bottom-2">
+            <div className="absolute inset-y-0 right-2 flex items-center">
               <Button
                 type="submit"
                 size="sm"

@@ -240,26 +240,34 @@ User Query: "{query}"
                                 docs_for_q = []
                             sub_query_docs[sub_q] = docs_for_q
 
-                    # Aggregate docs and (optionally) create sub-answers
+                    # Aggregate docs and (optionally) prepare sub-answer prompts
                     for sub_q, sub_docs in sub_query_docs.items():
                         for d in sub_docs:
                             if d["chunk_id"] not in citations_seen:
                                 aggregated_docs.append(d)
                                 citations_seen.add(d["chunk_id"])
 
-                        if compose_from_sub_answers:
-                            sub_evidence = "\n---\n".join([f"Source {i+1}:\n{d['text']}" for i, d in enumerate(sub_docs)])
+                    if compose_from_sub_answers:
+                        def _answer_sub_question(args):
+                            sq, sdocs = args
+                            sub_evidence = "\n---\n".join(
+                                [f"Source {i+1}:\n{d['text']}" for i, d in enumerate(sdocs)]
+                            )
                             sub_prompt = (
                                 "You are a helpful assistant. Using only the evidence given, answer the sub-question in one or two concise sentences.\n\n"
                                 f"Evidence:\n{sub_evidence}\n\n"
-                                f"Sub-Question: {sub_q}\nAnswer:"
+                                f"Sub-Question: {sq}\nAnswer:"
                             )
                             sub_resp = self.llm_client.generate_completion(
                                 model=self.ollama_config["generation_model"],
                                 prompt=sub_prompt,
                             )
                             sub_answer = sub_resp.get("response", "Not found").strip()
-                            sub_answers.append({"question": sub_q, "answer": sub_answer})
+                            return {"question": sq, "answer": sub_answer}
+
+                        with concurrent.futures.ThreadPoolExecutor(max_workers=min(3, len(sub_query_docs))) as executor:
+                            futures = executor.map(_answer_sub_question, sub_query_docs.items())
+                            sub_answers.extend(list(futures))
 
                     # --- Compose final answer ---
                     if compose_from_sub_answers and sub_answers:

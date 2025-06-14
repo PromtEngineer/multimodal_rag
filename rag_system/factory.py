@@ -1,0 +1,43 @@
+import os
+from dotenv import load_dotenv
+
+def get_agent(mode: str = "default"):
+    """
+    Factory function to get an instance of the RAG agent based on the specified mode.
+    This uses local imports to prevent circular dependencies.
+    """
+    from rag_system.agent.loop import Agent
+    from rag_system.agent.react_agent import ReActAgent
+    from rag_system.utils.ollama_client import OllamaClient
+    from rag_system.config import PIPELINE_CONFIGS, OLLAMA_CONFIG
+
+    load_dotenv()
+    
+    llm_client = OllamaClient(host=OLLAMA_CONFIG["host"])
+    config = PIPELINE_CONFIGS.get(mode, PIPELINE_CONFIGS['default'])
+    
+    if mode == "react":
+        agent_class = ReActAgent
+    else:
+        agent_class = Agent
+        
+    agent = agent_class(
+        pipeline_configs=config, 
+        llm_client=llm_client, 
+        ollama_config=OLLAMA_CONFIG
+    )
+    return agent
+
+def get_indexing_pipeline(mode: str = "default"):
+    """
+    Factory function to get an instance of the Indexing Pipeline.
+    """
+    from rag_system.pipelines.indexing_pipeline import IndexingPipeline
+    from rag_system.config import PIPELINE_CONFIGS, OLLAMA_CONFIG
+    from rag_system.utils.ollama_client import OllamaClient
+
+    load_dotenv()
+    llm_client = OllamaClient(host=OLLAMA_CONFIG["host"])
+    config = PIPELINE_CONFIGS.get(mode, PIPELINE_CONFIGS['default'])
+    
+    return IndexingPipeline(config, llm_client, OLLAMA_CONFIG) 

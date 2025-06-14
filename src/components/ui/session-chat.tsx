@@ -220,7 +220,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
     }
   }
 
-  const showEmptyState = (!sessionId || (sessionId && messages.length === 0)) && !isLoading
+  const showEmptyState = (!sessionId || messages.length === 0) && !isLoading
 
   return (
     <div className={`flex flex-col h-full ${className}`}>
@@ -229,38 +229,36 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
           {error}
         </div>
       )}
-      
+
+      {/* Conversation area (may be empty) */}
       {showEmptyState ? (
-        <EmptyChatState
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center text-gray-500 text-lg select-none">What can I help you find?</div>
+        </div>
+      ) : (
+        <ConversationPage 
+          messages={messages}
+          isLoading={isLoading}
+          onAction={handleAction}
+          className="flex-1 min-h-0 overflow-hidden"
+        />
+      )}
+
+      {/* Input section always present */}
+      <div className="flex-shrink-0 sticky bottom-0 z-10 bg-black/90 backdrop-blur-md">
+        {uploadedFiles.length > 0 && !isIndexed && (
+          <div className="p-2 text-center bg-yellow-100 dark:bg-yellow-900 border-t border-b border-gray-200 dark:border-gray-700">
+            <Button onClick={handleIndexDocuments} disabled={isLoading}>
+              {isLoading ? 'Indexing...' : 'Index Documents to Enable Chat'}
+            </Button>
+          </div>
+        )}
+        <ChatInput
           onSendMessage={sendMessage}
-          disabled={isLoading}
+          disabled={isLoading || (uploadedFiles.length > 0 && !isIndexed)}
           placeholder="Message localGPT..."
         />
-      ) : (
-        <>
-          <ConversationPage 
-            messages={messages}
-            isLoading={isLoading}
-            onAction={handleAction}
-            className="flex-1 min-h-0 overflow-hidden"
-          />
-          
-          <div className="flex-shrink-0 sticky bottom-0 z-10">
-            {uploadedFiles.length > 0 && !isIndexed && (
-              <div className="p-2 text-center bg-yellow-100 dark:bg-yellow-900 border-t border-b border-gray-200 dark:border-gray-700">
-                <Button onClick={handleIndexDocuments} disabled={isLoading}>
-                  {isLoading ? 'Indexing...' : 'Index Documents to Enable Chat'}
-                </Button>
-              </div>
-            )}
-            <ChatInput
-              onSendMessage={sendMessage}
-              disabled={isLoading || (uploadedFiles.length > 0 && !isIndexed)}
-              placeholder="Message localGPT..."
-            />
-          </div>
-        </>
-      )}
+      </div>
     </div>
   )
 })

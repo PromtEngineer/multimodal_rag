@@ -17,6 +17,7 @@ from functools import lru_cache
 from rag_system.indexing.embedders import LanceDBManager
 from rag_system.indexing.representations import QwenEmbedder
 from rag_system.indexing.multimodal import LocalVisionModel
+from rag_system.utils.logging_utils import log_retrieval_results
 
 # BM25Retriever is no longer needed.
 # class BM25Retriever: ...
@@ -77,6 +78,8 @@ class MultiVectorRetriever:
         print(f"\n--- Performing Retrieval for query: '{text_query}' on table '{table_name}' ---")
         
         try:
+            if table_name is None:
+                table_name = "default_text_table"
             tbl = self.db_manager.get_table(table_name)
             
             # Create / fetch cached text embedding for the query
@@ -184,6 +187,7 @@ class MultiVectorRetriever:
                 })
 
             logger.debug("Hybrid search returned %s results", len(retrieved_docs))
+            log_retrieval_results(retrieved_docs, k)
             print(f"Retrieved {len(retrieved_docs)} documents.")
             return retrieved_docs
         

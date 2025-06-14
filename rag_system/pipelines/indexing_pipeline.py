@@ -12,12 +12,12 @@ from rag_system.indexing.contextualizer import ContextualEnricher
 class IndexingPipeline:
     def __init__(self, config: Dict[str, Any], ollama_client: OllamaClient, ollama_config: Dict[str, str]):
         self.config = config
-        self.ollama_client = ollama_client
+        self.llm_client = ollama_client
         self.ollama_config = ollama_config
         self.pdf_converter = PDFConverter()
         self.chunker = MarkdownRecursiveChunker()
 
-        retriever_configs = self.config.get("retrievers", {})
+        retriever_configs = self.config.get("retrievers") or self.config.get("retrieval", {})
         storage_config = self.config["storage"]
         
         # Get batch processing configuration
@@ -26,8 +26,22 @@ class IndexingPipeline:
         self.enrichment_batch_size = indexing_config.get("enrichment_batch_size", 10)
         self.enable_progress_tracking = indexing_config.get("enable_progress_tracking", True)
 
-        if retriever_configs.get("dense", {}).get("enabled"):
-            self.lancedb_manager = LanceDBManager(db_path=storage_config["lancedb_uri"])
+        # Treat dense retrieval as enabled by default unless explicitly disabled
+        dense_cfg = retriever_configs.setdefault("dense", {})
+        dense_cfg.setdefault("enabled", True)
+
+        if dense_cfg.get("enabled"):
+            # Accept modern keys: db_path or lancedb_path; fall back to legacy lancedb_uri
+            db_path = (
+                storage_config.get("db_path")
+                or storage_config.get("lancedb_path")
+                or storage_config.get("lancedb_uri")
+            )
+            if not db_path:
+                raise KeyError(
+                    "Storage config must include 'db_path', 'lancedb_path', or 'lancedb_uri' for LanceDB."
+                )
+            self.lancedb_manager = LanceDBManager(db_path=db_path)
             self.vector_indexer = VectorIndexer(self.lancedb_manager)
             embedding_model = QwenEmbedder(
                 model_name=self.config.get("embedding_model_name", "BAAI/bge-small-en-v1.5")
@@ -39,14 +53,15 @@ class IndexingPipeline:
 
         if retriever_configs.get("graph", {}).get("enabled"):
             self.graph_extractor = GraphExtractor(
-                llm_client=self.ollama_client,
+                llm_client=self.llm_client,
                 llm_model=self.ollama_config["generation_model"]
             )
 
         if self.config.get("contextual_enricher", {}).get("enabled"):
+            enrichment_model = self.ollama_config.get("enrichment_model", self.ollama_config["generation_model"])
             self.contextual_enricher = ContextualEnricher(
-                llm_client=self.ollama_client,
-                llm_model=self.ollama_config["generation_model"],
+                llm_client=self.llm_client,
+                llm_model=enrichment_model,
                 batch_size=self.enrichment_batch_size
             )
 
@@ -102,7 +117,7 @@ class IndexingPipeline:
             memory_mb = estimate_memory_usage(all_chunks)
             print(f"📊 Estimated memory usage: {memory_mb:.1f}MB")
 
-            retriever_configs = self.config.get("retrievers", {})
+            retriever_configs = self.config.get("retrievers") or self.config.get("retrieval", {})
 
             # Step 3: Optional Contextual Enrichment (before indexing for consistency)
             if hasattr(self, 'contextual_enricher'):
@@ -118,7 +133,7 @@ class IndexingPipeline:
             # Step 4: Create BM25 Index from enriched chunks (for consistency with vector index)
             if hasattr(self, 'vector_indexer') and hasattr(self, 'embedding_generator'):
                 with timer("Vector Embedding & Indexing"):
-                    table_name = retriever_configs.get("dense", {}).get("lancedb_table_name", "default_text_table")
+                    table_name = self.config["storage"].get("text_table_name") or retriever_configs.get("dense", {}).get("lancedb_table_name", "default_text_table")
                     print(f"\n--- Generating embeddings with {self.config.get('embedding_model_name')} ---")
                     
                     embeddings = self.embedding_generator.generate(all_chunks)

@@ -2,15 +2,22 @@ import json
 import http.server
 import socketserver
 from urllib.parse import urlparse, parse_qs
+import os
+import requests
 
-# Import the core logic from the main RAG system script
-from rag_system.main import run_indexing, get_agent
+# Import the core logic from the new factory script
+from rag_system.factory import get_agent, get_indexing_pipeline
+
+# Get the desired agent mode from environment variables, defaulting to 'default'
+# This allows us to easily switch between 'default', 'fast', 'react', etc.
+AGENT_MODE = os.getenv("RAG_CONFIG_MODE", "default")
+RAG_AGENT = get_agent(AGENT_MODE)
+INDEXING_PIPELINE = get_indexing_pipeline(AGENT_MODE)
 
 # --- Global Singleton for the RAG Agent ---
 # The agent is initialized once when the server starts.
 # This avoids reloading all the models on every request.
 print("🧠 Initializing RAG Agent with MAXIMUM ACCURACY... (This may take a moment)")
-RAG_AGENT = get_agent("default")  # 🎯 Use accurate default configuration
 if RAG_AGENT is None:
     print("❌ Critical error: RAG Agent could not be initialized. Exiting.")
     exit(1)
@@ -34,6 +41,14 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             self.handle_chat()
         elif parsed_path.path == '/index':
             self.handle_index()
+        else:
+            self.send_json_response({"error": "Not Found"}, status_code=404)
+
+    def do_GET(self):
+        parsed_path = urlparse(self.path)
+
+        if parsed_path.path == '/models':
+            self.handle_models()
         else:
             self.send_json_response({"error": "Not Found"}, status_code=404)
 
@@ -84,8 +99,23 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             if session_id:
                 table_name = f"text_pages_{session_id}"
 
-            # run_indexing is synchronous and prints progress to console
-            run_indexing(file_paths=file_paths, table_name=table_name)
+            # The INDEXING_PIPELINE is already initialized. We just need to use it.
+            # If a session-specific table is needed, we can override the config for this run.
+            if table_name:
+                import copy
+                config_override = copy.deepcopy(INDEXING_PIPELINE.config)
+                config_override["storage"]["text_table_name"] = table_name
+                config_override.setdefault("retrievers", {}).setdefault("dense", {})["lancedb_table_name"] = table_name
+                # Create a temporary pipeline instance with the overridden config
+                temp_pipeline = INDEXING_PIPELINE.__class__(
+                    config_override, 
+                    INDEXING_PIPELINE.llm_client, 
+                    INDEXING_PIPELINE.ollama_config
+                )
+                temp_pipeline.run(file_paths)
+            else:
+                # Use the default pipeline
+                INDEXING_PIPELINE.run(file_paths)
 
             self.send_json_response({
                 "message": f"Indexing process for {len(file_paths)} file(s) completed successfully.",
@@ -95,7 +125,27 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             self.send_json_response({"error": "Invalid JSON"}, status_code=400)
         except Exception as e:
             self.send_json_response({"error": f"Failed to start indexing: {str(e)}"}, status_code=500)
-    
+
+    def handle_models(self):
+        """Return a list of locally installed Ollama models grouped by capability."""
+        try:
+            resp = requests.get(f"{RAG_AGENT.ollama_config['host']}/api/tags", timeout=5)
+            resp.raise_for_status()
+            data = resp.json()
+
+            all_models = [m.get('name') for m in data.get('models', [])]
+
+            # Very naive classification
+            embedding_models = [m for m in all_models if any(k in m for k in ['embed','bge','embedding','text'])]
+            generation_models = [m for m in all_models if m not in embedding_models]
+
+            self.send_json_response({
+                "generation_models": generation_models,
+                "embedding_models": embedding_models
+            })
+        except Exception as e:
+            self.send_json_response({"error": f"Could not list models: {e}"}, status_code=500)
+
     def send_json_response(self, data, status_code=200):
         """Utility to send a JSON response with CORS headers."""
         self.send_response(status_code)

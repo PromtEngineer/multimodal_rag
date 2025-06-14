@@ -43,6 +43,9 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
             self.handle_get_sessions()
         elif parsed_path.path == '/sessions/cleanup':
             self.handle_cleanup_sessions()
+        elif parsed_path.path.startswith('/sessions/') and parsed_path.path.endswith('/documents'):
+            session_id = parsed_path.path.split('/')[-2]
+            self.handle_get_session_documents(session_id)
         elif parsed_path.path.startswith('/sessions/'):
             session_id = parsed_path.path.split('/')[-1]
             self.handle_get_session(session_id)
@@ -170,6 +173,27 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
             self.send_json_response({
                 "error": f"Failed to get session: {str(e)}"
             }, status_code=500)
+    
+    def handle_get_session_documents(self, session_id: str):
+        """Return documents and basic info for a session."""
+        try:
+            session = db.get_session(session_id)
+            if not session:
+                self.send_json_response({"error": "Session not found"}, status_code=404)
+                return
+
+            docs = db.get_documents_for_session(session_id)
+
+            # Extract original filenames from stored paths
+            filenames = [os.path.basename(p).split('_', 1)[-1] if '_' in os.path.basename(p) else os.path.basename(p) for p in docs]
+
+            self.send_json_response({
+                "session": session,
+                "files": filenames,
+                "file_count": len(docs)
+            })
+        except Exception as e:
+            self.send_json_response({"error": f"Failed to get documents: {str(e)}"}, status_code=500)
     
     def handle_create_session(self):
         """Create a new chat session"""

@@ -5,6 +5,9 @@ import { LocalGPTChat } from "@/components/ui/localgpt-chat"
 import { SessionSidebar } from "@/components/ui/session-sidebar"
 import { SessionChat } from "@/components/ui/session-chat"
 import { chatAPI, ChatSession } from "@/lib/api"
+import { LandingMenu } from "@/components/LandingMenu";
+import { IndexForm } from "@/components/IndexForm";
+import SessionIndexInfo from "@/components/SessionIndexInfo";
 
 export function Demo() {
     const [currentSessionId, setCurrentSessionId] = useState<string | undefined>()
@@ -12,6 +15,8 @@ export function Demo() {
     const [showConversation, setShowConversation] = useState(false)
     const [backendStatus, setBackendStatus] = useState<'checking' | 'connected' | 'error'>('checking')
     const [sidebarRef, setSidebarRef] = useState<{ refreshSessions: () => Promise<void> } | null>(null)
+    const [homeMode, setHomeMode] = useState<'HOME' | 'INDEX' | 'CHAT_EXISTING' | 'QUICK_CHAT'>('HOME')
+    const [showIndexInfo, setShowIndexInfo] = useState(false)
 
     console.log('Demo component rendering...')
 
@@ -88,11 +93,11 @@ export function Demo() {
             <main className={`flex h-screen grow flex-col transition-all duration-200 bg-black ${
                 showConversation ? 'overflow-hidden' : 'overflow-auto ml-12'
             }`}>
-                {!showConversation ? (
+                {homeMode === 'HOME' ? (
                     <div className="flex items-center justify-center h-full">
                         <div className="space-y-4">
-                            <LocalGPTChat />
-                            <div className="flex flex-col items-center gap-3">
+                            <LandingMenu onSelect={(m)=>setHomeMode(m==='INDEX'?'INDEX':m==='CHAT_EXISTING'?'CHAT_EXISTING':'QUICK_CHAT')} />
+                            <div className="flex flex-col items-center gap-3 mt-12">
                                 <div className="flex items-center gap-2 text-sm">
                                     {backendStatus === 'checking' && (
                                         <div className="flex items-center gap-2 text-gray-400">
@@ -133,15 +138,15 @@ export function Demo() {
                             </div>
                         </div>
                     </div>
-                ) : (
+                ) : homeMode==='CHAT_EXISTING' ? (
                     <div className="h-full flex flex-col bg-black">
                         {/* Header */}
                         <div className="p-4 border-b border-gray-800 bg-black">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
-                                    <h1 className="text-xl font-medium text-white">
+                                    <button onClick={()=>setShowIndexInfo(true)} className="text-xl font-medium text-white hover:underline">
                                         {currentSession?.title || 'New Chat'}
-                                    </h1>
+                                    </button>
                                     {currentSession && (
                                         <div className="flex items-center gap-4 text-sm text-gray-400">
                                             <span>{currentSession.message_count} messages</span>
@@ -150,6 +155,12 @@ export function Demo() {
                                     )}
                                 </div>
                                 <div className="flex gap-2">
+                                    <button
+                                        onClick={()=>setShowIndexInfo(true)}
+                                        className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
+                                    >
+                                        Index Info
+                                    </button>
                                     <div className="flex items-center gap-2 text-sm">
                                         {backendStatus === 'connected' && (
                                             <div className="flex items-center gap-2 text-green-400">
@@ -181,8 +192,24 @@ export function Demo() {
                             className="flex-1"
                         />
                     </div>
-                )}
+                ) : homeMode==='QUICK_CHAT' ? (
+                    <SessionChat
+                        sessionId={undefined}
+                        onSessionChange={handleSessionChange}
+                        className="flex-1"
+                    />
+                ) : null}
             </main>
+
+            {homeMode==='INDEX' && (
+              <div className="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-50">
+                <IndexForm onClose={()=>setHomeMode('HOME')} onIndexed={(s)=>{setHomeMode('CHAT_EXISTING'); handleSessionSelect(s.id);}} />
+              </div>
+            )}
+
+            {showIndexInfo && currentSessionId && (
+              <SessionIndexInfo sessionId={currentSessionId} onClose={()=>setShowIndexInfo(false)} />
+            )}
         </div>
     );
 } 

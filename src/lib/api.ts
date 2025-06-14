@@ -57,6 +57,11 @@ export interface HealthResponse {
   };
 }
 
+export interface ModelsResponse {
+  generation_models: string[];
+  embedding_models: string[];
+}
+
 export interface SessionResponse {
   sessions: ChatSession[];
   total: number;
@@ -350,6 +355,23 @@ class ChatAPI {
       timestamp: new Date().toISOString(),
       isLoading,
     };
+  }
+
+  // ---------------- Models ----------------
+  async getModels(): Promise<ModelsResponse> {
+    const resp = await fetch(`${API_BASE_URL}/models`);
+    if (!resp.ok) {
+      throw new Error(`Failed to fetch models list: ${resp.status}`);
+    }
+    return resp.json();
+  }
+
+  async getSessionDocuments(sessionId: string): Promise<{ files: string[]; file_count: number; session: ChatSession }> {
+    const resp = await fetch(`${API_BASE_URL}/sessions/${sessionId}/documents`);
+    if (!resp.ok) {
+      throw new Error(`Failed to fetch session documents: ${resp.status}`);
+    }
+    return resp.json();
   }
 }
 

@@ -2,6 +2,7 @@ from typing import List, Dict, Any
 from rag_system.utils.ollama_client import OllamaClient
 from rag_system.ingestion.chunking import create_contextual_window
 import logging
+import re
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -47,8 +48,24 @@ class ContextualEnricher:
             # A common way is to provide the system prompt and then the user's request.
             full_prompt = f"{SYSTEM_PROMPT}\n\n{human_prompt_content}"
             
-            response = self.llm_client.generate_completion(self.llm_model, full_prompt)
-            summary = response.get('response', '').strip()
+            response = self.llm_client.generate_completion(self.llm_model, full_prompt, enable_thinking=False)
+            summary_raw = response.get('response', '').strip()
+
+            # --- Sanitize the summary to remove chain-of-thought markers ---
+            # Many Qwen models wrap reasoning in <think>...</think> or similar tags.
+            cleaned = re.sub(r'<think[^>]*>.*?</think>', '', summary_raw, flags=re.IGNORECASE | re.DOTALL)
+            # Remove any assistant role tags that may appear
+            cleaned = re.sub(r'<assistant[^>]*>|</assistant>', '', cleaned, flags=re.IGNORECASE)
+            # If the model used an explicit "Answer:" delimiter keep only the part after it
+            if 'Answer:' in cleaned:
+                cleaned = cleaned.split('Answer:', 1)[1]
+
+            # Take the first non-empty line to avoid leftover blank lines
+            summary = next((ln.strip() for ln in cleaned.splitlines() if ln.strip()), '')
+
+            # Fallback to raw if cleaning removed everything
+            if not summary:
+                summary = summary_raw
 
             if not summary or len(summary) < 5:
                 logger.warning("Generated context summary is too short or empty. Skipping enrichment for this chunk.")
