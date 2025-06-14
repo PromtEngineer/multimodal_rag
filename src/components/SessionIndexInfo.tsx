@@ -15,14 +15,16 @@ export default function SessionIndexInfo({ sessionId, onClose }: Props) {
   useEffect(() => {
     (async () => {
       try {
-        const data = await chatAPI.getSessionDocuments(sessionId);
-        setFiles(data.files);
-        setSession(data.session);
-      } catch (e: any) {
-        setError(e.message || 'Failed to load');
-      } finally {
-        setLoading(false);
-      }
+        const data = await chatAPI.getSessionIndexes(sessionId);
+        const first = data.indexes[0];
+        if(first){
+          setSession(first.session??{...first, title:first.name, model_used:first.model_used||''});
+          setFiles(first.documents?.map((d:any)=>d.filename) || []);
+        } else {
+          setError('No indexes linked to this chat');
+        }
+      } catch (e:any){ setError(e.message||'Failed to load'); }
+      finally{ setLoading(false);}
     })();
   }, [sessionId]);
 

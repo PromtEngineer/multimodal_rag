@@ -29,16 +29,20 @@ export function IndexForm({ onClose, onIndexed }: Props) {
     if (!files) return;
     setLoading(true);
     try {
-      // 1. create session (placeholder title until AI renames maybe)
-      const session = await chatAPI.createSession(indexName || 'New Indexed Chat');
+      // 1. create index record
+      const { index_id } = await chatAPI.createIndex(indexName);
 
-      // 2. upload files to that session
-      await chatAPI.uploadFiles(session.id, Array.from(files));
+      // 2. upload files to index
+      await chatAPI.uploadFilesToIndex(index_id, Array.from(files));
 
-      // 3. trigger backend indexing
-      await chatAPI.indexDocuments(session.id);
+      // 3. build index (run pipeline)
+      await chatAPI.buildIndex(index_id);
 
-      // 4. callback to parent (parent decides navigation)
+      // 4. create chat session and link index
+      const session = await chatAPI.createSession(indexName);
+      await chatAPI.linkIndexToSession(session.id, index_id);
+
+      // 5. callback
       if (onIndexed) onIndexed(session);
     } catch (e) {
       console.error('Indexing failed', e);

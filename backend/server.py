@@ -43,10 +43,18 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
             self.handle_get_sessions()
         elif parsed_path.path == '/sessions/cleanup':
             self.handle_cleanup_sessions()
+        elif parsed_path.path == '/indexes':
+            self.handle_get_indexes()
+        elif parsed_path.path.startswith('/indexes/') and parsed_path.path.count('/') == 2:
+            index_id = parsed_path.path.split('/')[-1]
+            self.handle_get_index(index_id)
         elif parsed_path.path.startswith('/sessions/') and parsed_path.path.endswith('/documents'):
             session_id = parsed_path.path.split('/')[-2]
             self.handle_get_session_documents(session_id)
-        elif parsed_path.path.startswith('/sessions/'):
+        elif parsed_path.path.startswith('/sessions/') and parsed_path.path.endswith('/indexes'):
+            session_id = parsed_path.path.split('/')[-2]
+            self.handle_get_session_indexes(session_id)
+        elif parsed_path.path.startswith('/sessions/') and parsed_path.path.count('/') == 2:
             session_id = parsed_path.path.split('/')[-1]
             self.handle_get_session(session_id)
         else:
@@ -61,6 +69,19 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
             self.handle_chat()
         elif parsed_path.path == '/sessions':
             self.handle_create_session()
+        elif parsed_path.path == '/indexes':
+            self.handle_create_index()
+        elif parsed_path.path.startswith('/indexes/') and parsed_path.path.endswith('/upload'):
+            index_id = parsed_path.path.split('/')[-2]
+            self.handle_index_file_upload(index_id)
+        elif parsed_path.path.startswith('/indexes/') and parsed_path.path.endswith('/build'):
+            index_id = parsed_path.path.split('/')[-2]
+            self.handle_build_index(index_id)
+        elif parsed_path.path.startswith('/sessions/') and '/indexes/' in parsed_path.path:
+            parts = parsed_path.path.split('/')
+            session_id = parts[2]
+            index_id = parts[4]
+            self.handle_link_index_to_session(session_id, index_id)
         elif parsed_path.path.startswith('/sessions/') and parsed_path.path.endswith('/messages'):
             session_id = parsed_path.path.split('/')[-2]
             self.handle_session_chat(session_id)
@@ -81,6 +102,9 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
         if parsed_path.path.startswith('/sessions/') and parsed_path.path.count('/') == 2:
             session_id = parsed_path.path.split('/')[-1]
             self.handle_delete_session(session_id)
+        elif parsed_path.path.startswith('/indexes/') and parsed_path.path.count('/') == 2:
+            index_id = parsed_path.path.split('/')[-1]
+            self.handle_delete_index(index_id)
         else:
             self.send_response(404)
             self.end_headers()
@@ -256,7 +280,15 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
                 # The advanced RAG server runs on port 8001
                 rag_api_url = "http://localhost:8001/chat"
                 conversation_history = db.get_conversation_history(session_id)
-                rag_response = requests.post(rag_api_url, json={"query": message, "session_id": session_id})
+                # Determine vector table: prefer last linked index if exists
+                idx_ids = db.get_indexes_for_session(session_id)
+                table_name = None
+                if idx_ids:
+                    table_name = f"text_pages_{idx_ids[-1]}"
+                payload={"query": message, "session_id": session_id}
+                if table_name:
+                    payload["table_name"] = table_name
+                rag_response = requests.post(rag_api_url, json=payload)
                 
                 if rag_response.status_code == 200:
                     rag_data = rag_response.json()
@@ -291,21 +323,15 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
             self.send_json_response({"error": f"Server error: {str(e)}"}, status_code=500)
 
     def handle_delete_session(self, session_id: str):
-        """Delete a session"""
+        """Delete a session and its messages"""
         try:
             deleted = db.delete_session(session_id)
             if deleted:
-                self.send_json_response({
-                    "message": "Session deleted successfully"
-                })
+                self.send_json_response({'deleted': deleted})
             else:
-                self.send_json_response({
-                    "error": "Session not found"
-                }, status_code=404)
+                self.send_json_response({'error': 'Session not found'}, status_code=404)
         except Exception as e:
-            self.send_json_response({
-                "error": f"Failed to delete session: {str(e)}"
-            }, status_code=500)
+            self.send_json_response({'error': str(e)}, status_code=500)
     
     def handle_file_upload(self, session_id: str):
         """Handle file uploads, save them, and associate with the session."""
@@ -385,6 +411,105 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
             "warning": "This upload method is deprecated. Use the new file upload and indexing flow.",
             "message": "No action taken."
         }, status_code=410) # 410 Gone
+
+    def handle_get_indexes(self):
+        try:
+            data = db.list_indexes()
+            self.send_json_response({'indexes': data, 'total': len(data)})
+        except Exception as e:
+            self.send_json_response({'error': str(e)}, status_code=500)
+    
+    def handle_get_index(self, index_id: str):
+        try:
+            data = db.get_index(index_id)
+            if not data:
+                self.send_json_response({'error': 'Index not found'}, status_code=404)
+                return
+            self.send_json_response(data)
+        except Exception as e:
+            self.send_json_response({'error': str(e)}, status_code=500)
+    
+    def handle_create_index(self):
+        try:
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            name = data.get('name')
+            description = data.get('description')
+            metadata = data.get('metadata', {})
+            if not name:
+                self.send_json_response({'error': 'Name required'}, status_code=400)
+                return
+            idx_id = db.create_index(name, description, metadata)
+            self.send_json_response({'index_id': idx_id}, status_code=201)
+        except Exception as e:
+            self.send_json_response({'error': str(e)}, status_code=500)
+    
+    def handle_index_file_upload(self, index_id: str):
+        """Reuse file upload logic but store docs under index."""
+        form = cgi.FieldStorage(fp=self.rfile, headers=self.headers, environ={'REQUEST_METHOD':'POST', 'CONTENT_TYPE': self.headers['Content-Type']})
+        uploaded_files=[]
+        if 'files' in form:
+            files=form['files']
+            if not isinstance(files, list):
+                files=[files]
+            upload_dir='shared_uploads'
+            os.makedirs(upload_dir, exist_ok=True)
+            for f in files:
+                if f.filename:
+                    unique=f"{uuid.uuid4()}_{f.filename}"
+                    path=os.path.join(upload_dir, unique)
+                    with open(path,'wb') as out: out.write(f.file.read())
+                    db.add_document_to_index(index_id, f.filename, os.path.abspath(path))
+                    uploaded_files.append({'filename':f.filename,'stored_path':os.path.abspath(path)})
+        if not uploaded_files:
+            self.send_json_response({'error':'No files uploaded'}, status_code=400); return
+        self.send_json_response({'message':f"Uploaded {len(uploaded_files)} files","uploaded_files":uploaded_files})
+    
+    def handle_build_index(self, index_id: str):
+        try:
+            index=db.get_index(index_id)
+            if not index:
+                self.send_json_response({'error':'Index not found'}, status_code=404); return
+            file_paths=[d['stored_path'] for d in index.get('documents',[])]
+            if not file_paths:
+                self.send_json_response({'error':'No documents to index'}, status_code=400); return
+            # Delegate to advanced RAG API same as session indexing
+            rag_api_url = "http://localhost:8001/index"
+            import requests, json as _json
+            rag_resp = requests.post(rag_api_url, json={"file_paths": file_paths, "session_id": index_id})
+            if rag_resp.status_code==200:
+                self.send_json_response(rag_resp.json())
+            else:
+                self.send_json_response({"error":f"RAG indexing failed: {rag_resp.text}"}, status_code=500)
+        except Exception as e:
+            self.send_json_response({'error':str(e)}, status_code=500)
+    
+    def handle_link_index_to_session(self, session_id: str, index_id: str):
+        try:
+            db.link_index_to_session(session_id, index_id)
+            self.send_json_response({'message':'Index linked to session'})
+        except Exception as e:
+            self.send_json_response({'error':str(e)}, status_code=500)
+
+    def handle_get_session_indexes(self, session_id: str):
+        try:
+            idx_ids = db.get_indexes_for_session(session_id)
+            indexes = [db.get_index(i) for i in idx_ids if db.get_index(i)]
+            self.send_json_response({'indexes': indexes, 'total': len(indexes)})
+        except Exception as e:
+            self.send_json_response({'error': str(e)}, status_code=500)
+
+    def handle_delete_index(self, index_id: str):
+        """Remove an index, its documents, links, and the underlying LanceDB table."""
+        try:
+            deleted = db.delete_index(index_id)
+            if deleted:
+                self.send_json_response({'message': 'Index deleted successfully', 'index_id': index_id})
+            else:
+                self.send_json_response({'error': 'Index not found'}, status_code=404)
+        except Exception as e:
+            self.send_json_response({'error': str(e)}, status_code=500)
 
     def send_json_response(self, data, status_code=200):
         """Send JSON response with CORS headers"""

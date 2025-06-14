@@ -16,6 +16,13 @@ def get_agent(mode: str = "default"):
     llm_client = OllamaClient(host=OLLAMA_CONFIG["host"])
     config = PIPELINE_CONFIGS.get(mode, PIPELINE_CONFIGS['default'])
     
+    if 'storage' not in config:
+        config['storage'] = {
+            'db_path': 'lancedb',
+            'text_table_name': 'text_pages_default',
+            'image_table_name': 'image_pages'
+        }
+    
     if mode == "react":
         agent_class = ReActAgent
     else:

@@ -65,8 +65,9 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 self.send_json_response({"error": "Query is required"}, status_code=400)
                 return
 
-            table_name = None
-            if session_id:
+            # Allow explicit table_name override
+            table_name = data.get('table_name')
+            if not table_name and session_id:
                 table_name = f"text_pages_{session_id}"
 
             # Use the single, persistent agent instance to run the query
@@ -95,8 +96,9 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 }, status_code=400)
                 return
 
-            table_name = None
-            if session_id:
+            # Allow explicit table_name override
+            table_name = data.get('table_name')
+            if not table_name and session_id:
                 table_name = f"text_pages_{session_id}"
 
             # The INDEXING_PIPELINE is already initialized. We just need to use it.

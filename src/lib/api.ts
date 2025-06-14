@@ -373,6 +373,75 @@ class ChatAPI {
     }
     return resp.json();
   }
+
+  // ---------- Index endpoints ----------
+
+  async createIndex(name: string, description?: string, metadata: Record<string, unknown> = {}): Promise<{ index_id: string }> {
+    const resp = await fetch(`${API_BASE_URL}/indexes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description, metadata }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(`Create index error: ${err.error || resp.statusText}`);
+    }
+    return resp.json();
+  }
+
+  async uploadFilesToIndex(indexId: string, files: File[]): Promise<{ message: string; uploaded_files: any[] }> {
+    const fd = new FormData();
+    files.forEach((f) => fd.append('files', f, f.name));
+    const resp = await fetch(`${API_BASE_URL}/indexes/${indexId}/upload`, { method: 'POST', body: fd });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(`Upload to index error: ${err.error || resp.statusText}`);
+    }
+    return resp.json();
+  }
+
+  async buildIndex(indexId: string): Promise<{ message: string }> {
+    const resp = await fetch(`${API_BASE_URL}/indexes/${indexId}/build`, { method: 'POST' });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(`Build index error: ${err.error || resp.statusText}`);
+    }
+    return resp.json();
+  }
+
+  async linkIndexToSession(sessionId: string, indexId: string): Promise<{ message: string }> {
+    const resp = await fetch(`${API_BASE_URL}/sessions/${sessionId}/indexes/${indexId}`, { method: 'POST' });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(`Link index error: ${err.error || resp.statusText}`);
+    }
+    return resp.json();
+  }
+
+  async listIndexes(): Promise<{ indexes: any[]; total: number }> {
+    const resp = await fetch(`${API_BASE_URL}/indexes`);
+    if (!resp.ok) {
+      throw new Error(`Failed to list indexes: ${resp.status}`);
+    }
+    return resp.json();
+  }
+
+  async getSessionIndexes(sessionId: string): Promise<{ indexes: any[]; total: number }> {
+    const resp = await fetch(`${API_BASE_URL}/sessions/${sessionId}/indexes`);
+    if (!resp.ok) throw new Error(`Failed to get session indexes: ${resp.status}`);
+    return resp.json();
+  }
+
+  async deleteIndex(indexId: string): Promise<{ message: string }> {
+    const resp = await fetch(`${API_BASE_URL}/indexes/${indexId}`, {
+      method: 'DELETE',
+    });
+    if (!resp.ok) {
+      const data = await resp.json().catch(() => ({ error: 'Unknown error'}));
+      throw new Error(data.error || `Failed to delete index: ${resp.status}`);
+    }
+    return resp.json();
+  }
 }
 
 export const chatAPI = new ChatAPI(); 

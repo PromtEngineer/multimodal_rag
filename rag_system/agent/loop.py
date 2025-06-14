@@ -29,8 +29,12 @@ class Agent:
         self.query_decomposer = QueryDecomposer(llm_client, gen_model)
         
         # 🚀 OPTIMIZED: TTL cache now stores embeddings for semantic matching
-        self._query_cache: TTLCache = TTLCache(maxsize=100, ttl=300)
+        self._cache_max_size = 100  # fallback size limit for manual eviction helper
+        self._query_cache: TTLCache = TTLCache(maxsize=self._cache_max_size, ttl=300)
         self.semantic_cache_threshold = self.pipeline_configs.get("semantic_cache_threshold", 0.98)
+        # If set to "session", semantic-cache hits will be restricted to the same chat session.
+        # Otherwise (default "global") answers can be reused across sessions.
+        self.cache_scope = self.pipeline_configs.get("cache_scope", "global")  # 'global' or 'session'
         
         # 🚀 NEW: In-memory store for conversational history per session
         self.chat_histories: LRUCache = LRUCache(maxsize=100) # Stores history for 100 recent sessions
@@ -64,7 +68,7 @@ class Agent:
         
         return dot_product / (norm_v1 * norm_v2)
 
-    def _find_in_semantic_cache(self, query_embedding: np.ndarray) -> Optional[Dict[str, Any]]:
+    def _find_in_semantic_cache(self, query_embedding: np.ndarray, session_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Finds a semantically similar query in the cache."""
         if not self._query_cache or query_embedding is None:
             return None
@@ -73,6 +77,11 @@ class Agent:
             cached_embedding = cached_item.get('embedding')
             if cached_embedding is None:
                 continue
+
+            # Respect cache scoping: if scope is session-level, skip results from other sessions
+            if self.cache_scope == "session" and session_id is not None:
+                if cached_item.get("session_id") != session_id:
+                    continue
 
             try:
                 similarity = self._cosine_similarity(query_embedding, cached_embedding)
@@ -149,7 +158,7 @@ User query: "{query}"
         # Simple cache key based on query and type
         return f"{query_type}:{query.strip().lower()}"
     
-    def _cache_result(self, cache_key: str, result: Dict[str, Any]):
+    def _cache_result(self, cache_key: str, result: Dict[str, Any], session_id: Optional[str] = None):
         """Cache a result with size limit"""
         if len(self._query_cache) >= self._cache_max_size:
             # Remove oldest entry (simple FIFO eviction)
@@ -158,7 +167,8 @@ User query: "{query}"
         
         self._query_cache[cache_key] = {
             'result': result,
-            'timestamp': time.time()
+            'timestamp': time.time(),
+            'session_id': session_id
         }
 
     # ---------------- Public sync API (kept for backwards compatibility) --------------
@@ -177,24 +187,29 @@ User query: "{query}"
         
         # Create a contextual query that includes history for most operations
         contextual_query = self._format_query_with_history(query, history)
+        raw_query = query.strip()
         
         query_embedding = None
         # 🚀 OPTIMIZED: Semantic Cache Check
         if query_type != "direct_answer":
             text_embedder = self.retrieval_pipeline._get_text_embedder()
             if text_embedder:
-                # The embedder expects a list, so we wrap the query
-                query_embedding_list = text_embedder.create_embeddings([contextual_query])
-                if query_embedding_list.any():
+                # The embedder expects a list, so we wrap the *raw* query only.
+                query_embedding_list = text_embedder.create_embeddings([raw_query])
+                if isinstance(query_embedding_list, np.ndarray):
                     query_embedding = query_embedding_list[0]
-                    cached_result = self._find_in_semantic_cache(query_embedding)
-                    
-                    if cached_result:
-                        # Update history even on cache hit
-                        if session_id:
-                            history.append({"query": query, "answer": cached_result.get('answer', 'Cached answer not found.')})
-                            self.chat_histories[session_id] = history
-                        return cached_result
+                else:
+                    # Some embedders return a list – convert if necessary
+                    query_embedding = np.array(query_embedding_list[0])
+
+                cached_result = self._find_in_semantic_cache(query_embedding, session_id)
+
+                if cached_result:
+                    # Update history even on cache hit
+                    if session_id:
+                        history.append({"query": query, "answer": cached_result.get('answer', 'Cached answer not found.')})
+                        self.chat_histories[session_id] = history
+                    return cached_result
 
         if query_type == "direct_answer":
             prompt = f"You are a helpful assistant. Answer the user's question directly.\n\nUser: {contextual_query}\n\nAssistant:"
@@ -340,8 +355,12 @@ FINAL ANSWER:
             
         # 🚀 OPTIMIZED: Cache the result for future queries
         if query_type != "direct_answer" and query_embedding is not None:
-            cache_key = contextual_query # Key is for logging/debugging
-            self._query_cache[cache_key] = {"embedding": query_embedding, "result": result}
+            cache_key = raw_query  # Key is for logging/debugging
+            self._query_cache[cache_key] = {
+                "embedding": query_embedding,
+                "result": result,
+                "session_id": session_id,
+            }
         
         total_time = time.time() - start_time
         print(f"🚀 Total query processing time: {total_time:.2f}s")

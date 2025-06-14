@@ -8,6 +8,7 @@ import { chatAPI, ChatSession } from "@/lib/api"
 import { LandingMenu } from "@/components/LandingMenu";
 import { IndexForm } from "@/components/IndexForm";
 import SessionIndexInfo from "@/components/SessionIndexInfo";
+import IndexPicker from "@/components/IndexPicker";
 
 export function Demo() {
     const [currentSessionId, setCurrentSessionId] = useState<string | undefined>()
@@ -17,6 +18,7 @@ export function Demo() {
     const [sidebarRef, setSidebarRef] = useState<{ refreshSessions: () => Promise<void> } | null>(null)
     const [homeMode, setHomeMode] = useState<'HOME' | 'INDEX' | 'CHAT_EXISTING' | 'QUICK_CHAT'>('HOME')
     const [showIndexInfo, setShowIndexInfo] = useState(false)
+    const [showIndexPicker, setShowIndexPicker] = useState(false)
 
     console.log('Demo component rendering...')
 
@@ -96,7 +98,10 @@ export function Demo() {
                 {homeMode === 'HOME' ? (
                     <div className="flex items-center justify-center h-full">
                         <div className="space-y-4">
-                            <LandingMenu onSelect={(m)=>setHomeMode(m==='INDEX'?'INDEX':m==='CHAT_EXISTING'?'CHAT_EXISTING':'QUICK_CHAT')} />
+                            <LandingMenu onSelect={(m)=>{
+                                if(m==='CHAT_EXISTING'){ setShowIndexPicker(true); return; }
+                                setHomeMode(m==='INDEX'?'INDEX':'QUICK_CHAT');
+                            }} />
                             <div className="flex flex-col items-center gap-3 mt-12">
                                 <div className="flex items-center gap-2 text-sm">
                                     {backendStatus === 'checking' && (
@@ -209,6 +214,17 @@ export function Demo() {
 
             {showIndexInfo && currentSessionId && (
               <SessionIndexInfo sessionId={currentSessionId} onClose={()=>setShowIndexInfo(false)} />
+            )}
+
+            {showIndexPicker && (
+              <IndexPicker onClose={()=>setShowIndexPicker(false)} onSelect={async (idxId)=>{
+                // create session and link index then open chat
+                const session = await chatAPI.createSession()
+                await chatAPI.linkIndexToSession(session.id, idxId)
+                setShowIndexPicker(false)
+                setHomeMode('CHAT_EXISTING')
+                handleSessionSelect(session.id)
+              }} />
             )}
         </div>
     );
