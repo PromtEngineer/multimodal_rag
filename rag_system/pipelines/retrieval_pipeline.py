@@ -8,6 +8,7 @@ import lancedb
 import logging
 import math
 import numpy as np
+from threading import Lock
 
 from rag_system.utils.ollama_client import OllamaClient
 from rag_system.retrieval.retrievers import MultiVectorRetriever, GraphRetriever
@@ -19,6 +20,14 @@ from rag_system.rerankers.reranker import QwenReranker
 
 import os
 from PIL import Image
+
+# ---------------------------------------------------------------------------
+# Thread-safety helpers
+# ---------------------------------------------------------------------------
+
+# ColBERT (via rerankers) is not thread-safe; concurrent calls raise
+# "Already borrowed". We serialise access through a single global lock.
+_rerank_lock: Lock = Lock()
 
 class RetrievalPipeline:
     """
@@ -271,7 +280,9 @@ ORIGINAL QUESTION: "{query}"
 
             if strategy == "rerankers-lib":
                 texts = [d['text'] for d in retrieved_docs]
-                ranked = ai_reranker.rank(query=query, docs=texts)
+                # ColBERT's Rust backend isn't Sync; serialise calls.
+                with _rerank_lock:
+                    ranked = ai_reranker.rank(query=query, docs=texts)
                 # ranked is RankedResults; convert to list of (score, idx)
                 try:
                     pairs = [(r.score, r.document.doc_id) for r in ranked.results]
@@ -307,10 +318,15 @@ ORIGINAL QUESTION: "{query}"
                 future_to_chunk = {executor.submit(self._get_surrounding_chunks_lancedb, chunk, window_size): chunk for chunk in reranked_docs}
                 for future in concurrent.futures.as_completed(future_to_chunk):
                     try:
+                        seed_chunk = future_to_chunk[future]
                         surrounding_chunks = future.result()
                         for surrounding_chunk in surrounding_chunks:
-                            if surrounding_chunk['chunk_id'] not in expanded_chunks:
-                                expanded_chunks[surrounding_chunk['chunk_id']] = surrounding_chunk
+                            cid = surrounding_chunk['chunk_id']
+                            if cid not in expanded_chunks:
+                                # If this is the *central* chunk we already reranked, carry over its score
+                                if cid == seed_chunk.get('chunk_id') and 'rerank_score' in seed_chunk:
+                                    surrounding_chunk['rerank_score'] = seed_chunk['rerank_score']
+                                expanded_chunks[cid] = surrounding_chunk
                     except Exception as e:
                         print(f"Error expanding context for a chunk: {e}")
 
