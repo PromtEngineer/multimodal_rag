@@ -246,55 +246,65 @@ User query: "{query}"
                 print(f"Original query: '{query}' (Contextual: '{contextual_query}')")
                 print(f"Decomposed into {len(sub_queries)} sub-queries: {sub_queries}")
                 
-                compose_from_sub_answers = query_decomp_config.get("compose_from_sub_answers", True)
-                if compose_sub_answers is not None:
-                    compose_from_sub_answers = compose_sub_answers
+                # If decomposition produced only a single sub-query, skip the
+                # parallel/composition machinery for efficiency.
+                if len(sub_queries) == 1:
+                    print("--- Only one sub-query after decomposition; using direct retrieval path ---")
+                    result = self.retrieval_pipeline.run(
+                        sub_queries[0],
+                        table_name,
+                        0 if context_expand is False else None,
+                    )
+                else:
+                    compose_from_sub_answers = query_decomp_config.get("compose_from_sub_answers", True)
+                    if compose_sub_answers is not None:
+                        compose_from_sub_answers = compose_sub_answers
 
-                print(f"\n--- Processing {len(sub_queries)} sub-queries in parallel ---")
-                start_time_inner = time.time()
+                    print(f"\n--- Processing {len(sub_queries)} sub-queries in parallel ---")
+                    start_time_inner = time.time()
 
-                # Shared containers
-                sub_answers = []  # For two-stage composition
-                all_source_docs = []  # For single-stage aggregation
-                citations_seen = set()
+                    # Shared containers
+                    sub_answers = []  # For two-stage composition
+                    all_source_docs = []  # For single-stage aggregation
+                    citations_seen = set()
 
-                with concurrent.futures.ThreadPoolExecutor(max_workers=min(3, len(sub_queries))) as executor:
-                    future_to_query = {
-                        executor.submit(self.retrieval_pipeline.run, sub_query, table_name, 0 if context_expand is False else None): (i, sub_query)
-                        for i, sub_query in enumerate(sub_queries)
-                    }
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=min(3, len(sub_queries))) as executor:
+                        future_to_query = {
+                            executor.submit(self.retrieval_pipeline.run, sub_query, table_name, 0 if context_expand is False else None): (i, sub_query)
+                            for i, sub_query in enumerate(sub_queries)
+                        }
 
-                    for future in concurrent.futures.as_completed(future_to_query):
-                        i, sub_query = future_to_query[future]
-                        try:
-                            sub_result = future.result()
-                            print(f"✅ Sub-Query {i+1} completed: '{sub_query}'")
+                        for future in concurrent.futures.as_completed(future_to_query):
+                            i, sub_query = future_to_query[future]
+                            try:
+                                sub_result = future.result()
+                                print(f"✅ Sub-Query {i+1} completed: '{sub_query}'")
 
-                            if compose_from_sub_answers:
-                                sub_answers.append({
-                                    "question": sub_query,
-                                    "answer": sub_result.get("answer", "")
-                                })
-                                # Keep up to 5 citations per sub-query for traceability
-                                for doc in sub_result.get("source_documents", [])[:5]:
-                                    if doc['chunk_id'] not in citations_seen:
-                                        all_source_docs.append(doc)
-                                        citations_seen.add(doc['chunk_id'])
-                            else:
-                                # Aggregate unique docs (single-stage path)
-                                for doc in sub_result.get('source_documents', []):
-                                    if doc['chunk_id'] not in citations_seen:
-                                        all_source_docs.append(doc)
-                                        citations_seen.add(doc['chunk_id'])
-                        except Exception as e:
-                            print(f"❌ Sub-Query {i+1} failed: '{sub_query}' - {e}")
+                                if compose_from_sub_answers:
+                                    sub_answers.append({
+                                        "question": sub_query,
+                                        "answer": sub_result.get("answer", "")
+                                    })
+                                    # Keep up to 5 citations per sub-query for traceability
+                                    for doc in sub_result.get("source_documents", [])[:5]:
+                                        if doc['chunk_id'] not in citations_seen:
+                                            all_source_docs.append(doc)
+                                            citations_seen.add(doc['chunk_id'])
+                                else:
+                                    # Aggregate unique docs (single-stage path)
+                                    for doc in sub_result.get('source_documents', []):
+                                        if doc['chunk_id'] not in citations_seen:
+                                            all_source_docs.append(doc)
+                                            citations_seen.add(doc['chunk_id'])
+                            except Exception as e:
+                                print(f"❌ Sub-Query {i+1} failed: '{sub_query}' - {e}")
 
-                parallel_time = time.time() - start_time_inner
-                print(f"🚀 Parallel processing completed in {parallel_time:.2f}s")
+                    parallel_time = time.time() - start_time_inner
+                    print(f"🚀 Parallel processing completed in {parallel_time:.2f}s")
 
-                if compose_from_sub_answers:
-                    print("\n--- Composing final answer from sub-answers ---")
-                    compose_prompt = f"""
+                    if compose_from_sub_answers:
+                        print("\n--- Composing final answer from sub-answers ---")
+                        compose_prompt = f"""
 You are an expert answer composer for a Retrieval-Augmented Generation (RAG) system.
 
 Context:
@@ -320,30 +330,30 @@ SUB-ANSWERS (JSON):
 ------
 FINAL ANSWER:
 """
-                    compose_resp = await self.llm_client.generate_completion_async(
-                        self.ollama_config["generation_model"], compose_prompt
-                    )
-                    final_answer = compose_resp.get('response', 'Unable to generate an answer.')
+                        compose_resp = await self.llm_client.generate_completion_async(
+                            self.ollama_config["generation_model"], compose_prompt
+                        )
+                        final_answer = compose_resp.get('response', 'Unable to generate an answer.')
 
-                    result = {
-                        "answer": final_answer,
-                        "source_documents": all_source_docs
-                    }
-                else:
-                    print(f"\n--- Aggregated {len(all_source_docs)} unique documents from all sub-queries ---")
-
-                    if all_source_docs:
-                        aggregated_context = "\n\n".join([doc['text'] for doc in all_source_docs])
-                        final_answer = self.retrieval_pipeline._synthesize_final_answer(contextual_query, aggregated_context)
                         result = {
                             "answer": final_answer,
                             "source_documents": all_source_docs
                         }
                     else:
-                        result = {
-                            "answer": "I could not find relevant information to answer your question.",
-                            "source_documents": []
-                        }
+                        print(f"\n--- Aggregated {len(all_source_docs)} unique documents from all sub-queries ---")
+
+                        if all_source_docs:
+                            aggregated_context = "\n\n".join([doc['text'] for doc in all_source_docs])
+                            final_answer = self.retrieval_pipeline._synthesize_final_answer(contextual_query, aggregated_context)
+                            result = {
+                                "answer": final_answer,
+                                "source_documents": all_source_docs
+                            }
+                        else:
+                            result = {
+                                "answer": "I could not find relevant information to answer your question.",
+                                "source_documents": []
+                            }
             else:
                 # Standard retrieval (single-query)
                 retrieved_docs = self.retrieval_pipeline.retriever.retrieve(query=contextual_query, table_name=table_name or self.retrieval_pipeline.storage_config["text_table_name"], k=self.retrieval_pipeline.config.get("retrieval_k",10)) if hasattr(self.retrieval_pipeline,"retriever") and self.retrieval_pipeline.retriever else []
