@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useState, useEffect } from "react"
-import { Plus, MessageSquare, Calendar, Hash, Trash2 } from "lucide-react"
+import { Plus, MessageSquare, MoreVertical } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ChatSession, chatAPI } from "@/lib/api"
@@ -31,6 +31,7 @@ export function SessionSidebar({
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
 
   // Load sessions on mount
   useEffect(() => {
@@ -167,39 +168,28 @@ export function SessionSidebar({
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0 pr-8">
-                        <div className="flex items-center gap-2 mb-1">
-                          <MessageSquare className="w-3 h-3 flex-shrink-0" />
-                          <p className="font-medium text-sm truncate">
-                            {truncateTitle(session.title)}
-                          </p>
-                        </div>
-                        
                         <div className="flex items-center gap-3 text-xs opacity-70">
-                          <div className="flex items-center gap-1">
-                            <Hash className="w-3 h-3" />
-                            <span>{session.message_count}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            <span>{formatDate(session.updated_at)}</span>
-                          </div>
+                          {/* message count removed */}
                         </div>
-                        
-                        <div className="text-xs mt-1 opacity-50">
-                          {session.model_used}
-                        </div>
+                        <p className="font-medium text-sm truncate mb-1">
+                          {truncateTitle(session.title)}
+                        </p>
                       </div>
                     </div>
                   </button>
                   
-                  {/* Delete button - appears on hover */}
-                  <button
-                    onClick={(e) => handleDeleteSession(session.id, e)}
-                    className="absolute right-2 top-2 p-1.5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 rounded text-gray-400 hover:text-white"
-                    title="Delete conversation"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+                  {/* Overflow menu */}
+                  <div className="absolute right-2 top-2 index-row-menu">
+                    <button onClick={(e)=>{e.stopPropagation(); setMenuOpenId(menuOpenId===session.id?null:session.id);}} className="p-1 text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition">
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
+                    {menuOpenId===session.id && (
+                      <div className="absolute right-0 top-full mt-1 bg-black/90 backdrop-blur border border-white/10 rounded shadow-lg py-1 w-32 text-sm z-50">
+                        <button onClick={(e)=>{e.stopPropagation(); onSessionSelect(session.id); setMenuOpenId(null);}} className="block w-full text-left px-4 py-2 hover:bg-white/10">Open</button>
+                        <button onClick={(e)=>handleDeleteSession(session.id,e)} className="block w-full text-left px-4 py-2 hover:bg-white/10 text-red-400 hover:text-red-500">Delete</button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

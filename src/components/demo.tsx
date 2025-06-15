@@ -152,12 +152,7 @@ export function Demo() {
                                     <button onClick={()=>setShowIndexInfo(true)} className="text-xl font-medium text-white hover:underline">
                                         {currentSession?.title || 'New Chat'}
                                     </button>
-                                    {currentSession && (
-                                        <div className="flex items-center gap-4 text-sm text-gray-400">
-                                            <span>{currentSession.message_count} messages</span>
-                                            <span>{currentSession.model_used}</span>
-                                        </div>
-                                    )}
+                                    {/* message count removed */}
                                 </div>
                                 <div className="flex gap-2">
                                     <button
@@ -180,12 +175,6 @@ export function Demo() {
                                             </div>
                                         )}
                                     </div>
-                                    <button
-                                        onClick={handleNewSession}
-                                        className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
-                                    >
-                                        Back to Home
-                                    </button>
                                 </div>
                             </div>
                         </div>
