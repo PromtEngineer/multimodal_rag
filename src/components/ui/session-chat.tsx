@@ -34,6 +34,12 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
   const [error, setError] = useState<string | null>(null)
   const [uploadedFiles, setUploadedFiles] = useState<{filename: string, stored_path: string}[]>([])
   const [isIndexed, setIsIndexed] = useState(false)
+  const [composeSubAnswers, setComposeSubAnswers] = useState<boolean>(true)
+  const [enableDecompose, setEnableDecompose] = useState<boolean>(true)
+  const [enableAiRerank, setEnableAiRerank] = useState<boolean>(false)
+  const [enableContextExpand, setEnableContextExpand] = useState<boolean>(true)
+  const [enableStream, setEnableStream] = useState<boolean>(false)
+  const [currentIndexId, setCurrentIndexId] = useState<string | null>(null)
   
   const apiService = chatAPI
 
@@ -66,6 +72,16 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
       if (onSessionChange) {
         onSessionChange(session)
       }
+
+      // Fetch linked indexes to know table name for streaming
+      try {
+        const idxResp = await apiService.getSessionIndexes(id)
+        if (idxResp.indexes && idxResp.indexes.length > 0) {
+          const lastIdxObj = idxResp.indexes[idxResp.indexes.length - 1] as any
+          const idxId = (lastIdxObj.index_id ?? lastIdxObj.id) as string
+          setCurrentIndexId(idxId ?? null)
+        }
+      } catch {}
     } catch (error) {
       console.error('Failed to load session:', error)
       setError('Failed to load session')
@@ -136,21 +152,111 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
 
       setIsLoading(true)
 
-      const response = await apiService.sendSessionMessage(activeSessionId, content)
-      
-      const aiMessage: ChatMessage = {
-        id: response.ai_message_id || generateUUID(),
-        content: response.response,
-        sender: 'assistant',
-        timestamp: new Date().toISOString(),
+      if (enableStream) {
+        const placeholder: ChatMessage = {
+          id: generateUUID(),
+          content: '⏳ Generating answer…',
+          sender: 'assistant',
+          timestamp: new Date().toISOString(),
+          isLoading: true,
+        }
+        setMessages(prev => {
+          const withoutLoaders = prev.filter(m => !m.isLoading)
+          return [...withoutLoaders, placeholder]
+        })
+        // The placeholder now represents loading state; hide the global loader
+        setIsLoading(false)
+
+        // Ensure we know the index id for table_name; fetch if missing
+        let idxId = currentIndexId
+        if (!idxId) {
+          try {
+            const idxResp = await apiService.getSessionIndexes(activeSessionId as string)
+            if (idxResp.indexes && idxResp.indexes.length > 0) {
+              const lastIdxObj = idxResp.indexes[idxResp.indexes.length - 1] as any
+              idxId = (lastIdxObj.index_id ?? lastIdxObj.id) as string
+              setCurrentIndexId(idxId ?? null)
+            }
+          } catch {}
+        }
+
+        await apiService.streamSessionMessage(
+          {
+            query: content,
+            session_id: activeSessionId,
+            table_name: idxId ? `text_pages_${idxId}` : undefined,
+            composeSubAnswers,
+            decompose: enableDecompose,
+            aiRerank: enableAiRerank,
+            contextExpand: enableContextExpand,
+          },
+          (evt) => {
+            if (evt.type === 'decomposition') {
+              const sqMsg: ChatMessage = {
+                id: generateUUID(),
+                content: `🔍 Sub-queries: ${(evt.data.sub_queries || []).join(' | ')}`,
+                sender: 'assistant',
+                timestamp: new Date().toISOString(),
+              };
+              setMessages(prev => {
+                const idx = prev.findIndex(m => m.id === placeholder.id)
+                if (idx === -1) return [...prev, sqMsg]
+                return [...prev.slice(0, idx), sqMsg, ...prev.slice(idx)]
+              })
+              return;
+            }
+
+            if (evt.type === 'sub_query_result') {
+              const { index, query: q, answer: a } = evt.data;
+              const subMsg: ChatMessage = {
+                id: generateUUID(),
+                content: `🧩 ${q}: ${a}`,
+                sender: 'assistant',
+                timestamp: new Date().toISOString(),
+                metadata: { source_documents: (evt.data as any).source_documents || [] },
+              };
+              setMessages(prev => {
+                const idx = prev.findIndex(m => m.id === placeholder.id)
+                if (idx === -1) return [...prev, subMsg]
+                return [...prev.slice(0, idx), subMsg, ...prev.slice(idx)]
+              })
+              return;
+            }
+
+            if (evt.type === 'single_query_result') {
+              const { answer, source_documents } = evt.data;
+              setMessages(prev => prev.map(m => m.id === placeholder.id ? { ...m, content: answer, isLoading:false, metadata:{} } : m))
+              setIsLoading(false)
+              return;
+            }
+
+            if (evt.type === 'final_answer' || evt.type === 'complete') {
+              const { answer, source_documents } = evt.data;
+              setMessages(prev => prev.map(m => m.id === placeholder.id ? { ...m, content: answer, isLoading:false, metadata:{} } : m))
+              setIsLoading(false)
+            }
+            // Optionally handle other phases for debugging UI
+          }
+        )
+      } else {
+        const response = await apiService.sendSessionMessage(activeSessionId, content, { composeSubAnswers, decompose: enableDecompose, aiRerank: enableAiRerank, contextExpand: enableContextExpand })
+
+        const aiMessage: ChatMessage = {
+          id: response.ai_message_id || generateUUID(),
+          content: response.response,
+          sender: 'assistant',
+          timestamp: new Date().toISOString(),
+          metadata: { source_documents: (response as any).source_documents || [] }
+        }
+        setMessages(prev => [...prev, aiMessage])
+
+        if ((response as any).session) {
+          const sess = (response as any).session as ChatSession
+          setCurrentSession(sess)
+          if (onSessionChange) onSessionChange(sess)
+        }
+        if (onNewMessage) onNewMessage(aiMessage)
       }
-      setMessages(prev => [...prev, aiMessage])
-      
-      if (response.session) {
-        setCurrentSession(response.session)
-        if (onSessionChange) onSessionChange(response.session)
-      }
-      if (onNewMessage) onNewMessage(aiMessage)
 
     } catch (error) {
       console.error('Failed to send message:', error)
@@ -246,6 +352,29 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
 
       {/* Input section always present */}
       <div className="flex-shrink-0 sticky bottom-0 z-10 bg-black/90 backdrop-blur-md">
+        {/* Retrieval behaviour toggles */}
+        <div className="px-4 py-1 flex items-center gap-4 text-xs text-gray-400">
+          <label className="flex items-center gap-1 select-none cursor-pointer">
+            <input type="checkbox" className="accent-blue-500" checked={enableDecompose} onChange={e=>setEnableDecompose(e.target.checked)} />
+            Enable query decomposition
+          </label>
+          <label className="flex items-center gap-1 select-none cursor-pointer">
+            <input type="checkbox" className="accent-blue-500" checked={enableAiRerank} onChange={e=>setEnableAiRerank(e.target.checked)} />
+            Use AI reranker
+          </label>
+          <label className="flex items-center gap-1 select-none cursor-pointer">
+            <input type="checkbox" className="accent-blue-500" checked={composeSubAnswers} onChange={e=>setComposeSubAnswers(e.target.checked)} />
+            Compose answer from sub-answers
+          </label>
+          <label className="flex items-center gap-1 select-none cursor-pointer">
+            <input type="checkbox" className="accent-blue-500" checked={enableContextExpand} onChange={e=>setEnableContextExpand(e.target.checked)} />
+            Expand context window
+          </label>
+          <label className="flex items-center gap-1 select-none cursor-pointer">
+            <input type="checkbox" className="accent-blue-500" checked={enableStream} onChange={e=>setEnableStream(e.target.checked)} />
+            Stream phases
+          </label>
+        </div>
         {uploadedFiles.length > 0 && !isIndexed && (
           <div className="p-2 text-center bg-yellow-100 dark:bg-yellow-900 border-t border-b border-gray-200 dark:border-gray-700">
             <Button onClick={handleIndexDocuments} disabled={isLoading}>

@@ -173,7 +173,11 @@ class ChatAPI {
     }
   }
 
-  async sendSessionMessage(sessionId: string, message: string, model?: string): Promise<SessionChatResponse> {
+  async sendSessionMessage(
+    sessionId: string,
+    message: string,
+    opts: { model?: string; composeSubAnswers?: boolean; decompose?: boolean; aiRerank?: boolean; contextExpand?: boolean } = {}
+  ): Promise<SessionChatResponse & { source_documents: any[] }> {
     try {
       const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/messages`, {
         method: 'POST',
@@ -182,7 +186,11 @@ class ChatAPI {
         },
         body: JSON.stringify({
           message,
-          ...(model && { model }),
+          ...(opts.model && { model: opts.model }),
+          ...(typeof opts.composeSubAnswers === 'boolean' && { compose_sub_answers: opts.composeSubAnswers }),
+          ...(typeof opts.decompose === 'boolean' && { query_decompose: opts.decompose }),
+          ...(typeof opts.aiRerank === 'boolean' && { ai_rerank: opts.aiRerank }),
+          ...(typeof opts.contextExpand === 'boolean' && { context_expand: opts.contextExpand }),
         }),
       });
 
@@ -441,6 +449,72 @@ class ChatAPI {
       throw new Error(data.error || `Failed to delete index: ${resp.status}`);
     }
     return resp.json();
+  }
+
+  // -------------------- Streaming (SSE-over-fetch) --------------------
+  async streamSessionMessage(
+    params: {
+      query: string;
+      session_id?: string;
+      table_name?: string;
+      composeSubAnswers?: boolean;
+      decompose?: boolean;
+      aiRerank?: boolean;
+      contextExpand?: boolean;
+    },
+    onEvent: (event: { type: string; data: any }) => void,
+  ): Promise<void> {
+    const { query, session_id, table_name, composeSubAnswers, decompose, aiRerank, contextExpand } = params;
+
+    const payload: Record<string, unknown> = { query };
+    if (session_id) payload.session_id = session_id;
+    if (table_name) payload.table_name = table_name;
+    if (typeof composeSubAnswers === 'boolean') payload.compose_sub_answers = composeSubAnswers;
+    if (typeof decompose === 'boolean') payload.query_decompose = decompose;
+    if (typeof aiRerank === 'boolean') payload.ai_rerank = aiRerank;
+    if (typeof contextExpand === 'boolean') payload.context_expand = contextExpand;
+
+    const resp = await fetch('http://localhost:8001/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!resp.ok || !resp.body) {
+      throw new Error(`Stream request failed: ${resp.status}`);
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    let streamClosed = false;
+    while (!streamClosed) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() || '';
+
+      for (const part of parts) {
+        const line = part.trim();
+        if (!line.startsWith('data:')) continue;
+        const jsonStr = line.replace(/^data:\s*/, '');
+        try {
+          const evt = JSON.parse(jsonStr);
+          onEvent(evt);
+          if (evt.type === 'complete') {
+            // Gracefully close the stream so the caller unblocks
+            try { await reader.cancel(); } catch {}
+            streamClosed = true;
+            break;
+          }
+        } catch {
+          /* noop */
+        }
+      }
+    }
   }
 }
 
