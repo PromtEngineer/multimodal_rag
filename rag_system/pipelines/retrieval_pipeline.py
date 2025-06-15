@@ -1,5 +1,5 @@
 import pymupdf
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from PIL import Image
 import concurrent.futures
 import time
@@ -113,12 +113,23 @@ class RetrievalPipeline:
     def _get_ai_reranker(self):
         """Initializes a dedicated AI-based reranker."""
         reranker_config = self.config.get("reranker", {})
-        if self.ai_reranker is None and reranker_config.get("enabled") and reranker_config.get("type") == "ai":
+        if self.ai_reranker is None and reranker_config.get("enabled"):
             try:
-                print(f"🔧 Lazily initializing AI reranker ({reranker_config.get('model_name')})...")
-                self.ai_reranker = QwenReranker(
-                    model_name=reranker_config.get("model_name")
-                )
+                model_name = reranker_config.get("model_name")
+                strategy = reranker_config.get("strategy", "qwen")
+
+                if strategy == "rerankers-lib":
+                    print(f"🔧 Initialising Answer.AI ColBERT reranker ({model_name}) via rerankers lib…")
+                    # The rerankers library now exposes a single generic `Reranker` class
+                    # that auto-detects the appropriate backend (cross-encoder, ColBERT, etc.)
+                    # We explicitly pass `model_type="colbert"` to guarantee late-interaction.
+                    from rerankers import Reranker
+                    self.ai_reranker = Reranker(model_name, model_type="colbert")
+                else:
+                    # Fallback to existing Qwen cross-encoder reranker
+                    print(f"🔧 Lazily initializing Qwen reranker ({model_name})…")
+                    self.ai_reranker = QwenReranker(model_name=model_name)
+
                 print("✅ AI reranker initialized successfully.")
             except Exception as e:
                 print(f"❌ Failed to initialize AI reranker: {e}")
@@ -207,7 +218,7 @@ ORIGINAL QUESTION: "{query}"
         )
         return response.get('response', 'Failed to generate a final answer.')
 
-    def run(self, query: str, table_name: str = None) -> Dict[str, Any]:
+    def run(self, query: str, table_name: str = None, window_size_override: Optional[int] = None) -> Dict[str, Any]:
         start_time = time.time()
         retrieval_k = self.config.get("retrieval_k", 10)
 
@@ -240,8 +251,46 @@ ORIGINAL QUESTION: "{query}"
         if ai_reranker and retrieved_docs:
             print(f"\n--- Reranking top {len(retrieved_docs)} docs with AI model... ---")
             start_rerank_time = time.time()
-            top_k = self.config.get("reranker", {}).get("top_k", 5)
-            reranked_docs = ai_reranker.rerank(query, retrieved_docs, top_k=top_k, early_exit=False)
+
+            rerank_cfg = self.config.get("reranker", {})
+            top_k_cfg = rerank_cfg.get("top_k")
+            top_percent = rerank_cfg.get("top_percent")  # value in range 0–1
+
+            if top_percent is not None:
+                try:
+                    pct = float(top_percent)
+                    assert 0 < pct <= 1
+                    top_k = max(1, int(len(retrieved_docs) * pct))
+                except Exception:
+                    print("⚠️  Invalid top_percent value; falling back to top_k")
+                    top_k = top_k_cfg or len(retrieved_docs)
+            else:
+                top_k = top_k_cfg or len(retrieved_docs)
+
+            strategy = self.config.get("reranker", {}).get("strategy", "qwen")
+
+            if strategy == "rerankers-lib":
+                texts = [d['text'] for d in retrieved_docs]
+                ranked = ai_reranker.rank(query=query, docs=texts)
+                # ranked is RankedResults; convert to list of (score, idx)
+                try:
+                    pairs = [(r.score, r.document.doc_id) for r in ranked.results]
+                    if any(p[1] is None for p in pairs):
+                        pairs = [(r.score, i) for i, r in enumerate(ranked.results)]
+                except Exception:
+                    pairs = ranked
+                # Keep only top_k results if requested
+                if top_k is not None and len(pairs) > top_k:
+                    pairs = pairs[:top_k]
+                reranked_docs = [retrieved_docs[idx] | {"rerank_score": score} for score, idx in pairs]
+            else:
+                try:
+                    reranked_docs = ai_reranker.rerank(query, retrieved_docs, top_k=top_k)
+                except TypeError:
+                    texts = [d['text'] for d in retrieved_docs]
+                    pairs = ai_reranker.rank(query, texts, top_k=top_k)
+                    reranked_docs = [retrieved_docs[idx] | {"rerank_score": score} for score, idx in pairs]
+
             rerank_time = time.time() - start_rerank_time
             print(f"✅ Reranking completed in {rerank_time:.2f}s. Refined to {len(reranked_docs)} docs.")
         else:
@@ -249,6 +298,8 @@ ORIGINAL QUESTION: "{query}"
             reranked_docs = retrieved_docs
 
         window_size = self.config.get("context_window_size", 1)
+        if window_size_override is not None:
+            window_size = window_size_override
         if window_size > 0 and reranked_docs:
             print(f"\n--- Expanding context for {len(reranked_docs)} top documents (window size: {window_size})... ---")
             expanded_chunks = {}
@@ -280,6 +331,11 @@ ORIGINAL QUESTION: "{query}"
         else:
             final_docs = reranked_docs
 
+        # Optionally hide non-reranked chunks: if any chunk carries a
+        # `rerank_score`, we assume the caller wants to focus on those.
+        if any('rerank_score' in d for d in final_docs):
+            final_docs = [d for d in final_docs if 'rerank_score' in d]
+
         print("\n--- Final Documents for Synthesis ---")
         if not final_docs:
             print("No documents to synthesize.")
@@ -287,6 +343,8 @@ ORIGINAL QUESTION: "{query}"
             for i, doc in enumerate(final_docs):
                 print(f"  [{i+1}] Chunk ID: {doc.get('chunk_id')}")
                 print(f"      Score: {doc.get('score', 'N/A')}")
+                if 'rerank_score' in doc:
+                    print(f"      Rerank Score: {doc.get('rerank_score'):.4f}")
                 print(f"      Text: \"{doc.get('text', '').strip()}\"")
         print("------------------------------------")
 

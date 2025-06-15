@@ -16,6 +16,10 @@ PIPELINE_CONFIGS = {
         },
         "verification": {"enabled": True},
         "caching": {"enabled": True},
+        "contextual_enricher": {
+            "enabled": True,
+            "window_size": 1
+        },
     },
     "fast": {
         "description": "A pipeline optimized for speed, with caching and vector search but no reranking or verification.",
@@ -65,7 +69,7 @@ OLLAMA_CONFIG = {
     "host": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
     "embedding_model": "nomic-embed-text",
     "generation_model": "qwen3:8b",
-    "rerank_model": "qwen3:8b",
+    "rerank_model": "answerdotai/answerai-colbert-small-v1",
     "enrichment_model": "qwen3:0.6b",
     "qwen_vl_model": "qwen-vl-chat"
 }

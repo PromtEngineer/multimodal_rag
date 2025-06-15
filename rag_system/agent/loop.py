@@ -146,10 +146,10 @@ User query: "{query}"
         contextual_query = self._format_query_with_history(query, history)
         structured_query = self.graph_query_translator.translate(contextual_query)
         if not structured_query.get("start_node"):
-            return self.retrieval_pipeline.run(contextual_query)
+            return self.retrieval_pipeline.run(contextual_query, window_size_override=0)
         results = self.graph_retriever.retrieve(structured_query)
         if not results:
-            return self.retrieval_pipeline.run(contextual_query)
+            return self.retrieval_pipeline.run(contextual_query, window_size_override=0)
         answer = ", ".join([res['details']['node_id'] for res in results])
         return {"answer": f"From the knowledge graph: {answer}", "source_documents": results}
 
@@ -172,11 +172,11 @@ User query: "{query}"
         }
 
     # ---------------- Public sync API (kept for backwards compatibility) --------------
-    def run(self, query: str, table_name: str = None, session_id: str = None, max_retries: int = 1) -> Dict[str, Any]:
-        return asyncio.run(self._run_async(query, table_name, session_id, max_retries))
+    def run(self, query: str, table_name: str = None, session_id: str = None, compose_sub_answers: Optional[bool] = None, query_decompose: Optional[bool] = None, ai_rerank: Optional[bool] = None, context_expand: Optional[bool] = None, max_retries: int = 1) -> Dict[str, Any]:
+        return asyncio.run(self._run_async(query, table_name, session_id, compose_sub_answers, query_decompose, ai_rerank, context_expand, max_retries))
 
     # ---------------- Main async implementation --------------------------------------
-    async def _run_async(self, query: str, table_name: str = None, session_id: str = None, max_retries: int = 1) -> Dict[str, Any]:
+    async def _run_async(self, query: str, table_name: str = None, session_id: str = None, compose_sub_answers: Optional[bool] = None, query_decompose: Optional[bool] = None, ai_rerank: Optional[bool] = None, context_expand: Optional[bool] = None, max_retries: int = 1) -> Dict[str, Any]:
         start_time = time.time()
         
         # 🚀 NEW: Get conversation history
@@ -189,6 +189,20 @@ User query: "{query}"
         contextual_query = self._format_query_with_history(query, history)
         raw_query = query.strip()
         
+        # --- Apply runtime AI reranker override (must happen before any retrieval calls) ---
+        if ai_rerank is not None:
+            rr_cfg = self.retrieval_pipeline.config.setdefault("reranker", {})
+            rr_cfg["enabled"] = bool(ai_rerank)
+            if ai_rerank:
+                # Ensure the pipeline knows to use the external ColBERT reranker
+                rr_cfg.setdefault("type", "ai")
+                rr_cfg.setdefault("strategy", "rerankers-lib")
+                rr_cfg.setdefault(
+                    "model_name",
+                    # Falls back to ColBERT-small if the caller did not supply one
+                    self.ollama_config.get("rerank_model", "answerai-colbert-small-v1"),
+                )
+
         query_embedding = None
         # 🚀 OPTIMIZED: Semantic Cache Check
         if query_type != "direct_answer":
@@ -222,60 +236,65 @@ User query: "{query}"
         # --- RAG Query Processing with Optional Query Decomposition ---
         else: # Default to rag_query
             query_decomp_config = self.pipeline_configs.get("query_decomposition", {})
-            if query_decomp_config.get("enabled", False):
+            decomp_enabled = query_decomp_config.get("enabled", False)
+            if query_decompose is not None:
+                decomp_enabled = query_decompose
+
+            if decomp_enabled:
                 print(f"\n--- Query Decomposition Enabled ---")
                 sub_queries = self.query_decomposer.decompose(contextual_query)
                 print(f"Original query: '{query}' (Contextual: '{contextual_query}')")
                 print(f"Decomposed into {len(sub_queries)} sub-queries: {sub_queries}")
                 
-                if len(sub_queries) > 1:
-                    compose_from_sub_answers = query_decomp_config.get("compose_from_sub_answers", False)
+                compose_from_sub_answers = query_decomp_config.get("compose_from_sub_answers", True)
+                if compose_sub_answers is not None:
+                    compose_from_sub_answers = compose_sub_answers
 
-                    print(f"\n--- Processing {len(sub_queries)} sub-queries in parallel ---")
-                    start_time_inner = time.time()
+                print(f"\n--- Processing {len(sub_queries)} sub-queries in parallel ---")
+                start_time_inner = time.time()
 
-                    # Shared containers
-                    sub_answers = []  # For two-stage composition
-                    all_source_docs = []  # For single-stage aggregation
-                    citations_seen = set()
+                # Shared containers
+                sub_answers = []  # For two-stage composition
+                all_source_docs = []  # For single-stage aggregation
+                citations_seen = set()
 
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=min(3, len(sub_queries))) as executor:
-                        future_to_query = {
-                            executor.submit(self.retrieval_pipeline.run, sub_query, table_name): (i, sub_query)
-                            for i, sub_query in enumerate(sub_queries)
-                        }
+                with concurrent.futures.ThreadPoolExecutor(max_workers=min(3, len(sub_queries))) as executor:
+                    future_to_query = {
+                        executor.submit(self.retrieval_pipeline.run, sub_query, table_name, 0 if context_expand is False else None): (i, sub_query)
+                        for i, sub_query in enumerate(sub_queries)
+                    }
 
-                        for future in concurrent.futures.as_completed(future_to_query):
-                            i, sub_query = future_to_query[future]
-                            try:
-                                sub_result = future.result()
-                                print(f"✅ Sub-Query {i+1} completed: '{sub_query}'")
+                    for future in concurrent.futures.as_completed(future_to_query):
+                        i, sub_query = future_to_query[future]
+                        try:
+                            sub_result = future.result()
+                            print(f"✅ Sub-Query {i+1} completed: '{sub_query}'")
 
-                                if compose_from_sub_answers:
-                                    sub_answers.append({
-                                        "question": sub_query,
-                                        "answer": sub_result.get("answer", "")
-                                    })
-                                    # keep up to 2 citations per sub-query for traceability
-                                    for doc in sub_result.get("source_documents", [])[:2]:
-                                        if doc['chunk_id'] not in citations_seen:
-                                            all_source_docs.append(doc)
-                                            citations_seen.add(doc['chunk_id'])
-                                else:
-                                    # Aggregate unique docs (single-stage path)
-                                    for doc in sub_result.get('source_documents', []):
-                                        if doc['chunk_id'] not in citations_seen:
-                                            all_source_docs.append(doc)
-                                            citations_seen.add(doc['chunk_id'])
-                            except Exception as e:
-                                print(f"❌ Sub-Query {i+1} failed: '{sub_query}' - {e}")
+                            if compose_from_sub_answers:
+                                sub_answers.append({
+                                    "question": sub_query,
+                                    "answer": sub_result.get("answer", "")
+                                })
+                                # Keep up to 5 citations per sub-query for traceability
+                                for doc in sub_result.get("source_documents", [])[:5]:
+                                    if doc['chunk_id'] not in citations_seen:
+                                        all_source_docs.append(doc)
+                                        citations_seen.add(doc['chunk_id'])
+                            else:
+                                # Aggregate unique docs (single-stage path)
+                                for doc in sub_result.get('source_documents', []):
+                                    if doc['chunk_id'] not in citations_seen:
+                                        all_source_docs.append(doc)
+                                        citations_seen.add(doc['chunk_id'])
+                        except Exception as e:
+                            print(f"❌ Sub-Query {i+1} failed: '{sub_query}' - {e}")
 
-                    parallel_time = time.time() - start_time_inner
-                    print(f"🚀 Parallel processing completed in {parallel_time:.2f}s")
+                parallel_time = time.time() - start_time_inner
+                print(f"🚀 Parallel processing completed in {parallel_time:.2f}s")
 
-                    if compose_from_sub_answers:
-                        print("\n--- Composing final answer from sub-answers ---")
-                        compose_prompt = f"""
+                if compose_from_sub_answers:
+                    print("\n--- Composing final answer from sub-answers ---")
+                    compose_prompt = f"""
 You are an expert answer composer for a Retrieval-Augmented Generation (RAG) system.
 
 Context:
@@ -301,37 +320,47 @@ SUB-ANSWERS (JSON):
 ------
 FINAL ANSWER:
 """
-                        compose_resp = await self.llm_client.generate_completion_async(
-                            self.ollama_config["generation_model"], compose_prompt
-                        )
-                        final_answer = compose_resp.get('response', 'Unable to generate an answer.')
+                    compose_resp = await self.llm_client.generate_completion_async(
+                        self.ollama_config["generation_model"], compose_prompt
+                    )
+                    final_answer = compose_resp.get('response', 'Unable to generate an answer.')
 
+                    result = {
+                        "answer": final_answer,
+                        "source_documents": all_source_docs
+                    }
+                else:
+                    print(f"\n--- Aggregated {len(all_source_docs)} unique documents from all sub-queries ---")
+
+                    if all_source_docs:
+                        aggregated_context = "\n\n".join([doc['text'] for doc in all_source_docs])
+                        final_answer = self.retrieval_pipeline._synthesize_final_answer(contextual_query, aggregated_context)
                         result = {
                             "answer": final_answer,
                             "source_documents": all_source_docs
                         }
                     else:
-                        print(f"\n--- Aggregated {len(all_source_docs)} unique documents from all sub-queries ---")
-
-                        if all_source_docs:
-                            aggregated_context = "\n\n".join([doc['text'] for doc in all_source_docs])
-                            final_answer = self.retrieval_pipeline._synthesize_final_answer(contextual_query, aggregated_context)
-                            result = {
-                                "answer": final_answer,
-                                "source_documents": all_source_docs
-                            }
-                        else:
-                            result = {
-                                "answer": "I could not find relevant information to answer your question.",
-                                "source_documents": []
-                            }
-                else:
-                    # Single query - standard flow
-                    print("Query does not need decomposition, proceeding with standard retrieval.")
-                    result = self.retrieval_pipeline.run(contextual_query, table_name)
+                        result = {
+                            "answer": "I could not find relevant information to answer your question.",
+                            "source_documents": []
+                        }
             else:
-                # Standard RAG without decomposition
-                result = self.retrieval_pipeline.run(contextual_query, table_name)
+                # Standard retrieval (single-query)
+                retrieved_docs = self.retrieval_pipeline.retriever.retrieve(query=contextual_query, table_name=table_name or self.retrieval_pipeline.storage_config["text_table_name"], k=self.retrieval_pipeline.config.get("retrieval_k",10)) if hasattr(self.retrieval_pipeline,"retriever") and self.retrieval_pipeline.retriever else []
+
+                print("\n=== DEBUG: Original retrieval order ===")
+                for i, d in enumerate(retrieved_docs[:10]):
+                    snippet = (d.get('text','') or '')[:200].replace('\n',' ')
+                    print(f"Orig[{i}] id={d.get('chunk_id')} dist={d.get('_distance','') or d.get('score','')}  {snippet}")
+
+                result = self.retrieval_pipeline.run(contextual_query, table_name, 0 if context_expand is False else None)
+
+                # After run, result['source_documents'] is reranked list
+                reranked_docs = result.get('source_documents', [])
+                print("\n=== DEBUG: Reranked docs order ===")
+                for i, d in enumerate(reranked_docs[:10]):
+                    snippet = (d.get('text','') or '')[:200].replace('\n',' ')
+                    print(f"ReRank[{i}] id={d.get('chunk_id')} score={d.get('rerank_score','')} {snippet}")
         
         # Verification step (simplified for now) - Skip in fast mode
         if self.pipeline_configs.get("verification", {}).get("enabled", True) and result.get("source_documents"):
