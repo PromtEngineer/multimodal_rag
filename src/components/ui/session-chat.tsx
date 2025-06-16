@@ -226,18 +226,20 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
               }
               if (evt.type === 'retrieval_done') {
                 steps[2].status = 'done';
-                steps[2].details = evt.data && evt.data.count ? `Retrieved ${evt.data.count} documents.` : 'Retrieval complete.';
+                steps[2].details = 'Retrieval complete.';
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'rerank_started') {
-                steps[2].status = 'done';
-                steps[3].status = 'active';
-                steps[3].details = 'Reranking results...';
+                if (steps[3].status === 'pending') {
+                  steps[2].status = 'done';
+                  steps[3].status = 'active';
+                  steps[3].details = 'Reranking results...';
+                }
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'rerank_done') {
                 steps[3].status = 'done';
-                steps[3].details = evt.data && evt.data.count ? `Reranked top ${evt.data.count} results.` : 'Reranking complete.';
+                steps[3].details = 'Reranking complete.';
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'context_expand_started') {

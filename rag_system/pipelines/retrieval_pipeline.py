@@ -28,6 +28,7 @@ from PIL import Image
 # ColBERT (via rerankers) is not thread-safe; concurrent calls raise
 # "Already borrowed". We serialise access through a single global lock.
 _rerank_lock: Lock = Lock()
+_rerank_init_lock: Lock = Lock()  # Ensures model is instantiated exactly once
 
 class RetrievalPipeline:
     """
@@ -122,26 +123,29 @@ class RetrievalPipeline:
     def _get_ai_reranker(self):
         """Initializes a dedicated AI-based reranker."""
         reranker_config = self.config.get("reranker", {})
-        if self.ai_reranker is None and reranker_config.get("enabled"):
-            try:
-                model_name = reranker_config.get("model_name")
-                strategy = reranker_config.get("strategy", "qwen")
+        if reranker_config.get("enabled"):
+            with _rerank_init_lock:
+                if self.ai_reranker is not None:
+                    return self.ai_reranker  # Already initialised by another thread
+                try:
+                    model_name = reranker_config.get("model_name")
+                    strategy = reranker_config.get("strategy", "qwen")
 
-                if strategy == "rerankers-lib":
-                    print(f"🔧 Initialising Answer.AI ColBERT reranker ({model_name}) via rerankers lib…")
-                    # The rerankers library now exposes a single generic `Reranker` class
-                    # that auto-detects the appropriate backend (cross-encoder, ColBERT, etc.)
-                    # We explicitly pass `model_type="colbert"` to guarantee late-interaction.
-                    from rerankers import Reranker
-                    self.ai_reranker = Reranker(model_name, model_type="colbert")
-                else:
-                    # Fallback to existing Qwen cross-encoder reranker
-                    print(f"🔧 Lazily initializing Qwen reranker ({model_name})…")
-                    self.ai_reranker = QwenReranker(model_name=model_name)
+                    if strategy == "rerankers-lib":
+                        print(f"🔧 Initialising Answer.AI ColBERT reranker ({model_name}) via rerankers lib…")
+                        # The rerankers library now exposes a single generic `Reranker` class
+                        # that auto-detects the appropriate backend (cross-encoder, ColBERT, etc.)
+                        # We explicitly pass `model_type="colbert"` to guarantee late-interaction.
+                        from rerankers import Reranker
+                        self.ai_reranker = Reranker(model_name, model_type="colbert")
+                    else:
+                        # Fallback to existing Qwen cross-encoder reranker
+                        print(f"🔧 Lazily initializing Qwen reranker ({model_name})…")
+                        self.ai_reranker = QwenReranker(model_name=model_name)
 
-                print("✅ AI reranker initialized successfully.")
-            except Exception as e:
-                print(f"❌ Failed to initialize AI reranker: {e}")
+                    print("✅ AI reranker initialized successfully.")
+                except Exception as e:
+                    print(f"❌ Failed to initialize AI reranker: {e}")
         return self.ai_reranker
 
     def _get_surrounding_chunks_lancedb(self, chunk: Dict[str, Any], window_size: int) -> List[Dict[str, Any]]:
@@ -282,7 +286,13 @@ ORIGINAL QUESTION: "{query}"
             else:
                 top_k = top_k_cfg or len(retrieved_docs)
 
-            strategy = self.config.get("reranker", {}).get("strategy", "qwen")
+            strategy_cfg = self.config.get("reranker", {})
+            strategy = strategy_cfg.get("strategy", "qwen")
+
+            # --- Pre-trim to reduce ColBERT compute ---
+            pre_trim = strategy_cfg.get("pre_trim", 30)
+            if pre_trim and len(retrieved_docs) > pre_trim:
+                retrieved_docs = retrieved_docs[:pre_trim]
 
             if strategy == "rerankers-lib":
                 texts = [d['text'] for d in retrieved_docs]
@@ -311,7 +321,7 @@ ORIGINAL QUESTION: "{query}"
             rerank_time = time.time() - start_rerank_time
             print(f"✅ Reranking completed in {rerank_time:.2f}s. Refined to {len(reranked_docs)} docs.")
             if event_callback:
-                event_callback("rerank_done", {"count": len(reranked_docs)})
+                event_callback("rerank_done", {"count": len(reranked_docs), "duration_ms": int(rerank_time*1000)})
         else:
             # If no AI reranker, proceed with the initially retrieved docs
             reranked_docs = retrieved_docs

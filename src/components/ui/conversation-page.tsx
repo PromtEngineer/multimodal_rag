@@ -93,6 +93,7 @@ function StructuredMessageBlock({ content }: { content: Array<Record<string, any
     <div className="flex flex-col">
       {steps.map((step: any, index: number) => {
         if (step.key && step.label) {
+          if(step.status === 'pending') return null; // Hide untouched future steps
           const borderCls = statusBorder[step.status] || statusBorder['pending']
           const statusClass = `timeline-card card my-1 py-2 pl-3 pr-2 bg-[#0d0d0d] rounded border-l-2 ${borderCls}`
           
@@ -108,9 +109,7 @@ function StructuredMessageBlock({ content }: { content: Array<Record<string, any
                   <div className="whitespace-pre-wrap text-gray-100">
                     {step.details.answer}
                   </div>
-                  {step.details.source_documents && step.details.source_documents.length > 0 && (
-                    <CitationsBlock docs={step.details.source_documents} />
-                  )}
+                  {/* Omit citations here to keep UI minimal; sub-answers already carry sources */}
                 </div>
               ) : step.key === 'final' && step.details && typeof step.details === 'string' ? (
                 <div className="whitespace-pre-wrap text-gray-100">
