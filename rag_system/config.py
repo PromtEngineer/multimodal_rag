@@ -4,6 +4,12 @@ import os
 PIPELINE_CONFIGS = {
     "default": {
         "description": "A comprehensive pipeline using a multi-vector retriever with hybrid search, reranking, and verification.",
+        "reranker": {
+            "enabled": True,
+            "strategy": "rerankers-lib",
+            "model_name": "answerdotai/answerai-colbert-small-v1",
+            "top_percent": 0.4
+        },
         "retrieval": {
             "retriever": "multivector",
             "embeddings": "qwen",

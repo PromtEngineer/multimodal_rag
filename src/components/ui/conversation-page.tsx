@@ -8,6 +8,7 @@ import {
 import { Copy, RefreshCcw, ThumbsUp, ThumbsDown, Volume2, MoreHorizontal, ChevronDown } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ChatMessage } from "@/lib/api"
+import { cn } from "@/lib/utils"
 
 interface ConversationPageProps {
   messages: ChatMessage[]
@@ -24,6 +25,103 @@ const actionIcons = [
   { icon: RefreshCcw, type: "Regenerate", action: "regenerate" },
   { icon: MoreHorizontal, type: "More", action: "more" },
 ]
+
+// Citation block toggle component
+function Citation({doc, idx}: {doc:any, idx:number}){
+  const [open,setOpen]=React.useState(false);
+  const preview = (doc.text||'').replace(/\s+/g,' ').trim().slice(0,160) + ((doc.text||'').length>160?'…':'');
+  return (
+    <div onClick={()=>setOpen(!open)} className="text-xs text-gray-300 bg-gray-900/60 rounded p-2 cursor-pointer hover:bg-gray-800 transition">
+      <span className="font-semibold mr-1">[{idx+1}]</span>{open?doc.text:preview}
+    </div>
+  );
+}
+
+// NEW: Expandable list of citations per assistant message
+function CitationsBlock({docs}:{docs:any[]}){
+  const scored = docs.filter(d => d.rerank_score || d.score || d._distance)
+  scored.sort((a, b) => (b.rerank_score ?? b.score ?? 1/b._distance) - (a.rerank_score ?? a.score ?? 1/a._distance))
+  const [expanded, setExpanded] = useState(false);
+
+  if (scored.length === 0) return null;
+
+  const visibleDocs = expanded ? scored : scored.slice(0, 5);
+
+  return (
+    <div className="mt-2 text-xs text-gray-400">
+      <p className="font-semibold mb-1">Sources:</p>
+      <div className="grid grid-cols-1 gap-2">
+        {visibleDocs.map((doc, i) => <Citation key={doc.chunk_id || i} doc={doc} idx={i} />)}
+      </div>
+      {scored.length > 5 && (
+        <button 
+          onClick={() => setExpanded(!expanded)} 
+          className="text-blue-400 hover:text-blue-300 mt-2 text-xs"
+        >
+          {expanded ? 'Show less' : `Show ${scored.length-5} more`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function StructuredMessageBlock({ content }: { content: Array<Record<string, any>> | { steps: any[] } }) {
+  const steps: any[] = Array.isArray(content) ? content : (content as any).steps;
+  return (
+    <div className="flex flex-col">
+      {steps.map((step: any, index: number) => {
+        if (step.key && step.label) {
+          // Stepwise progress rendering
+          let statusIcon = step.status === 'done' ? '✅' : step.status === 'active' ? <span className="animate-pulse">⏳</span> : '•';
+          let statusClass = step.status === 'active' ? 'bg-gray-800/60 border-l-4 border-blue-400 p-2 my-1 rounded' :
+                          step.status === 'done' ? 'bg-gray-900/40 p-2 my-1 rounded' :
+                          'p-2 my-1 text-gray-500';
+          
+          return (
+            <div key={step.key} className={statusClass}>
+              <div className="flex items-center gap-2 mb-1">
+                <span>{statusIcon}</span>
+                <span className={step.status === 'active' ? 'font-bold text-blue-200' : ''}>{step.label}</span>
+              </div>
+              {/* Details for each step */}
+              {step.key === 'final' && step.details && typeof step.details === 'object' && !Array.isArray(step.details) ? (
+                <div className="space-y-3">
+                  <div className="whitespace-pre-wrap text-gray-100">
+                    {step.details.answer}
+                  </div>
+                  {step.details.source_documents && step.details.source_documents.length > 0 && (
+                    <CitationsBlock docs={step.details.source_documents} />
+                  )}
+                </div>
+              ) : step.key === 'final' && step.details && typeof step.details === 'string' ? (
+                <div className="whitespace-pre-wrap text-gray-100">
+                  {step.details}
+                </div>
+              ) : Array.isArray(step.details) ? (
+                // Handle array of sub-answers
+                <div className="space-y-2">
+                  {step.details.map((detail: any, idx: number) => (
+                    <div key={idx} className="border-l-2 border-blue-400 pl-2">
+                      <div className="font-semibold">{detail.question}</div>
+                      <div>{detail.answer}</div>
+                      {detail.source_documents && detail.source_documents.length > 0 && (
+                        <CitationsBlock docs={detail.source_documents} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                // Handle string details
+                step.details
+              )}
+            </div>
+          );
+        }
+        return null;
+      })}
+    </div>
+  );
+}
 
 export function ConversationPage({ 
   messages, 
@@ -76,7 +174,19 @@ export function ConversationPage({
 
   const handleAction = (action: string, messageId: string, messageContent: string) => {
     if (onAction) {
-      onAction(action, messageId, messageContent)
+      // For structured messages, we'll just join the text parts for copy/paste
+      let contentToPass: string;
+      if (typeof messageContent === 'string') {
+        contentToPass = messageContent;
+      } else if (Array.isArray(messageContent)) {
+        contentToPass = (messageContent as any[]).map((s: any) => s.text || s.answer || '').join('\n');
+      } else if (messageContent && typeof messageContent === 'object' && Array.isArray((messageContent as any).steps)) {
+        // For {steps: Step[]} structure
+        contentToPass = (messageContent as any).steps.map((s: any) => s.label + (s.details ? (typeof s.details === 'string' ? (': ' + s.details) : '') : '')).join('\n');
+      } else {
+        contentToPass = '';
+      }
+      onAction(action, messageId, contentToPass)
       return
     }
     
@@ -139,7 +249,10 @@ export function ConversationPage({
                         </div>
                       ) : (
                         <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                          {message.content}
+                          {typeof message.content === 'string' 
+                              ? message.content
+                              : <StructuredMessageBlock content={message.content} />
+                          }
                         </div>
                       )}
                     </div>
@@ -149,7 +262,10 @@ export function ConversationPage({
                         {actionIcons.map(({ icon: Icon, type, action }) => (
                           <button
                             key={action}
-                            onClick={() => handleAction(action, message.id, message.content)}
+                            onClick={() => {
+                              const content = typeof message.content === 'string' ? message.content : (message.content as any[]).map(s => s.text || s.answer).join('\\n');
+                              handleAction(action, message.id, content)
+                            }}
                             className="p-1.5 hover:bg-gray-700 rounded-md transition-colors text-gray-400 hover:text-gray-200"
                             title={type}
                           >
@@ -157,6 +273,15 @@ export function ConversationPage({
                           </button>
                         ))}
                       </div>
+                    )}
+
+                    {/* Global citations only for plain-string messages */}
+                    {(!isUser &&
+                      !message.isLoading &&
+                      typeof message.content === 'string' &&
+                      Array.isArray((message as any).metadata?.source_documents) &&
+                      (message as any).metadata.source_documents.length > 0) && (
+                        <CitationsBlock docs={(message as any).metadata.source_documents} />
                     )}
                   </div>
 

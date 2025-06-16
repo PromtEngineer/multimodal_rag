@@ -276,6 +276,7 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
             # 🆕 --- Delegate to Advanced RAG API ---
             print(f"🤖 Delegating query to Advanced RAG API: '{message}'")
             response_text = ""
+            source_docs = []
             try:
                 # The advanced RAG server runs on port 8001
                 rag_api_url = "http://localhost:8001/chat"
@@ -288,16 +289,30 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
                 payload={"query": message, "session_id": session_id}
                 if table_name:
                     payload["table_name"] = table_name
+                compose_flag = data.get("compose_sub_answers")
+                decomp_flag = data.get("query_decompose")
+                ai_rerank_flag = data.get("ai_rerank")
+                ctx_expand_flag = data.get("context_expand")
+                if compose_flag is not None:
+                    payload["compose_sub_answers"] = bool(compose_flag)
+                if decomp_flag is not None:
+                    payload["query_decompose"] = bool(decomp_flag)
+                if ai_rerank_flag is not None:
+                    payload["ai_rerank"] = bool(ai_rerank_flag)
+                if ctx_expand_flag is not None:
+                    payload["context_expand"] = bool(ctx_expand_flag)
                 rag_response = requests.post(rag_api_url, json=payload)
                 
                 if rag_response.status_code == 200:
                     rag_data = rag_response.json()
                     # Extract the final answer from the agent's response
                     response_text = rag_data.get("answer", "No answer found in RAG response.")
-                    print(f"✅ Received response from Advanced RAG API.")
+                    source_docs = rag_data.get("source_documents", [])
+                    print(f"✅ Received response from Advanced RAG API with {len(source_docs)} source docs.")
                 else:
                     error_info = rag_response.text
                     response_text = f"Error from Advanced RAG API: {error_info}"
+                    source_docs = []
                     print(f"❌ Error from Advanced RAG API ({rag_response.status_code}): {error_info}")
 
             except requests.exceptions.ConnectionError:
@@ -314,7 +329,8 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
                 "response": response_text,
                 "session": updated_session,
                 "user_message_id": user_message_id,
-                "ai_message_id": ai_message_id
+                "ai_message_id": ai_message_id,
+                "source_documents": source_docs
             })
             
         except json.JSONDecodeError:

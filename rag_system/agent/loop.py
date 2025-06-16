@@ -172,12 +172,21 @@ User query: "{query}"
         }
 
     # ---------------- Public sync API (kept for backwards compatibility) --------------
-    def run(self, query: str, table_name: str = None, session_id: str = None, compose_sub_answers: Optional[bool] = None, query_decompose: Optional[bool] = None, ai_rerank: Optional[bool] = None, context_expand: Optional[bool] = None, max_retries: int = 1) -> Dict[str, Any]:
-        return asyncio.run(self._run_async(query, table_name, session_id, compose_sub_answers, query_decompose, ai_rerank, context_expand, max_retries))
+    def run(self, query: str, table_name: str = None, session_id: str = None, compose_sub_answers: Optional[bool] = None, query_decompose: Optional[bool] = None, ai_rerank: Optional[bool] = None, context_expand: Optional[bool] = None, max_retries: int = 1, event_callback: Optional[callable] = None) -> Dict[str, Any]:
+        """Synchronous helper. If *event_callback* is supplied, important
+        milestones will be forwarded to that callable as
+
+            event_callback(phase:str, payload:Any)
+        """
+        return asyncio.run(self._run_async(query, table_name, session_id, compose_sub_answers, query_decompose, ai_rerank, context_expand, max_retries, event_callback))
 
     # ---------------- Main async implementation --------------------------------------
-    async def _run_async(self, query: str, table_name: str = None, session_id: str = None, compose_sub_answers: Optional[bool] = None, query_decompose: Optional[bool] = None, ai_rerank: Optional[bool] = None, context_expand: Optional[bool] = None, max_retries: int = 1) -> Dict[str, Any]:
+    async def _run_async(self, query: str, table_name: str = None, session_id: str = None, compose_sub_answers: Optional[bool] = None, query_decompose: Optional[bool] = None, ai_rerank: Optional[bool] = None, context_expand: Optional[bool] = None, max_retries: int = 1, event_callback: Optional[callable] = None) -> Dict[str, Any]:
         start_time = time.time()
+        
+        # Emit analyze event at the start
+        if event_callback:
+            event_callback("analyze", {"query": query})
         
         # 🚀 NEW: Get conversation history
         history = self.chat_histories.get(session_id, []) if session_id else []
@@ -242,9 +251,16 @@ User query: "{query}"
 
             if decomp_enabled:
                 print(f"\n--- Query Decomposition Enabled ---")
-                sub_queries = self.query_decomposer.decompose(contextual_query)
+                # Use the raw user query (without conversation history) for decomposition to avoid leakage of prior context
+                sub_queries = self.query_decomposer.decompose(raw_query)
+                if event_callback:
+                    event_callback("decomposition", {"sub_queries": sub_queries})
                 print(f"Original query: '{query}' (Contextual: '{contextual_query}')")
                 print(f"Decomposed into {len(sub_queries)} sub-queries: {sub_queries}")
+                
+                # Emit retrieval_started event before any retrievals
+                if event_callback:
+                    event_callback("retrieval_started", {"count": len(sub_queries)})
                 
                 # If decomposition produced only a single sub-query, skip the
                 # parallel/composition machinery for efficiency.
@@ -254,7 +270,15 @@ User query: "{query}"
                         sub_queries[0],
                         table_name,
                         0 if context_expand is False else None,
+                        event_callback=event_callback
                     )
+                    if event_callback:
+                        event_callback("single_query_result", result)
+                    # Emit retrieval_done and rerank_done for single sub-query
+                    if event_callback:
+                        event_callback("retrieval_done", {"count": 1})
+                        event_callback("rerank_started", {"count": 1})
+                        event_callback("rerank_done", {"count": 1})
                 else:
                     compose_from_sub_answers = query_decomp_config.get("compose_from_sub_answers", True)
                     if compose_sub_answers is not None:
@@ -268,6 +292,10 @@ User query: "{query}"
                     all_source_docs = []  # For single-stage aggregation
                     citations_seen = set()
 
+                    # Emit rerank_started event before parallel retrievals (since each sub-query will rerank)
+                    if event_callback:
+                        event_callback("rerank_started", {"count": len(sub_queries)})
+
                     with concurrent.futures.ThreadPoolExecutor(max_workers=min(3, len(sub_queries))) as executor:
                         future_to_query = {
                             executor.submit(self.retrieval_pipeline.run, sub_query, table_name, 0 if context_expand is False else None): (i, sub_query)
@@ -279,6 +307,14 @@ User query: "{query}"
                             try:
                                 sub_result = future.result()
                                 print(f"✅ Sub-Query {i+1} completed: '{sub_query}'")
+
+                                if event_callback:
+                                    event_callback("sub_query_result", {
+                                        "index": i,
+                                        "query": sub_query,
+                                        "answer": sub_result.get("answer", ""),
+                                        "source_documents": sub_result.get("source_documents", []),
+                                    })
 
                                 if compose_from_sub_answers:
                                     sub_answers.append({
@@ -301,6 +337,11 @@ User query: "{query}"
 
                     parallel_time = time.time() - start_time_inner
                     print(f"🚀 Parallel processing completed in {parallel_time:.2f}s")
+
+                    # Emit retrieval_done and rerank_done after all sub-queries are processed
+                    if event_callback:
+                        event_callback("retrieval_done", {"count": len(sub_queries)})
+                        event_callback("rerank_done", {"count": len(sub_queries)})
 
                     if compose_from_sub_answers:
                         print("\n--- Composing final answer from sub-answers ---")
@@ -339,6 +380,8 @@ FINAL ANSWER:
                             "answer": final_answer,
                             "source_documents": all_source_docs
                         }
+                        if event_callback:
+                            event_callback("final_answer", result)
                     else:
                         print(f"\n--- Aggregated {len(all_source_docs)} unique documents from all sub-queries ---")
 
@@ -349,21 +392,29 @@ FINAL ANSWER:
                                 "answer": final_answer,
                                 "source_documents": all_source_docs
                             }
+                            if event_callback:
+                                event_callback("final_answer", result)
                         else:
                             result = {
                                 "answer": "I could not find relevant information to answer your question.",
                                 "source_documents": []
                             }
+                            if event_callback:
+                                event_callback("final_answer", result)
             else:
                 # Standard retrieval (single-query)
-                retrieved_docs = self.retrieval_pipeline.retriever.retrieve(query=contextual_query, table_name=table_name or self.retrieval_pipeline.storage_config["text_table_name"], k=self.retrieval_pipeline.config.get("retrieval_k",10)) if hasattr(self.retrieval_pipeline,"retriever") and self.retrieval_pipeline.retriever else []
+                retrieved_docs = (self.retrieval_pipeline.retriever.retrieve(
+                    text_query=contextual_query,
+                    table_name=table_name or self.retrieval_pipeline.storage_config["text_table_name"],
+                    k=self.retrieval_pipeline.config.get("retrieval_k", 10),
+                ) if hasattr(self.retrieval_pipeline, "retriever") and self.retrieval_pipeline.retriever else [])
 
                 print("\n=== DEBUG: Original retrieval order ===")
                 for i, d in enumerate(retrieved_docs[:10]):
                     snippet = (d.get('text','') or '')[:200].replace('\n',' ')
                     print(f"Orig[{i}] id={d.get('chunk_id')} dist={d.get('_distance','') or d.get('score','')}  {snippet}")
 
-                result = self.retrieval_pipeline.run(contextual_query, table_name, 0 if context_expand is False else None)
+                result = self.retrieval_pipeline.run(contextual_query, table_name, 0 if context_expand is False else None, event_callback=event_callback)
 
                 # After run, result['source_documents'] is reranked list
                 reranked_docs = result.get('source_documents', [])

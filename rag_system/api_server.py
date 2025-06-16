@@ -39,6 +39,8 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
 
         if parsed_path.path == '/chat':
             self.handle_chat()
+        elif parsed_path.path == '/chat/stream':
+            self.handle_chat_stream()
         elif parsed_path.path == '/index':
             self.handle_index()
         else:
@@ -61,6 +63,10 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             
             query = data.get('query')
             session_id = data.get('session_id')
+            compose_flag = data.get('compose_sub_answers')
+            decomp_flag = data.get('query_decompose')
+            ai_rerank_flag = data.get('ai_rerank')
+            ctx_expand_flag = data.get('context_expand')
             if not query:
                 self.send_json_response({"error": "Query is required"}, status_code=400)
                 return
@@ -71,10 +77,83 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 table_name = f"text_pages_{session_id}"
 
             # Use the single, persistent agent instance to run the query
-            result = RAG_AGENT.run(query, table_name=table_name, session_id=session_id)
+            result = RAG_AGENT.run(query, table_name=table_name, session_id=session_id, compose_sub_answers=compose_flag, query_decompose=decomp_flag, ai_rerank=ai_rerank_flag, context_expand=ctx_expand_flag)
             
             # The result is a dict, so we need to dump it to a JSON string
             self.send_json_response(result)
+
+        except json.JSONDecodeError:
+            self.send_json_response({"error": "Invalid JSON"}, status_code=400)
+        except Exception as e:
+            self.send_json_response({"error": f"Server error: {str(e)}"}, status_code=500)
+
+    def handle_chat_stream(self):
+        """Stream internal phases and final answer using SSE (text/event-stream)."""
+        try:
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+
+            query = data.get('query')
+            session_id = data.get('session_id')
+            compose_flag = data.get('compose_sub_answers')
+            decomp_flag = data.get('query_decompose')
+            ai_rerank_flag = data.get('ai_rerank')
+            ctx_expand_flag = data.get('context_expand')
+
+            if not query:
+                self.send_json_response({"error": "Query is required"}, status_code=400)
+                return
+
+            # Allow explicit table_name override
+            table_name = data.get('table_name')
+            if not table_name and session_id:
+                table_name = f"text_pages_{session_id}"
+
+            # Prepare response headers for SSE
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.send_header('Cache-Control', 'no-cache')
+            # Ensure progressive delivery to browsers that buffer POST responses
+            self.send_header('Transfer-Encoding', 'chunked')
+            self.send_header('Connection', 'keep-alive')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+
+            def emit(event_type: str, payload):
+                """Send a single SSE event."""
+                try:
+                    data_str = json.dumps({"type": event_type, "data": payload})
+                    self.wfile.write(f"data: {data_str}\n\n".encode('utf-8'))
+                    self.wfile.flush()
+                except BrokenPipeError:
+                    # Client disconnected
+                    raise
+
+            # Run the agent synchronously, emitting checkpoints
+            try:
+                final_result = RAG_AGENT.run(
+                    query,
+                    table_name=table_name,
+                    session_id=session_id,
+                    compose_sub_answers=compose_flag,
+                    query_decompose=decomp_flag,
+                    ai_rerank=ai_rerank_flag,
+                    context_expand=ctx_expand_flag,
+                    event_callback=emit,
+                )
+
+                # Ensure the final answer is sent (in case callback missed it)
+                emit("complete", final_result)
+            except BrokenPipeError:
+                print("🔌 Client disconnected from SSE stream.")
+            except Exception as e:
+                # Send error event then close
+                error_payload = {"error": str(e)}
+                try:
+                    emit("error", error_payload)
+                finally:
+                    print(f"❌ Stream error: {e}")
 
         except json.JSONDecodeError:
             self.send_json_response({"error": "Invalid JSON"}, status_code=400)
@@ -90,6 +169,10 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             
             file_paths = data.get('file_paths')
             session_id = data.get('session_id')
+            compose_flag = data.get('compose_sub_answers')
+            decomp_flag = data.get('query_decompose')
+            ai_rerank_flag = data.get('ai_rerank')
+            ctx_expand_flag = data.get('context_expand')
             if not file_paths or not isinstance(file_paths, list):
                 self.send_json_response({
                     "error": "A 'file_paths' list is required."

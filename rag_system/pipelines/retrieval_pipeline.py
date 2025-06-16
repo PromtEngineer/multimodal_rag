@@ -227,7 +227,7 @@ ORIGINAL QUESTION: "{query}"
         )
         return response.get('response', 'Failed to generate a final answer.')
 
-    def run(self, query: str, table_name: str = None, window_size_override: Optional[int] = None) -> Dict[str, Any]:
+    def run(self, query: str, table_name: str = None, window_size_override: Optional[int] = None, event_callback=None) -> Dict[str, Any]:
         start_time = time.time()
         retrieval_k = self.config.get("retrieval_k", 10)
 
@@ -238,6 +238,8 @@ ORIGINAL QUESTION: "{query}"
         if table_name:
             self.storage_config["text_table_name"] = table_name
 
+        if event_callback:
+            event_callback("retrieval_started", {})
         # Unified retrieval using the refactored MultiVectorRetriever
         dense_retriever = self._get_dense_retriever()
         # Get the LanceDB reranker for initial score fusion
@@ -251,6 +253,8 @@ ORIGINAL QUESTION: "{query}"
                 k=retrieval_k,
                 reranker=lancedb_reranker # Pass the reranker to enable hybrid search
             )
+        if event_callback:
+            event_callback("retrieval_done", {"count": len(retrieved_docs)})
         
         retrieval_time = time.time() - start_time
         logger.debug("Retrieved %s chunks in %.2fs", len(retrieved_docs), retrieval_time)
@@ -258,6 +262,8 @@ ORIGINAL QUESTION: "{query}"
         # --- AI Reranking Step ---
         ai_reranker = self._get_ai_reranker()
         if ai_reranker and retrieved_docs:
+            if event_callback:
+                event_callback("rerank_started", {"count": len(retrieved_docs)})
             print(f"\n--- Reranking top {len(retrieved_docs)} docs with AI model... ---")
             start_rerank_time = time.time()
 
@@ -304,6 +310,8 @@ ORIGINAL QUESTION: "{query}"
 
             rerank_time = time.time() - start_rerank_time
             print(f"✅ Reranking completed in {rerank_time:.2f}s. Refined to {len(reranked_docs)} docs.")
+            if event_callback:
+                event_callback("rerank_done", {"count": len(reranked_docs)})
         else:
             # If no AI reranker, proceed with the initially retrieved docs
             reranked_docs = retrieved_docs
@@ -312,6 +320,8 @@ ORIGINAL QUESTION: "{query}"
         if window_size_override is not None:
             window_size = window_size_override
         if window_size > 0 and reranked_docs:
+            if event_callback:
+                event_callback("context_expand_started", {"count": len(reranked_docs)})
             print(f"\n--- Expanding context for {len(reranked_docs)} top documents (window size: {window_size})... ---")
             expanded_chunks = {}
             with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -344,6 +354,8 @@ ORIGINAL QUESTION: "{query}"
                 final_docs.sort(key=lambda c: (c.get('document_id', ''), c.get('chunk_index', 0)))
 
             print(f"Expanded to {len(final_docs)} unique chunks for synthesis.")
+            if event_callback:
+                event_callback("context_expand_done", {"count": len(final_docs)})
         else:
             final_docs = reranked_docs
 
@@ -382,6 +394,10 @@ ORIGINAL QUESTION: "{query}"
             return v
 
         for doc in final_docs:
+            # Remove heavy or internal-only fields before serialising
+            doc.pop("vector", None)
+            doc.pop("_distance", None)
+            # Clean numeric fields
             for key in ['score', '_distance', 'rerank_score']:
                 if key in doc:
                     doc[key] = _clean_val(doc[key])

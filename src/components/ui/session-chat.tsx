@@ -8,6 +8,7 @@ import { ChatMessage, ChatSession, chatAPI, generateUUID } from "@/lib/api"
 import { AttachedFile } from "@/lib/types"
 import { useEffect, useState, forwardRef, useImperativeHandle } from "react"
 import { Button } from "./button"
+import type { Step } from '@/lib/api'
 
 interface SessionChatProps {
   sessionId?: string
@@ -152,33 +153,44 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
 
       setIsLoading(true)
 
+      // Ensure we know the index id for table_name; fetch if missing
+      let idxId = currentIndexId;
+      if (!idxId) {
+        try {
+          const idxResp = await apiService.getSessionIndexes(activeSessionId as string);
+          if (idxResp.indexes && idxResp.indexes.length > 0) {
+            const lastIdxObj = idxResp.indexes[idxResp.indexes.length - 1] as any;
+            idxId = (lastIdxObj.index_id ?? lastIdxObj.id) as string;
+            setCurrentIndexId(idxId ?? null);
+          }
+        } catch {}
+      }
+
       if (enableStream) {
+        // Stepwise progress structure
+        const steps: Step[] = [
+          { key: 'analyze', label: 'Analyzing user question', status: 'pending' as const, details: '' },
+          { key: 'decompose', label: 'Generating sub-queries', status: 'pending' as const, details: '' },
+          { key: 'retrieval', label: 'Retrieving context', status: 'pending' as const, details: '' },
+          { key: 'rerank', label: 'Reranking results', status: 'pending' as const, details: '' },
+          { key: 'expand', label: 'Expanding context window', status: 'pending' as const, details: '' },
+          { key: 'answer', label: 'Answering sub-queries', status: 'pending' as const, details: [] },
+          { key: 'synthesize', label: 'Putting everything together', status: 'pending' as const, details: '' },
+          { key: 'final', label: 'Final answer', status: 'pending' as const, details: '' },
+        ];
         const placeholder: ChatMessage = {
           id: generateUUID(),
-          content: '⏳ Generating answer…',
+          content: { steps },
           sender: 'assistant',
           timestamp: new Date().toISOString(),
-          isLoading: true,
+          isLoading: false,
+          metadata: { message_type: 'in_progress' }
         }
         setMessages(prev => {
-          const withoutLoaders = prev.filter(m => !m.isLoading)
+          const withoutLoaders = prev.filter(m => m.metadata?.message_type !== 'in_progress' && !m.isLoading)
           return [...withoutLoaders, placeholder]
         })
-        // The placeholder now represents loading state; hide the global loader
-        setIsLoading(false)
-
-        // Ensure we know the index id for table_name; fetch if missing
-        let idxId = currentIndexId
-        if (!idxId) {
-          try {
-            const idxResp = await apiService.getSessionIndexes(activeSessionId as string)
-            if (idxResp.indexes && idxResp.indexes.length > 0) {
-              const lastIdxObj = idxResp.indexes[idxResp.indexes.length - 1] as any
-              idxId = (lastIdxObj.index_id ?? lastIdxObj.id) as string
-              setCurrentIndexId(idxId ?? null)
-            }
-          } catch {}
-        }
+        // keep global isLoading true so input disabled until completion
 
         await apiService.streamSessionMessage(
           {
@@ -191,51 +203,87 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             contextExpand: enableContextExpand,
           },
           (evt) => {
-            if (evt.type === 'decomposition') {
-              const sqMsg: ChatMessage = {
-                id: generateUUID(),
-                content: `🔍 Sub-queries: ${(evt.data.sub_queries || []).join(' | ')}`,
-                sender: 'assistant',
-                timestamp: new Date().toISOString(),
-              };
-              setMessages(prev => {
-                const idx = prev.findIndex(m => m.id === placeholder.id)
-                if (idx === -1) return [...prev, sqMsg]
-                return [...prev.slice(0, idx), sqMsg, ...prev.slice(idx)]
-              })
-              return;
-            }
-
-            if (evt.type === 'sub_query_result') {
-              const { index, query: q, answer: a } = evt.data;
-              const subMsg: ChatMessage = {
-                id: generateUUID(),
-                content: `🧩 ${q}: ${a}`,
-                sender: 'assistant',
-                timestamp: new Date().toISOString(),
-                metadata: { source_documents: (evt.data as any).source_documents || [] },
-              };
-              setMessages(prev => {
-                const idx = prev.findIndex(m => m.id === placeholder.id)
-                if (idx === -1) return [...prev, subMsg]
-                return [...prev.slice(0, idx), subMsg, ...prev.slice(idx)]
-              })
-              return;
-            }
-
-            if (evt.type === 'single_query_result') {
-              const { answer, source_documents } = evt.data;
-              setMessages(prev => prev.map(m => m.id === placeholder.id ? { ...m, content: answer, isLoading:false, metadata:{} } : m))
-              setIsLoading(false)
-              return;
-            }
-
-            if (evt.type === 'final_answer' || evt.type === 'complete') {
-              const { answer, source_documents } = evt.data;
-              setMessages(prev => prev.map(m => m.id === placeholder.id ? { ...m, content: answer, isLoading:false, metadata:{} } : m))
-              setIsLoading(false)
-            }
-            // Optionally handle other phases for debugging UI
+            console.log('STREAM EVENT:', evt.type, evt.data); // Debug log for SSE events
+            setMessages(prev => prev.map(m => {
+              if (m.id !== placeholder.id) return m;
+              const steps = [...(m.content as any).steps];
+              if (evt.type === 'analyze') {
+                steps[0].status = 'active';
+                steps[0].details = 'Analyzing your question...';
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'decomposition') {
+                steps[0].status = 'done';
+                steps[1].status = 'active';
+                steps[1].details = `🔍 Sub-queries: ${(evt.data.sub_queries || []).join(' | ')}`;
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'retrieval_started') {
+                steps[1].status = 'done';
+                steps[2].status = 'active';
+                steps[2].details = 'Retrieving relevant documents...';
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'retrieval_done') {
+                steps[2].status = 'done';
+                steps[2].details = evt.data && evt.data.count ? `Retrieved ${evt.data.count} documents.` : 'Retrieval complete.';
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'rerank_started') {
+                steps[2].status = 'done';
+                steps[3].status = 'active';
+                steps[3].details = 'Reranking results...';
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'rerank_done') {
+                steps[3].status = 'done';
+                steps[3].details = evt.data && evt.data.count ? `Reranked top ${evt.data.count} results.` : 'Reranking complete.';
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'context_expand_started') {
+                steps[3].status = 'done';
+                steps[4].status = 'active';
+                steps[4].details = 'Expanding context window...';
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'context_expand_done') {
+                steps[4].status = 'done';
+                steps[4].details = evt.data && evt.data.count ? `Expanded to ${evt.data.count} chunks.` : 'Context expansion complete.';
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'sub_query_result') {
+                steps[4].status = 'done';
+                steps[5].status = 'active';
+                const existing = Array.isArray(steps[5].details) ? steps[5].details : [];
+                if (!existing.some((d: any) => d.question === evt.data.query)) {
+                  steps[5].details = [...existing, {
+                    question: evt.data.query,
+                    answer: evt.data.answer,
+                    source_documents: evt.data.source_documents || []
+                  }];
+                } else {
+                  steps[5].details = existing; // no change if duplicate
+                }
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'final_answer' || evt.type === 'single_query_result') {
+                steps[5].status = 'done';
+                steps[6].status = 'active';
+                steps[6].details = 'Synthesizing final answer...';
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'complete') {
+                steps[6].status = 'done';
+                steps[7].status = 'active';
+                steps[7].details = {
+                  answer: evt.data.answer,
+                  source_documents: evt.data.source_documents || []
+                };
+                setIsLoading(false);
+                return { ...m, content: { steps }, metadata: { message_type: 'complete' } };
+              }
+              return m;
+            }));
           }
         )
       } else {
@@ -246,7 +294,10 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
           content: response.response,
           sender: 'assistant',
           timestamp: new Date().toISOString(),
-          metadata: { source_documents: (response as any).source_documents || [] }
+          metadata: { 
+            message_type: 'sub_answer',
+            source_documents: (response as any).source_documents || [] 
+          }
         }
         setMessages(prev => [...prev, aiMessage])
 

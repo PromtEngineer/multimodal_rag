@@ -13,9 +13,16 @@ export const generateUUID = () => {
   });
 };
 
+export interface Step {
+  key: string;
+  label: string;
+  status: 'pending' | 'active' | 'done';
+  details: any;
+}
+
 export interface ChatMessage {
   id: string;
-  content: string;
+  content: string | Array<Record<string, any>> | { steps: Step[] };
   sender: 'user' | 'assistant';
   timestamp: string;
   isLoading?: boolean;
@@ -117,10 +124,10 @@ class ChatAPI {
   // Convert ChatMessage array to conversation history format
   messagesToHistory(messages: ChatMessage[]): Array<{ role: 'user' | 'assistant'; content: string }> {
     return messages
-      .filter(msg => !msg.isLoading && msg.content.trim())
+      .filter(msg => typeof msg.content === 'string' && msg.content.trim())
       .map(msg => ({
         role: msg.sender,
-        content: msg.content,
+        content: msg.content as string,
       }));
   }
 
