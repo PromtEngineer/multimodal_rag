@@ -215,7 +215,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
               if (evt.type === 'decomposition') {
                 steps[0].status = 'done';
                 steps[1].status = 'active';
-                steps[1].details = `🔍 Sub-queries: ${(evt.data.sub_queries || []).join(' | ')}`;
+                steps[1].details = (evt.data.sub_queries || []);
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'retrieval_started') {
@@ -274,7 +274,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
               }
               if (evt.type === 'complete') {
                 steps[6].status = 'done';
-                steps[7].status = 'active';
+                steps[7].status = 'done';
                 steps[7].details = {
                   answer: evt.data.answer,
                   source_documents: evt.data.source_documents || []
@@ -288,19 +288,19 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
         )
       } else {
         const response = await apiService.sendSessionMessage(activeSessionId, content, { composeSubAnswers, decompose: enableDecompose, aiRerank: enableAiRerank, contextExpand: enableContextExpand })
-
-        const aiMessage: ChatMessage = {
-          id: response.ai_message_id || generateUUID(),
-          content: response.response,
-          sender: 'assistant',
-          timestamp: new Date().toISOString(),
+      
+      const aiMessage: ChatMessage = {
+        id: response.ai_message_id || generateUUID(),
+        content: response.response,
+        sender: 'assistant',
+        timestamp: new Date().toISOString(),
           metadata: { 
             message_type: 'sub_answer',
             source_documents: (response as any).source_documents || [] 
           }
-        }
-        setMessages(prev => [...prev, aiMessage])
-
+      }
+      setMessages(prev => [...prev, aiMessage])
+      
         if ((response as any).session) {
           const sess = (response as any).session as ChatSession
           setCurrentSession(sess)
@@ -386,19 +386,19 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
           {error}
         </div>
       )}
-
+      
       {/* Conversation area (may be empty) */}
       {showEmptyState ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center text-gray-500 text-lg select-none">What can I help you find?</div>
         </div>
       ) : (
-        <ConversationPage 
-          messages={messages}
-          isLoading={isLoading}
-          onAction={handleAction}
-          className="flex-1 min-h-0 overflow-hidden"
-        />
+          <ConversationPage 
+            messages={messages}
+            isLoading={isLoading}
+            onAction={handleAction}
+            className="flex-1 min-h-0 overflow-hidden"
+          />
       )}
 
       {/* Input section always present */}
@@ -426,19 +426,19 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             Stream phases
           </label>
         </div>
-        {uploadedFiles.length > 0 && !isIndexed && (
-          <div className="p-2 text-center bg-yellow-100 dark:bg-yellow-900 border-t border-b border-gray-200 dark:border-gray-700">
-            <Button onClick={handleIndexDocuments} disabled={isLoading}>
-              {isLoading ? 'Indexing...' : 'Index Documents to Enable Chat'}
-            </Button>
+            {uploadedFiles.length > 0 && !isIndexed && (
+              <div className="p-2 text-center bg-yellow-100 dark:bg-yellow-900 border-t border-b border-gray-200 dark:border-gray-700">
+                <Button onClick={handleIndexDocuments} disabled={isLoading}>
+                  {isLoading ? 'Indexing...' : 'Index Documents to Enable Chat'}
+                </Button>
+              </div>
+            )}
+            <ChatInput
+              onSendMessage={sendMessage}
+              disabled={isLoading || (uploadedFiles.length > 0 && !isIndexed)}
+              placeholder="Message localGPT..."
+            />
           </div>
-        )}
-        <ChatInput
-          onSendMessage={sendMessage}
-          disabled={isLoading || (uploadedFiles.length > 0 && !isIndexed)}
-          placeholder="Message localGPT..."
-        />
-      </div>
     </div>
   )
 })

@@ -5,7 +5,7 @@ import { useRef, useEffect, useState } from "react"
 import {
   ChatBubbleAvatar,
 } from "@/components/ui/chat-bubble"
-import { Copy, RefreshCcw, ThumbsUp, ThumbsDown, Volume2, MoreHorizontal, ChevronDown } from "lucide-react"
+import { Copy, RefreshCcw, ThumbsUp, ThumbsDown, Volume2, MoreHorizontal, ChevronDown, Loader2, CheckCircle, XOctagon } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ChatMessage } from "@/lib/api"
 import { cn } from "@/lib/utils"
@@ -65,23 +65,42 @@ function CitationsBlock({docs}:{docs:any[]}){
   );
 }
 
+function StepIcon({ status }: { status: 'pending' | 'active' | 'done' | 'error' }) {
+  switch (status) {
+    case 'pending':
+      return <MoreHorizontal className="w-4 h-4 text-neutral-600" />
+    case 'active':
+      return <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+    case 'done':
+      return <CheckCircle className="w-4 h-4 text-green-400" />
+    case 'error':
+      return <XOctagon className="w-4 h-4 text-red-400" />
+    default:
+      return null
+  }
+}
+
+const statusBorder: Record<string, string> = {
+  pending: 'border-neutral-800',
+  active: 'border-blue-400 animate-pulse',
+  done: 'border-green-400',
+  error: 'border-red-400'
+}
+
 function StructuredMessageBlock({ content }: { content: Array<Record<string, any>> | { steps: any[] } }) {
   const steps: any[] = Array.isArray(content) ? content : (content as any).steps;
   return (
     <div className="flex flex-col">
       {steps.map((step: any, index: number) => {
         if (step.key && step.label) {
-          // Stepwise progress rendering
-          let statusIcon = step.status === 'done' ? '✅' : step.status === 'active' ? <span className="animate-pulse">⏳</span> : '•';
-          let statusClass = step.status === 'active' ? 'bg-gray-800/60 border-l-4 border-blue-400 p-2 my-1 rounded' :
-                          step.status === 'done' ? 'bg-gray-900/40 p-2 my-1 rounded' :
-                          'p-2 my-1 text-gray-500';
+          const borderCls = statusBorder[step.status] || statusBorder['pending']
+          const statusClass = `timeline-card card my-1 py-2 pl-3 pr-2 bg-[#0d0d0d] rounded border-l-2 ${borderCls}`
           
           return (
             <div key={step.key} className={statusClass}>
               <div className="flex items-center gap-2 mb-1">
-                <span>{statusIcon}</span>
-                <span className={step.status === 'active' ? 'font-bold text-blue-200' : ''}>{step.label}</span>
+                <StepIcon status={step.status} />
+                <span className="text-sm font-medium text-neutral-100">{step.label}</span>
               </div>
               {/* Details for each step */}
               {step.key === 'final' && step.details && typeof step.details === 'object' && !Array.isArray(step.details) ? (
@@ -98,18 +117,27 @@ function StructuredMessageBlock({ content }: { content: Array<Record<string, any
                   {step.details}
                 </div>
               ) : Array.isArray(step.details) ? (
-                // Handle array of sub-answers
-                <div className="space-y-2">
-                  {step.details.map((detail: any, idx: number) => (
-                    <div key={idx} className="border-l-2 border-blue-400 pl-2">
-                      <div className="font-semibold">{detail.question}</div>
-                      <div>{detail.answer}</div>
-                      {detail.source_documents && detail.source_documents.length > 0 && (
-                        <CitationsBlock docs={detail.source_documents} />
-                      )}
-                    </div>
-                  ))}
-                </div>
+                step.key === 'decompose' && step.details.every((d: any)=> typeof d === 'string') ? (
+                  // Render list of sub-query strings
+                  <ul className="list-disc list-inside space-y-1 text-neutral-200">
+                    {step.details.map((q: string, idx:number)=>(
+                      <li key={idx}>{q}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  // Handle array of sub-answers
+                  <div className="space-y-2">
+                    {step.details.map((detail: any, idx: number) => (
+                      <div key={idx} className="border-l-2 border-blue-400 pl-2">
+                        <div className="font-semibold">{detail.question}</div>
+                        <div>{detail.answer}</div>
+                        {detail.source_documents && detail.source_documents.length > 0 && (
+                          <CitationsBlock docs={detail.source_documents} />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )
               ) : (
                 // Handle string details
                 step.details
