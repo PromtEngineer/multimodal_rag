@@ -197,7 +197,7 @@ class RetrievalPipeline:
             # If the query fails for any reason, fall back to the single chunk
             return [chunk]
 
-    def _synthesize_final_answer(self, query: str, facts: str) -> str:
+    def _synthesize_final_answer(self, query: str, facts: str, event_callback=None) -> str:
         """Uses a text LLM to synthesize a final answer from extracted facts."""
         prompt = f"""
 You are an AI assistant specialised in answering questions from retrieved context.
@@ -225,11 +225,30 @@ Answer:
 
 ORIGINAL QUESTION: "{query}"
 """
-        response = self.ollama_client.generate_completion(
-            model=self.ollama_config["generation_model"],
-            prompt=prompt
-        )
-        return response.get('response', 'Failed to generate a final answer.')
+        # Stream chunks so UI can display progressively
+        try:
+            chunks = self.ollama_client.generate_completion(
+                model=self.ollama_config["generation_model"],
+                prompt=prompt,
+                stream=True
+            )
+            parts: list[str] = []
+            for chunk in chunks:
+                if not chunk:
+                    continue
+                parts.append(chunk)
+                if event_callback:
+                    event_callback("final_answer_stream", {"delta": chunk})
+            return "".join(parts) or "Failed to generate a final answer."
+        except Exception as e:
+            print(f"Streaming final answer failed: {e}")
+            # Fallback to non-streaming
+            response = self.ollama_client.generate_completion(
+                model=self.ollama_config["generation_model"],
+                prompt=prompt,
+                stream=False
+            )
+            return response.get('response', 'Failed to generate a final answer.')
 
     def run(self, query: str, table_name: str = None, window_size_override: Optional[int] = None, event_callback=None) -> Dict[str, Any]:
         start_time = time.time()
@@ -413,7 +432,7 @@ ORIGINAL QUESTION: "{query}"
                     doc[key] = _clean_val(doc[key])
 
         context = "\n\n".join([doc['text'] for doc in final_docs])
-        final_answer = self._synthesize_final_answer(query, context)
+        final_answer = self._synthesize_final_answer(query, context, event_callback)
         
         return {"answer": final_answer, "source_documents": final_docs}
 

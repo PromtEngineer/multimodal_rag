@@ -41,7 +41,8 @@ class OllamaClient:
         format: str = "",
         images: List[Image.Image] | None = None,
         enable_thinking: bool | None = None,
-    ) -> Dict[str, Any]:
+        stream: bool = False,
+    ) -> Dict[str, Any] | Any:
         """
         Generates a completion, now with optional support for images.
 
@@ -51,12 +52,13 @@ class OllamaClient:
             format: The format for the response, e.g., "json".
             images: A list of Pillow Image objects to send to the VLM.
             enable_thinking: Optional flag to disable chain-of-thought for Qwen models.
+            stream: Whether to return a stream of responses instead of a single response.
         """
         try:
             payload = {
                 "model": model,
                 "prompt": prompt,
-                "stream": False
+                "stream": bool(stream)
             }
             if format:
                 payload["format"] = format
@@ -68,14 +70,35 @@ class OllamaClient:
             if enable_thinking is not None:
                 payload["chat_template_kwargs"] = {"enable_thinking": enable_thinking}
 
-            response = requests.post(
-                f"{self.api_url}/generate",
-                json=payload
-            )
-            response.raise_for_status()
-            response_lines = response.text.strip().split('\n')
-            final_response = json.loads(response_lines[-1])
-            return final_response
+            if not stream:
+                response = requests.post(
+                    f"{self.api_url}/generate",
+                    json=payload,
+                    timeout=120
+                )
+                response.raise_for_status()
+                response_lines = response.text.strip().split('\n')
+                return json.loads(response_lines[-1])
+            else:
+                # Streaming response – yield each chunk's 'response' field
+                response = requests.post(
+                    f"{self.api_url}/generate",
+                    json=payload,
+                    stream=True,
+                    timeout=120
+                )
+                response.raise_for_status()
+                def _iter():
+                    for line in response.iter_lines():
+                        if not line:
+                            continue
+                        try:
+                            data = json.loads(line)
+                            if "response" in data:
+                                yield data["response"]
+                        except json.JSONDecodeError:
+                            continue
+                return _iter()
 
         except requests.exceptions.RequestException as e:
             print(f"Error generating completion: {e}")

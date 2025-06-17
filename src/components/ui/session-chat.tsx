@@ -284,6 +284,13 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
                 setIsLoading(false);
                 return { ...m, content: { steps }, metadata: { message_type: 'complete' } };
               }
+              if (evt.type === 'final_answer_stream') {
+                steps[7].status = 'active';
+                const detObj: any = (typeof steps[7].details === 'object' && steps[7].details) ? steps[7].details : { answer: '' };
+                detObj.answer = (detObj.answer || '') + (evt.data?.delta || '');
+                steps[7].details = detObj;
+                return { ...m, content: { steps } };
+              }
               return m;
             }));
           }
