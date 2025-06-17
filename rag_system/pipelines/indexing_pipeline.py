@@ -65,10 +65,18 @@ class IndexingPipeline:
                 batch_size=self.enrichment_batch_size
             )
 
-    def run(self, file_paths: List[str]):
+    def run(self, file_paths: List[str] | None = None, *, documents: List[str] | None = None):
         """
         Processes and indexes documents based on the pipeline's configuration.
+        Accepts legacy keyword *documents* as an alias for *file_paths* so that
+        older callers (backend/index builder) keep working.
         """
+        # Back-compat shim ---------------------------------------------------
+        if file_paths is None and documents is not None:
+            file_paths = documents
+        if file_paths is None:
+            raise TypeError("IndexingPipeline.run() expects 'file_paths' (or alias 'documents') argument")
+
         print(f"--- Starting indexing process for {len(file_paths)} files. ---")
         
         # Import progress tracking utilities
