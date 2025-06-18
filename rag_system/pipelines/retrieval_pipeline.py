@@ -25,9 +25,16 @@ from PIL import Image
 # Thread-safety helpers
 # ---------------------------------------------------------------------------
 
-# ColBERT (via rerankers) is not thread-safe; concurrent calls raise
-# "Already borrowed". We serialise access through a single global lock.
+# 1. ColBERT (via `rerankers` lib) is not thread-safe.  We protect the actual
+#    `.rank()` call with `_rerank_lock`.
 _rerank_lock: Lock = Lock()
+
+# 2. Loading a large cross-encoder or ColBERT model can easily take >1 GB of
+#    RAM.  When multiple sub-queries are processed in parallel they may try to
+#    instantiate the reranker simultaneously, which results in PyTorch meta
+#    tensor errors.  We therefore guard the *initialisation* with its own
+#    lock so only one thread carries out the heavy `from_pretrained()` call.
+_ai_reranker_init_lock: Lock = Lock()
 
 class RetrievalPipeline:
     """
@@ -123,25 +130,28 @@ class RetrievalPipeline:
         """Initializes a dedicated AI-based reranker."""
         reranker_config = self.config.get("reranker", {})
         if self.ai_reranker is None and reranker_config.get("enabled"):
-            try:
-                model_name = reranker_config.get("model_name")
-                strategy = reranker_config.get("strategy", "qwen")
+            # Serialise first-time initialisation so only one thread attempts
+            # to load the (very large) model.  Other threads will wait and use
+            # the instance once ready, preventing the meta-tensor crash.
+            with _ai_reranker_init_lock:
+                # Another thread may have completed init while we waited
+                if self.ai_reranker is None:
+                    try:
+                        model_name = reranker_config.get("model_name")
+                        strategy = reranker_config.get("strategy", "qwen")
 
-                if strategy == "rerankers-lib":
-                    print(f"🔧 Initialising Answer.AI ColBERT reranker ({model_name}) via rerankers lib…")
-                    # The rerankers library now exposes a single generic `Reranker` class
-                    # that auto-detects the appropriate backend (cross-encoder, ColBERT, etc.)
-                    # We explicitly pass `model_type="colbert"` to guarantee late-interaction.
-                    from rerankers import Reranker
-                    self.ai_reranker = Reranker(model_name, model_type="colbert")
-                else:
-                    # Fallback to existing Qwen cross-encoder reranker
-                    print(f"🔧 Lazily initializing Qwen reranker ({model_name})…")
-                    self.ai_reranker = QwenReranker(model_name=model_name)
+                        if strategy == "rerankers-lib":
+                            print(f"🔧 Initialising Answer.AI ColBERT reranker ({model_name}) via rerankers lib…")
+                            from rerankers import Reranker
+                            self.ai_reranker = Reranker(model_name, model_type="colbert")
+                        else:
+                            print(f"🔧 Lazily initializing Qwen reranker ({model_name})…")
+                            self.ai_reranker = QwenReranker(model_name=model_name)
 
-                print("✅ AI reranker initialized successfully.")
-            except Exception as e:
-                print(f"❌ Failed to initialize AI reranker: {e}")
+                        print("✅ AI reranker initialized successfully.")
+                    except Exception as e:
+                        # Leave as None so the pipeline can proceed without reranking
+                        print(f"❌ Failed to initialize AI reranker: {e}")
         return self.ai_reranker
 
     def _get_surrounding_chunks_lancedb(self, chunk: Dict[str, Any], window_size: int) -> List[Dict[str, Any]]:
