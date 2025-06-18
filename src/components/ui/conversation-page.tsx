@@ -89,9 +89,25 @@ const statusBorder: Record<string, string> = {
 
 function StructuredMessageBlock({ content }: { content: Array<Record<string, any>> | { steps: any[] } }) {
   const steps: any[] = Array.isArray(content) ? content : (content as any).steps;
+  // Determine if sub-query answers are present
+  const hasSubAnswers = steps.some((s: any) => s.key === 'answer' && Array.isArray(s.details) && s.details.length > 0);
+  // Compute the last index that has started (status !== 'pending') so we only
+  // render steps that are in progress or completed. This avoids showing the
+  // whole plan upfront and reveals each stage sequentially.
+  const lastRevealedIdx = (() => {
+    for (let i = steps.length - 1; i >= 0; i--) {
+      if (steps[i].status && steps[i].status !== 'pending') {
+        return i;
+      }
+    }
+    return -1; // nothing started yet
+  })();
+
+  const visibleSteps = lastRevealedIdx >= 0 ? steps.slice(0, lastRevealedIdx + 1) : [];
+
   return (
     <div className="flex flex-col">
-      {steps.map((step: any, index: number) => {
+      {visibleSteps.map((step: any, index: number) => {
         if (step.key && step.label) {
           const borderCls = statusBorder[step.status] || statusBorder['pending']
           const statusClass = `timeline-card card my-1 py-2 pl-3 pr-2 bg-[#0d0d0d] rounded border-l-2 ${borderCls}`
@@ -108,7 +124,7 @@ function StructuredMessageBlock({ content }: { content: Array<Record<string, any
                   <div className="whitespace-pre-wrap text-gray-100">
                     {step.details.answer}
                   </div>
-                  {step.details.source_documents && step.details.source_documents.length > 0 && (
+                  {!hasSubAnswers && step.details.source_documents && step.details.source_documents.length > 0 && (
                     <CitationsBlock docs={step.details.source_documents} />
                   )}
                 </div>

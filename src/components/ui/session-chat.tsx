@@ -225,34 +225,48 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'retrieval_done') {
-                steps[2].status = 'done';
-                steps[3].status = 'active';
-                steps[3].details = evt.data && evt.data.count ? `Retrieved ${evt.data.count} documents.` : 'Retrieval complete.';
-                steps[4].status = 'done';
-                steps[5].status = 'active';
-                steps[5].details = steps[5].details || '';
+                const ridx = steps.findIndex(s => s.key === 'retrieval');
+                if (ridx !== -1) {
+                  steps[ridx].status = 'done';
+                  steps[ridx].details = 'Retrieval complete.';
+                }
+                const rrxIdx = steps.findIndex(s => s.key === 'rerank');
+                if (rrxIdx !== -1) {
+                  steps[rrxIdx].status = 'active';
+                  steps[rrxIdx].details = 'Reranking results...';
+                }
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'rerank_started') {
-                steps[3].status = 'done';
-                steps[4].status = 'active';
-                steps[4].details = 'Reranking results...';
+                const rrxIdx = steps.findIndex(s => s.key === 'rerank');
+                if (rrxIdx !== -1) {
+                  steps[rrxIdx].status = 'active';
+                  steps[rrxIdx].details = 'Reranking results...';
+                }
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'rerank_done') {
-                steps[4].status = 'done';
-                steps[4].details = evt.data && evt.data.count ? `Reranked top ${evt.data.count} results.` : 'Reranking complete.';
+                const rrxIdx = steps.findIndex(s => s.key === 'rerank');
+                if (rrxIdx !== -1) {
+                  steps[rrxIdx].status = 'done';
+                  steps[rrxIdx].details = 'Reranking complete.';
+                }
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'context_expand_started') {
-                steps[4].status = 'done';
-                steps[5].status = 'active';
-                steps[5].details = 'Expanding context window...';
+                const eidx = steps.findIndex(s => s.key === 'expand');
+                if (eidx !== -1) {
+                  steps[eidx].status = 'active';
+                  steps[eidx].details = 'Expanding context window...';
+                }
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'context_expand_done') {
-                steps[5].status = 'done';
-                steps[5].details = evt.data && evt.data.count ? `Expanded to ${evt.data.count} chunks.` : 'Context expansion complete.';
+                const eidx = steps.findIndex(s => s.key === 'expand');
+                if (eidx !== -1) {
+                  steps[eidx].status = 'done';
+                  steps[eidx].details = 'Context expansion complete.';
+                }
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'sub_query_result') {
@@ -273,6 +287,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
                 steps[5].status = 'done';
                 steps[6].status = 'active';
                 steps[6].details = 'Synthesizing final answer...';
+                if (isLoading) setIsLoading(false);
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'token') {
@@ -344,6 +359,10 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
                 }
 
                 setIsLoading(false);
+                // Make sure any lingering steps are marked done
+                steps.forEach(s => {
+                  if (s.status !== 'done') s.status = 'done';
+                });
                 return { ...m, content: { steps }, metadata: { message_type: 'complete' } };
               }
               if (evt.type === 'direct_answer') {
@@ -422,12 +441,12 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
     currentSession
   }))
 
-  const handleAction = async (action: string, messageId: string, messageContent: string) => {
+  const handleAction = async (action: string, messageId: string, messageContent: string | Record<string, any>[] | { steps: Step[] }) => {
     console.log(`Action ${action} on message ${messageId}`)
     
     switch (action) {
       case 'copy':
-        await navigator.clipboard.writeText(messageContent)
+        await navigator.clipboard.writeText(typeof messageContent === 'string' ? messageContent : JSON.stringify(messageContent, null, 2))
         break
       case 'regenerate':
         // Find the user message before this AI message and resend it
@@ -437,7 +456,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
           if (userMessage.sender === 'user') {
             // Remove the AI message and resend the user message
             setMessages(prev => prev.filter(m => m.id !== messageId))
-            await sendMessage(userMessage.content)
+            await sendMessage(userMessage.content as string)
           }
         }
         break
