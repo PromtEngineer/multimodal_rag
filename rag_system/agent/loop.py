@@ -296,9 +296,26 @@ User query: "{query}"
                     if event_callback:
                         event_callback("rerank_started", {"count": len(sub_queries)})
 
+                    def make_cb(idx: int, sq: str):
+                        # Wrap inner callback so tokens are tagged per sub-query
+                        def _cb(ev_type: str, payload):
+                            if event_callback is None:
+                                return
+                            if ev_type == "token":
+                                event_callback("sub_query_token", {"index": idx, "text": payload.get("text", "")})
+                            else:
+                                event_callback(ev_type, payload)
+                        return _cb
+
                     with concurrent.futures.ThreadPoolExecutor(max_workers=min(3, len(sub_queries))) as executor:
                         future_to_query = {
-                            executor.submit(self.retrieval_pipeline.run, sub_query, table_name, 0 if context_expand is False else None): (i, sub_query)
+                            executor.submit(
+                                self.retrieval_pipeline.run,
+                                sub_query,
+                                table_name,
+                                0 if context_expand is False else None,
+                                make_cb(i, sub_query),
+                            ): (i, sub_query)
                             for i, sub_query in enumerate(sub_queries)
                         }
 
@@ -371,10 +388,18 @@ SUB-ANSWERS (JSON):
 ------
 FINAL ANSWER:
 """
-                        compose_resp = await self.llm_client.generate_completion_async(
-                            self.ollama_config["generation_model"], compose_prompt
-                        )
-                        final_answer = compose_resp.get('response', 'Unable to generate an answer.')
+                        # --- Stream composition answer token-by-token ---
+                        answer_parts: list[str] = []
+
+                        for tok in self.llm_client.stream_completion(
+                            model=self.ollama_config["generation_model"],
+                            prompt=compose_prompt,
+                        ):
+                            answer_parts.append(tok)
+                            if event_callback:
+                                event_callback("token", {"text": tok})
+
+                        final_answer = "".join(answer_parts) or "Unable to generate an answer."
 
                         result = {
                             "answer": final_answer,

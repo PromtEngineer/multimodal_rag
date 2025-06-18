@@ -115,6 +115,47 @@ class OllamaClient:
             print(f"Async Ollama completion error: {e}")
             return {}
 
+    # -------------------------------------------------------------
+    # Streaming variant – yields token chunks in real time
+    # -------------------------------------------------------------
+    def stream_completion(
+        self,
+        model: str,
+        prompt: str,
+        *,
+        images: List[Image.Image] | None = None,
+        enable_thinking: bool | None = None,
+    ):
+        """Generator that yields partial *response* strings as they arrive.
+
+        Example:
+
+            for tok in client.stream_completion("qwen2", "Hello"):
+                print(tok, end="", flush=True)
+        """
+        payload: Dict[str, Any] = {"model": model, "prompt": prompt, "stream": True}
+        if images:
+            payload["images"] = [self._image_to_base64(img) for img in images]
+        if enable_thinking is not None:
+            payload["chat_template_kwargs"] = {"enable_thinking": enable_thinking}
+
+        with requests.post(f"{self.api_url}/generate", json=payload, stream=True) as resp:
+            resp.raise_for_status()
+            for raw_line in resp.iter_lines():
+                if not raw_line:
+                    # Keep-alive newline
+                    continue
+                try:
+                    data = json.loads(raw_line.decode())
+                except json.JSONDecodeError:
+                    continue
+                # The Ollama streaming API sends objects like {"response":"Hi","done":false}
+                chunk = data.get("response", "")
+                if chunk:
+                    yield chunk
+                if data.get("done"):
+                    break
+
 if __name__ == '__main__':
     # This test now requires a VLM model like 'llava' or 'qwen-vl' to be pulled.
     print("Ollama client updated for multimodal (VLM) support.")

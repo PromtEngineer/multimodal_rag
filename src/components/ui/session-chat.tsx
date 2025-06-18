@@ -272,6 +272,40 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
                 steps[6].details = 'Synthesizing final answer...';
                 return { ...m, content: { steps } };
               }
+              if (evt.type === 'token') {
+                // Ensure final step is visible and active while streaming tokens
+                steps[6].status = 'done';
+                steps[7].status = 'active';
+                let current = '' as string;
+                if (steps[7].details && typeof steps[7].details === 'object' && !Array.isArray(steps[7].details)) {
+                  current = (steps[7].details as any).answer || '';
+                } else if (typeof steps[7].details === 'string') {
+                  current = steps[7].details as string;
+                }
+                const tok: string = (evt.data.text || '') as string;
+                if (!tok.trim()) {
+                  return m; // skip empty/whitespace-only chunks
+                }
+                const updated = current.endsWith(tok) ? current : current + tok;
+                steps[7].details = { answer: updated, source_documents: [] };
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'sub_query_token') {
+                const idx = evt.data.index as number;
+                const tok: string = evt.data.text || '';
+                if (!tok.trim()) return m;
+                steps[5].status = 'active';
+                let detailsArr: any[] = Array.isArray(steps[5].details) ? steps[5].details as any[] : [];
+                while (detailsArr.length <= idx) {
+                  detailsArr.push({ question: '', answer: '' });
+                }
+                const curAns: string = detailsArr[idx].answer || '';
+                if (!curAns.endsWith(tok)) {
+                  detailsArr[idx].answer = curAns + tok;
+                }
+                steps[5].details = detailsArr;
+                return { ...m, content: { steps } };
+              }
               if (evt.type === 'complete') {
                 steps[6].status = 'done';
                 steps[7].status = 'done';
