@@ -303,6 +303,11 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
                   steps[7].details = { answer: updated, source_documents: [] };
                 }
                 steps[finalIdx].details = updated;
+                // Mark "Putting everything together" step as done once tokens start
+                const synthIdx = steps.findIndex(s => s.key === 'synthesize');
+                if (synthIdx !== -1 && steps[synthIdx].status !== 'done') {
+                  steps[synthIdx].status = 'done';
+                }
                 if (isLoading) setIsLoading(false);
                 return { ...m, content: { steps } };
               }
@@ -313,7 +318,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
                 steps[5].status = 'active';
                 let detailsArr: any[] = Array.isArray(steps[5].details) ? steps[5].details as any[] : [];
                 while (detailsArr.length <= idx) {
-                  detailsArr.push({ question: '', answer: '' });
+                  detailsArr.push({ question: evt.data.question || `Sub-query ${idx+1}`, answer: '' });
                 }
                 const curAns: string = detailsArr[idx].answer || '';
                 if (!curAns.endsWith(tok)) {
