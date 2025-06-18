@@ -123,3 +123,26 @@
     @apply bg-black text-white;
   }
 }
+
+/* Style for <think> tokens */
+.thinking-block summary::-webkit-details-marker {
+  display: none;
+}
+.thinking-block summary::after {
+  content: "▸";
+  display: inline-block;
+  margin-left: 4px;
+  transform-origin: center;
+  transition: transform 0.15s ease-out;
+}
+.thinking-block[open] summary::after {
+  transform: rotate(90deg);
+}
+.thinking-block summary {
+  outline: none;
+}
+
+.thinking-block div {
+  color: #9ca3af;
+  font-style: italic;
+}

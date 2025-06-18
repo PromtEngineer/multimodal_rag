@@ -87,6 +87,34 @@ const statusBorder: Record<string, string> = {
   error: 'border-red-400'
 }
 
+// Component to handle <think> tokens and render them in a collapsible block
+function ThinkingText({ text }: { text: string }) {
+  const regex = /<think>([\s\S]*?)<\/think>/g;
+  const thinkSegments: string[] = [];
+  const visibleText = text.replace(regex, (_, p1) => {
+    thinkSegments.push(p1.trim());
+    return ""; // remove thinking content from main text
+  });
+
+  return (
+    <>
+      {thinkSegments.length > 0 && (
+        <details className="thinking-block mb-2" open={false}>
+          <summary className="cursor-pointer text-xs text-gray-400 uppercase select-none">Thinking</summary>
+          <div className="mt-1 space-y-1 text-xs text-gray-400 italic">
+            {thinkSegments.map((seg, idx) => (
+              <div key={idx}>{seg}</div>
+            ))}
+          </div>
+        </details>
+      )}
+      {visibleText.trim() && (
+        <span className="whitespace-pre-wrap">{visibleText}</span>
+      )}
+    </>
+  );
+}
+
 function StructuredMessageBlock({ content }: { content: Array<Record<string, any>> | { steps: any[] } }) {
   const steps: any[] = Array.isArray(content) ? content : (content as any).steps;
   // Determine if sub-query answers are present
@@ -122,7 +150,7 @@ function StructuredMessageBlock({ content }: { content: Array<Record<string, any
               {step.key === 'final' && step.details && typeof step.details === 'object' && !Array.isArray(step.details) ? (
                 <div className="space-y-3">
                   <div className="whitespace-pre-wrap text-gray-100">
-                    {step.details.answer}
+                    <ThinkingText text={step.details.answer} />
                   </div>
                   {!hasSubAnswers && step.details.source_documents && step.details.source_documents.length > 0 && (
                     <CitationsBlock docs={step.details.source_documents} />
@@ -130,7 +158,7 @@ function StructuredMessageBlock({ content }: { content: Array<Record<string, any
                 </div>
               ) : step.key === 'final' && step.details && typeof step.details === 'string' ? (
                 <div className="whitespace-pre-wrap text-gray-100">
-                  {step.details}
+                  <ThinkingText text={step.details} />
                 </div>
               ) : Array.isArray(step.details) ? (
                 step.key === 'decompose' && step.details.every((d: any)=> typeof d === 'string') ? (
@@ -146,7 +174,7 @@ function StructuredMessageBlock({ content }: { content: Array<Record<string, any
                     {step.details.map((detail: any, idx: number) => (
                       <div key={idx} className="border-l-2 border-blue-400 pl-2">
                         <div className="font-semibold">{detail.question}</div>
-                        <div>{detail.answer}</div>
+                        <div><ThinkingText text={detail.answer} /></div>
                         {detail.source_documents && detail.source_documents.length > 0 && (
                           <CitationsBlock docs={detail.source_documents} />
                         )}
@@ -294,7 +322,7 @@ export function ConversationPage({
                       ) : (
                         <div className="whitespace-pre-wrap text-sm leading-relaxed">
                           {typeof message.content === 'string' 
-                              ? message.content
+                              ? <ThinkingText text={message.content} />
                               : <StructuredMessageBlock content={message.content} />
                           }
                         </div>
