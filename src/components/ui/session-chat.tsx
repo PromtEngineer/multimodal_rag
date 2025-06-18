@@ -226,33 +226,36 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
               }
               if (evt.type === 'retrieval_done') {
                 steps[2].status = 'done';
-                steps[2].details = evt.data && evt.data.count ? `Retrieved ${evt.data.count} documents.` : 'Retrieval complete.';
+                steps[3].status = 'active';
+                steps[3].details = evt.data && evt.data.count ? `Retrieved ${evt.data.count} documents.` : 'Retrieval complete.';
+                steps[4].status = 'done';
+                steps[5].status = 'active';
+                steps[5].details = steps[5].details || '';
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'rerank_started') {
-                steps[2].status = 'done';
-                steps[3].status = 'active';
-                steps[3].details = 'Reranking results...';
+                steps[3].status = 'done';
+                steps[4].status = 'active';
+                steps[4].details = 'Reranking results...';
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'rerank_done') {
-                steps[3].status = 'done';
-                steps[3].details = evt.data && evt.data.count ? `Reranked top ${evt.data.count} results.` : 'Reranking complete.';
+                steps[4].status = 'done';
+                steps[4].details = evt.data && evt.data.count ? `Reranked top ${evt.data.count} results.` : 'Reranking complete.';
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'context_expand_started') {
-                steps[3].status = 'done';
-                steps[4].status = 'active';
-                steps[4].details = 'Expanding context window...';
+                steps[4].status = 'done';
+                steps[5].status = 'active';
+                steps[5].details = 'Expanding context window...';
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'context_expand_done') {
-                steps[4].status = 'done';
-                steps[4].details = evt.data && evt.data.count ? `Expanded to ${evt.data.count} chunks.` : 'Context expansion complete.';
+                steps[5].status = 'done';
+                steps[5].details = evt.data && evt.data.count ? `Expanded to ${evt.data.count} chunks.` : 'Context expansion complete.';
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'sub_query_result') {
-                steps[4].status = 'done';
                 steps[5].status = 'active';
                 const existing = Array.isArray(steps[5].details) ? steps[5].details : [];
                 if (!existing.some((d: any) => d.question === evt.data.query)) {
@@ -273,21 +276,34 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'token') {
-                // Ensure final step is visible and active while streaming tokens
-                steps[6].status = 'done';
-                steps[7].status = 'active';
+                // Determine final step index dynamically (7 for RAG, 0 for direct)
+                const finalIdx = steps.findIndex(s => s.key === 'final' || s.key === 'direct');
+                if (finalIdx === -1) return m;
+                if (steps[finalIdx].key !== 'direct') {
+                  steps[6].status = 'done';
+                  steps[7].status = 'active';
+                } else {
+                  steps[0].status = 'active';
+                }
                 let current = '' as string;
-                if (steps[7].details && typeof steps[7].details === 'object' && !Array.isArray(steps[7].details)) {
-                  current = (steps[7].details as any).answer || '';
-                } else if (typeof steps[7].details === 'string') {
-                  current = steps[7].details as string;
+                const detHolder = steps[finalIdx].details;
+                if (detHolder && typeof detHolder === 'object' && !Array.isArray(detHolder)) {
+                  current = (detHolder as any).answer || '';
+                } else if (typeof detHolder === 'string') {
+                  current = detHolder;
                 }
                 const tok: string = (evt.data.text || '') as string;
                 if (!tok.trim()) {
                   return m; // skip empty/whitespace-only chunks
                 }
                 const updated = current.endsWith(tok) ? current : current + tok;
-                steps[7].details = { answer: updated, source_documents: [] };
+                if (steps[finalIdx].key === 'direct') {
+                  steps[0].details = updated;
+                } else {
+                  steps[7].details = { answer: updated, source_documents: [] };
+                }
+                steps[finalIdx].details = updated;
+                if (isLoading) setIsLoading(false);
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'sub_query_token') {
@@ -304,17 +320,32 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
                   detailsArr[idx].answer = curAns + tok;
                 }
                 steps[5].details = detailsArr;
+                if (isLoading) setIsLoading(false);
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'complete') {
-                steps[6].status = 'done';
-                steps[7].status = 'done';
-                steps[7].details = {
-                  answer: evt.data.answer,
-                  source_documents: evt.data.source_documents || []
-                };
+                const finalIdx = steps.findIndex(s => s.key === 'final' || s.key === 'direct');
+                if (finalIdx === -1) return m;
+                steps[finalIdx].status = 'done';
+
+                if (steps[finalIdx].key === 'direct') {
+                  // Direct answer: details is plain string
+                  steps[finalIdx].details = evt.data.answer;
+                } else {
+                  steps[finalIdx].details = {
+                    answer: evt.data.answer,
+                    source_documents: evt.data.source_documents || []
+                  };
+                }
+
                 setIsLoading(false);
                 return { ...m, content: { steps }, metadata: { message_type: 'complete' } };
+              }
+              if (evt.type === 'direct_answer') {
+                const stepsDir: Step[] = [
+                  { key: 'direct', label: 'Answering directly', status: 'active' as const, details: '' }
+                ];
+                return { ...m, content: { steps: stepsDir } };
               }
               return m;
             }));
