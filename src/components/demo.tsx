@@ -101,7 +101,12 @@ export function Demo() {
                         <div className="space-y-4">
                             <LandingMenu onSelect={(m)=>{
                                 if(m==='CHAT_EXISTING'){ setShowIndexPicker(true); return; }
-                                setHomeMode(m==='INDEX'?'INDEX':'QUICK_CHAT');
+                                if(m==='QUICK_CHAT'){
+                                    setShowConversation(true);
+                                    setHomeMode('QUICK_CHAT');
+                                    return;
+                                }
+                                setHomeMode('INDEX');
                             }} />
                             <div className="flex flex-col items-center gap-3 mt-12">
                                 <div className="flex items-center gap-2 text-sm">
@@ -188,7 +193,7 @@ export function Demo() {
                         />
                     </div>
                 ) : homeMode==='QUICK_CHAT' ? (
-                    <QuickChat />
+                    <QuickChat sessionId={currentSessionId} onSessionChange={handleSessionChange} className="flex-1" />
                 ) : null}
             </main>
 
