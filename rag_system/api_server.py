@@ -114,8 +114,8 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'text/event-stream')
             self.send_header('Cache-Control', 'no-cache')
-            # Ensure progressive delivery to browsers that buffer POST responses
-            self.send_header('Transfer-Encoding', 'chunked')
+            # Keep connection alive for SSE; no manual chunked encoding (Python http.server
+            # does not add chunk sizes automatically, so declaring it breaks clients).
             self.send_header('Connection', 'keep-alive')
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()

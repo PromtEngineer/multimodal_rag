@@ -235,9 +235,31 @@ User query: "{query}"
                     return cached_result
 
         if query_type == "direct_answer":
-            prompt = f"You are a helpful assistant. Answer the user's question directly.\n\nUser: {contextual_query}\n\nAssistant:"
-            response = await self.llm_client.generate_completion_async(self.ollama_config["generation_model"], prompt)
-            result = {"answer": response.get('response'), "source_documents": []}
+            if event_callback:
+                event_callback("direct_answer", {})
+
+            prompt = (
+                "You are a helpful assistant. Answer the user's question directly.\n\n"
+                f"User: {contextual_query}\n\nAssistant:"
+            )
+
+            async def _run_stream():
+                answer_parts: list[str] = []
+
+                def _blocking_stream():
+                    for tok in self.llm_client.stream_completion(
+                        model=self.ollama_config["generation_model"], prompt=prompt
+                    ):
+                        answer_parts.append(tok)
+                        if event_callback:
+                            event_callback("token", {"text": tok})
+
+                # Run the blocking generator in a thread so the event loop stays responsive
+                await asyncio.to_thread(_blocking_stream)
+                return "".join(answer_parts)
+
+            final_answer = await _run_stream()
+            result = {"answer": final_answer, "source_documents": []}
         
         elif query_type == "graph_query" and hasattr(self, 'graph_retriever'):
             result = self._run_graph_query(query, history)
@@ -296,13 +318,16 @@ User query: "{query}"
                     if event_callback:
                         event_callback("rerank_started", {"count": len(sub_queries)})
 
-                    def make_cb(idx: int, sq: str):
-                        # Wrap inner callback so tokens are tagged per sub-query
+                    # Emit token chunks as soon as we receive them. The UI
+                    # keeps answers separated by `index`, so interleaving is
+                    # harmless and gives continuous feedback.
+
+                    def make_cb(idx: int):
                         def _cb(ev_type: str, payload):
                             if event_callback is None:
                                 return
                             if ev_type == "token":
-                                event_callback("sub_query_token", {"index": idx, "text": payload.get("text", "")})
+                                event_callback("sub_query_token", {"index": idx, "text": payload.get("text", ""), "question": sub_queries[idx]})
                             else:
                                 event_callback(ev_type, payload)
                         return _cb
@@ -314,7 +339,7 @@ User query: "{query}"
                                 sub_query,
                                 table_name,
                                 0 if context_expand is False else None,
-                                make_cb(i, sub_query),
+                                make_cb(i),
                             ): (i, sub_query)
                             for i, sub_query in enumerate(sub_queries)
                         }

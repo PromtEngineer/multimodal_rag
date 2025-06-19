@@ -203,7 +203,7 @@ class RetrievalPipeline:
             # If the query fails for any reason, fall back to the single chunk
             return [chunk]
 
-    def _synthesize_final_answer(self, query: str, facts: str) -> str:
+    def _synthesize_final_answer(self, query: str, facts: str, *, event_callback=None) -> str:
         """Uses a text LLM to synthesize a final answer from extracted facts."""
         prompt = f"""
 You are an AI assistant specialised in answering questions from retrieved context.
@@ -231,11 +231,17 @@ Answer:
 
 ORIGINAL QUESTION: "{query}"
 """
-        response = self.ollama_client.generate_completion(
+        # Stream the answer token-by-token so the caller can forward them as SSE
+        answer_parts: list[str] = []
+        for tok in self.ollama_client.stream_completion(
             model=self.ollama_config["generation_model"],
-            prompt=prompt
-        )
-        return response.get('response', 'Failed to generate a final answer.')
+            prompt=prompt,
+        ):
+            answer_parts.append(tok)
+            if event_callback:
+                event_callback("token", {"text": tok})
+
+        return "".join(answer_parts)
 
     def run(self, query: str, table_name: str = None, window_size_override: Optional[int] = None, event_callback=None) -> Dict[str, Any]:
         start_time = time.time()
@@ -413,7 +419,7 @@ ORIGINAL QUESTION: "{query}"
                     doc[key] = _clean_val(doc[key])
 
         context = "\n\n".join([doc['text'] for doc in final_docs])
-        final_answer = self._synthesize_final_answer(query, context)
+        final_answer = self._synthesize_final_answer(query, context, event_callback=event_callback)
         
         return {"answer": final_answer, "source_documents": final_docs}
 
