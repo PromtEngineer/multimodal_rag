@@ -184,7 +184,7 @@ function StructuredMessageBlock({ content }: { content: Array<Record<string, any
                 )
               ) : (
                 // Handle string details
-                step.details
+                <ThinkingText text={step.details as string} />
               )}
             </div>
           );

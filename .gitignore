@@ -56,3 +56,4 @@ backend/chat_history.db
 
 # Vector DB artefacts
 lancedb/
+index_store/overviews/

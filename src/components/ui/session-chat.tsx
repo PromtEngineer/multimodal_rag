@@ -9,6 +9,8 @@ import { AttachedFile } from "@/lib/types"
 import { useEffect, useState, forwardRef, useImperativeHandle } from "react"
 import { Button } from "./button"
 import type { Step } from '@/lib/api'
+import { ChatSettingsModal } from '@/components/ui/chat-settings-modal'
+import { IndexForm } from '@/components/IndexForm'
 
 interface SessionChatProps {
   sessionId?: string
@@ -42,6 +44,8 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
   const [enableStream, setEnableStream] = useState<boolean>(false)
   const [enableVerify, setEnableVerify] = useState<boolean>(true)
   const [currentIndexId, setCurrentIndexId] = useState<string | null>(null)
+  const [showSettings, setShowSettings] = useState(false)
+  const [showIndexForm, setShowIndexForm] = useState(false)
   
   const apiService = chatAPI
 
@@ -478,49 +482,30 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
         </div>
       )}
       
-      {/* Conversation area (may be empty) */}
       {showEmptyState ? (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center text-gray-500 text-lg select-none">What can I help you find?</div>
+        <div className="flex-1 flex flex-col items-center justify-center gap-6">
+          <div className="text-center text-2xl font-semibold text-gray-300 select-none">Where should we begin?</div>
+          <div className="w-full max-w-2xl px-4">
+            <ChatInput
+              onSendMessage={sendMessage}
+              disabled={isLoading}
+              placeholder="Ask anything"
+              onOpenSettings={()=>setShowSettings(true)}
+              onAddIndex={()=>setShowIndexForm(true)}
+            />
+          </div>
         </div>
       ) : (
+        <>
           <ConversationPage 
             messages={messages}
             isLoading={isLoading}
             onAction={handleAction}
             className="flex-1 min-h-0 overflow-hidden"
           />
-      )}
 
-      {/* Input section always present */}
-      <div className="flex-shrink-0 sticky bottom-0 z-10 bg-black/90 backdrop-blur-md">
-        {/* Retrieval behaviour toggles */}
-        <div className="px-4 py-1 flex items-center gap-4 text-xs text-gray-400">
-          <label className="flex items-center gap-1 select-none cursor-pointer">
-            <input type="checkbox" className="accent-blue-500" checked={enableDecompose} onChange={e=>setEnableDecompose(e.target.checked)} />
-            Enable query decomposition
-          </label>
-          <label className="flex items-center gap-1 select-none cursor-pointer">
-            <input type="checkbox" className="accent-blue-500" checked={enableAiRerank} onChange={e=>setEnableAiRerank(e.target.checked)} />
-            Use AI reranker
-          </label>
-          <label className="flex items-center gap-1 select-none cursor-pointer">
-            <input type="checkbox" className="accent-blue-500" checked={composeSubAnswers} onChange={e=>setComposeSubAnswers(e.target.checked)} />
-            Compose answer from sub-answers
-          </label>
-          <label className="flex items-center gap-1 select-none cursor-pointer">
-            <input type="checkbox" className="accent-blue-500" checked={enableContextExpand} onChange={e=>setEnableContextExpand(e.target.checked)} />
-            Expand context window
-          </label>
-          <label className="flex items-center gap-1 select-none cursor-pointer">
-            <input type="checkbox" className="accent-blue-500" checked={enableVerify} onChange={e=>setEnableVerify(e.target.checked)} />
-            Verify answer
-          </label>
-          <label className="flex items-center gap-1 select-none cursor-pointer">
-            <input type="checkbox" className="accent-blue-500" checked={enableStream} onChange={e=>setEnableStream(e.target.checked)} />
-            Stream phases
-          </label>
-        </div>
+          {/* Bottom input when chat active */}
+          <div className="flex-shrink-0 sticky bottom-0 z-10 bg-black/90 backdrop-blur-md">
             {uploadedFiles.length > 0 && !isIndexed && (
               <div className="p-2 text-center bg-yellow-100 dark:bg-yellow-900 border-t border-b border-gray-200 dark:border-gray-700">
                 <Button onClick={handleIndexDocuments} disabled={isLoading}>
@@ -532,8 +517,37 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
               onSendMessage={sendMessage}
               disabled={isLoading || (uploadedFiles.length > 0 && !isIndexed)}
               placeholder="Message localGPT..."
+              onOpenSettings={()=>setShowSettings(true)}
+              onAddIndex={()=>setShowIndexForm(true)}
             />
           </div>
+        </>
+      )}
+
+      {showSettings && (
+        <ChatSettingsModal
+          onClose={()=>setShowSettings(false)}
+          options={[
+            {label:'Query decomposition', checked: enableDecompose, setter: setEnableDecompose},
+            {label:'AI reranker', checked: enableAiRerank, setter: setEnableAiRerank},
+            {label:'Compose sub-answers', checked: composeSubAnswers, setter: setComposeSubAnswers},
+            {label:'Expand context window', checked: enableContextExpand, setter: setEnableContextExpand},
+            {label:'Verify answer', checked: enableVerify, setter: setEnableVerify},
+            {label:'Stream phases', checked: enableStream, setter: setEnableStream},
+          ]}
+        />
+      )}
+
+      {showIndexForm && (
+        <IndexForm
+          onClose={()=>setShowIndexForm(false)}
+          onIndexed={(s)=>{
+            setShowIndexForm(false);
+            setCurrentSession(s);
+            if(onSessionChange) onSessionChange(s);
+          }}
+        />
+      )}
     </div>
   )
 })

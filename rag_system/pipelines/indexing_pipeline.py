@@ -8,6 +8,7 @@ from rag_system.indexing.embedders import LanceDBManager, VectorIndexer
 from rag_system.indexing.graph_extractor import GraphExtractor
 from rag_system.utils.ollama_client import OllamaClient
 from rag_system.indexing.contextualizer import ContextualEnricher
+from rag_system.indexing.overview_builder import OverviewBuilder
 
 class IndexingPipeline:
     def __init__(self, config: Dict[str, Any], ollama_client: OllamaClient, ollama_config: Dict[str, str]):
@@ -65,6 +66,13 @@ class IndexingPipeline:
                 batch_size=self.enrichment_batch_size
             )
 
+        # Overview builder always enabled for triage routing
+        self.overview_builder = OverviewBuilder(
+            llm_client=self.llm_client,
+            model=self.config.get("overview_model_name", self.ollama_config.get("enrichment_model", "qwen3:0.6b")),
+            first_n_chunks=self.config.get("overview_first_n_chunks", 5),
+        )
+
     def run(self, file_paths: List[str] | None = None, *, documents: List[str] | None = None):
         """
         Processes and indexes documents based on the pipeline's configuration.
@@ -105,6 +113,12 @@ class IndexingPipeline:
                             if 'metadata' not in chunk:
                                 chunk['metadata'] = {}
                             chunk['metadata']['chunk_index'] = i
+                        
+                        # Build and persist document overview (non-blocking errors)
+                        try:
+                            self.overview_builder.build_and_store(document_id, file_chunks)
+                        except Exception as e:
+                            print(f"  ⚠️  Failed to create overview for {document_id}: {e}")
                         
                         all_chunks.extend(file_chunks)
                         print(f"  Generated {len(file_chunks)} chunks from {document_id}")
