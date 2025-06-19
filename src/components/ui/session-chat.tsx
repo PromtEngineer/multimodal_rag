@@ -40,6 +40,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
   const [enableAiRerank, setEnableAiRerank] = useState<boolean>(false)
   const [enableContextExpand, setEnableContextExpand] = useState<boolean>(true)
   const [enableStream, setEnableStream] = useState<boolean>(false)
+  const [enableVerify, setEnableVerify] = useState<boolean>(true)
   const [currentIndexId, setCurrentIndexId] = useState<string | null>(null)
   
   const apiService = chatAPI
@@ -201,6 +202,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             decompose: enableDecompose,
             aiRerank: enableAiRerank,
             contextExpand: enableContextExpand,
+            verify: enableVerify,
           },
           (evt) => {
             console.log('STREAM EVENT:', evt.type, evt.data); // Debug log for SSE events
@@ -376,7 +378,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
           }
         )
       } else {
-        const response = await apiService.sendSessionMessage(activeSessionId, content, { composeSubAnswers, decompose: enableDecompose, aiRerank: enableAiRerank, contextExpand: enableContextExpand })
+        const response = await apiService.sendSessionMessage(activeSessionId, content, { composeSubAnswers, decompose: enableDecompose, aiRerank: enableAiRerank, contextExpand: enableContextExpand, verify: enableVerify })
       
       const aiMessage: ChatMessage = {
         id: response.ai_message_id || generateUUID(),
@@ -509,6 +511,10 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
           <label className="flex items-center gap-1 select-none cursor-pointer">
             <input type="checkbox" className="accent-blue-500" checked={enableContextExpand} onChange={e=>setEnableContextExpand(e.target.checked)} />
             Expand context window
+          </label>
+          <label className="flex items-center gap-1 select-none cursor-pointer">
+            <input type="checkbox" className="accent-blue-500" checked={enableVerify} onChange={e=>setEnableVerify(e.target.checked)} />
+            Verify answer
           </label>
           <label className="flex items-center gap-1 select-none cursor-pointer">
             <input type="checkbox" className="accent-blue-500" checked={enableStream} onChange={e=>setEnableStream(e.target.checked)} />

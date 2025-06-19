@@ -183,7 +183,7 @@ class ChatAPI {
   async sendSessionMessage(
     sessionId: string,
     message: string,
-    opts: { model?: string; composeSubAnswers?: boolean; decompose?: boolean; aiRerank?: boolean; contextExpand?: boolean } = {}
+    opts: { model?: string; composeSubAnswers?: boolean; decompose?: boolean; aiRerank?: boolean; contextExpand?: boolean; verify?: boolean } = {}
   ): Promise<SessionChatResponse & { source_documents: any[] }> {
     try {
       const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/messages`, {
@@ -198,6 +198,7 @@ class ChatAPI {
           ...(typeof opts.decompose === 'boolean' && { query_decompose: opts.decompose }),
           ...(typeof opts.aiRerank === 'boolean' && { ai_rerank: opts.aiRerank }),
           ...(typeof opts.contextExpand === 'boolean' && { context_expand: opts.contextExpand }),
+          ...(typeof opts.verify === 'boolean' && { verify: opts.verify }),
         }),
       });
 
@@ -468,10 +469,11 @@ class ChatAPI {
       decompose?: boolean;
       aiRerank?: boolean;
       contextExpand?: boolean;
+      verify?: boolean;
     },
     onEvent: (event: { type: string; data: any }) => void,
   ): Promise<void> {
-    const { query, session_id, table_name, composeSubAnswers, decompose, aiRerank, contextExpand } = params;
+    const { query, session_id, table_name, composeSubAnswers, decompose, aiRerank, contextExpand, verify } = params;
 
     const payload: Record<string, unknown> = { query };
     if (session_id) payload.session_id = session_id;
@@ -480,6 +482,7 @@ class ChatAPI {
     if (typeof decompose === 'boolean') payload.query_decompose = decompose;
     if (typeof aiRerank === 'boolean') payload.ai_rerank = aiRerank;
     if (typeof contextExpand === 'boolean') payload.context_expand = contextExpand;
+    if (typeof verify === 'boolean') payload.verify = verify;
 
     const resp = await fetch('http://localhost:8001/chat/stream', {
       method: 'POST',

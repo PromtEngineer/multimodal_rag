@@ -10,6 +10,8 @@ from rag_system.pipelines.retrieval_pipeline import RetrievalPipeline
 from rag_system.agent.verifier import Verifier
 from rag_system.retrieval.query_transformer import QueryDecomposer, GraphQueryTranslator
 from rag_system.retrieval.retrievers import GraphRetriever
+import os
+import json as _json
 
 class Agent:
     """
@@ -46,6 +48,22 @@ class Agent:
             print("Agent initialized with live GraphRAG capabilities.")
         else:
             print("Agent initialized (GraphRAG disabled).")
+
+        # ---- Load document overviews for fast routing ----
+        overview_path = os.path.join("index_store", "overviews", "overviews.jsonl")
+        self.doc_overviews: list[str] = []
+        if os.path.exists(overview_path):
+            try:
+                with open(overview_path, encoding="utf-8") as fh:
+                    for line in fh:
+                        try:
+                            rec = _json.loads(line)
+                            if isinstance(rec, dict) and rec.get("overview"):
+                                self.doc_overviews.append(rec["overview"].strip())
+                        except Exception:
+                            continue
+            except Exception as e:
+                print(f"⚠️  Failed to load document overviews: {e}")
 
     def _cosine_similarity(self, v1: np.ndarray, v2: np.ndarray) -> float:
         """Computes cosine similarity between two vectors."""
@@ -116,6 +134,11 @@ Latest User Query: "{query}"
     # ---------------- Asynchronous triage using Ollama ----------------
     async def _triage_query_async(self, query: str, history: list) -> str:
         
+        # 1️⃣ Fast routing using precomputed overviews (if available)
+        routed = self._route_via_overviews(query)
+        if routed:
+            return routed
+
         if history:
             # If there's history, the query is likely a follow-up, so we default to RAG.
             # A more advanced implementation could use an LLM to see if the new query
@@ -133,8 +156,8 @@ Respond with JSON of the form: {{"category": "<your_choice>"}}
 
 User query: "{query}"
 """
-        resp = await self.llm_client.generate_completion_async(
-            self.ollama_config["generation_model"], prompt, format="json"
+        resp = self.llm_client.generate_completion(
+            model=self.ollama_config["generation_model"], prompt=prompt, format="json"
         )
         try:
             data = json.loads(resp.get("response", "{}"))
@@ -239,8 +262,10 @@ User query: "{query}"
                 event_callback("direct_answer", {})
 
             prompt = (
-                "You are a helpful assistant. Answer the user's question directly.\n\n"
-                f"User: {contextual_query}\n\nAssistant:"
+                "You are a helpful assistant. Read the conversation history below. "
+                "If the answer to the user's latest question is already present in the history, quote it concisely. "
+                "Otherwise answer from your general world knowledge. Provide a short, factual reply (1‒2 sentences).\n\n"
+                f"Conversation + Latest Question:\n{contextual_query}\n\nAssistant:"
             )
 
             async def _run_stream():
@@ -506,3 +531,90 @@ FINAL ANSWER:
         print(f"🚀 Total query processing time: {total_time:.2f}s")
         
         return result
+
+    # ------------------------------------------------------------------
+    def _route_via_overviews(self, query: str) -> str | None:
+        """Use document overviews and a small model to decide routing.
+        Returns 'rag_query', 'direct_answer', or None if unsure/disabled."""
+        if not self.doc_overviews:
+            return None
+
+        # Keep prompt concise: if more than 40 overviews, take first 40
+        overviews_snip = self.doc_overviews[:40]
+        overviews_block = "\n".join(f"[{i+1}] {ov}" for i, ov in enumerate(overviews_snip))
+
+        router_prompt = f"""
+You are an AI router that decides whether a user question should be answered via:
+  • "rag_query"    – search the user's private documents (summarised below)
+  • "graph_query"  – query a public knowledge-graph for a crisp factual triple
+  • "direct_answer" – reply from your own general knowledge (chit-chat, public facts)
+
+RULES
+ 1. If ANY overview clearly relates to the question (entities, numbers, addresses, dates, etc.) → rag_query.
+ 2. If the question is a simple factual triple about well-known public entities → graph_query.
+ 3. Otherwise → direct_answer.
+ 4. Output must be exactly: {{"category": "rag_query"}} or {{"category": "graph_query"}} or {{"category": "direct_answer"}}.
+
+
+Example B
+  Overviews:
+    • Marketing slide deck titled "Q2 Growth Strategy" … outlines campaign budgets and KPIs …
+  Question: "List two key KPIs mentioned in the growth strategy deck."
+  Assistant: {{"category": "rag_query"}}
+
+Example C
+  Overviews:
+    • Medical lab report … Patient ID 778-Q … Cholesterol 210 mg/dL …
+  Question: "What is the patient's cholesterol level?"
+  Assistant: {{"category": "rag_query"}}
+
+Example D
+  Overviews:
+    • Resume of Jane Doe, Senior Data Scientist …
+  Question: "Who is the CEO of Apple?"
+  Assistant: {{"category": "direct_answer"}}
+
+Example E
+  Overviews:
+    • Research paper: "Quantum Entanglement in Photonic Systems" …
+  Question: "Which company acquired DeepMind?"
+  Assistant: {{"category": "graph_query"}}
+
+DOCUMENT OVERVIEWS
++-------------------
++{overviews_block}
+
+USER QUESTION
++--------------
++"{query}"
+
+Return only the JSON object.
+"""
+
+        resp = self.llm_client.generate_completion(
+            model=self.ollama_config["generation_model"], prompt=router_prompt, format="json"
+        )
+        try:
+            data = json.loads(resp.get("response", "{}"))
+            return data.get("category", "rag_query")
+        except json.JSONDecodeError:
+            return "rag_query"
+
+
+
+        # try:
+        #     reply = self.llm_client.generate_completion(
+        #         model=self.ollama_config.get("enrichment_model", "qwen3:0.6b"),
+        #         prompt=router_prompt,
+        #     ).get("response", "").strip().lower()
+        # except Exception as e:
+        #     print(f"⚠️  Overview router failed: {e}")
+        #     return None
+        
+        # return reply
+
+        # if "rag" == reply:
+        #     return "rag_query"
+        # if "direct" == reply:
+        #     return "direct_answer"
+        # return None
