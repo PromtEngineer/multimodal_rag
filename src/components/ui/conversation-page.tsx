@@ -99,7 +99,7 @@ function ThinkingText({ text }: { text: string }) {
   return (
     <>
       {thinkSegments.length > 0 && (
-        <details className="thinking-block mb-2" open={false}>
+        <details className="thinking-block inline-block align-baseline mr-2" open={false}>
           <summary className="cursor-pointer text-xs text-gray-400 uppercase select-none">Thinking</summary>
           <div className="mt-1 space-y-1 text-xs text-gray-400 italic">
             {thinkSegments.map((seg, idx) => (
