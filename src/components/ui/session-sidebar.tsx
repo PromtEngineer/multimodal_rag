@@ -152,30 +152,23 @@ export function SessionSidebar({
               <p className="text-xs mt-1">Start a new chat to begin</p>
             </div>
           ) : (
-            <div className="space-y-1">
+            <div className="space-y-px">
               {sessions.map((session) => (
                 <div
                   key={session.id}
-                  className={`relative group rounded-lg transition-colors ${
+                  className={`relative group pl-1 rounded transition-colors ${
                     currentSessionId === session.id
-                      ? 'bg-blue-600 text-white'
-                      : 'hover:bg-gray-900 text-gray-300'
+                      ? 'bg-gray-700/60 text-white border-l-2 border-white'
+                      : 'hover:bg-gray-800 text-gray-300'
                   }`}
                 >
                   <button
                     onClick={() => onSessionSelect(session.id)}
-                    className="w-full p-3 text-left"
+                    className="w-full pl-3 pr-8 py-2 text-left text-sm"
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0 pr-8">
-                        <div className="flex items-center gap-3 text-xs opacity-70">
-                          {/* message count removed */}
-                        </div>
-                        <p className="font-medium text-sm truncate mb-1">
-                          {truncateTitle(session.title)}
-                        </p>
-                      </div>
-                    </div>
+                    <p className="truncate">
+                      {truncateTitle(session.title)}
+                    </p>
                   </button>
                   
                   {/* Overflow menu */}
