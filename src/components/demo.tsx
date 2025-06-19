@@ -3,12 +3,13 @@
 import { useState, useEffect } from "react"
 import { LocalGPTChat } from "@/components/ui/localgpt-chat"
 import { SessionSidebar } from "@/components/ui/session-sidebar"
-import { SessionChat } from "@/components/ui/session-chat"
+import { SessionChat } from '@/components/ui/session-chat'
 import { chatAPI, ChatSession } from "@/lib/api"
 import { LandingMenu } from "@/components/LandingMenu";
 import { IndexForm } from "@/components/IndexForm";
 import SessionIndexInfo from "@/components/SessionIndexInfo";
 import IndexPicker from "@/components/IndexPicker";
+import { QuickChat } from '@/components/ui/quick-chat'
 
 export function Demo() {
     const [currentSessionId, setCurrentSessionId] = useState<string | undefined>()
@@ -187,11 +188,7 @@ export function Demo() {
                         />
                     </div>
                 ) : homeMode==='QUICK_CHAT' ? (
-                    <SessionChat
-                        sessionId={undefined}
-                        onSessionChange={handleSessionChange}
-                        className="flex-1"
-                    />
+                    <QuickChat />
                 ) : null}
             </main>
 
