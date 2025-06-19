@@ -117,10 +117,10 @@
     @apply border-border outline-ring/50;
   }
   html {
-    @apply bg-black;
+    @apply bg-black overflow-x-hidden overflow-y-hidden;
   }
   body {
-    @apply bg-black text-white;
+    @apply bg-black text-white overflow-x-hidden;
   }
 }
 

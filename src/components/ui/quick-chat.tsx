@@ -76,12 +76,25 @@ export function QuickChat({ sessionId: externalSessionId, onSessionChange, class
     }
   };
 
+  const showEmptyState = messages.length === 0 && !isLoading
+
   return (
     <div className={`flex flex-col h-full ${className}`}>
-      <ConversationPage messages={messages} isLoading={isLoading} className="flex-1" />
-      <div className="flex-shrink-0 bg-black/90 backdrop-blur-md">
-        <ChatInput onSendMessage={sendMessage} disabled={isLoading} placeholder="Ask anything…" />
-      </div>
+      {showEmptyState ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-6">
+          <div className="text-center text-2xl font-semibold text-gray-300 select-none">Where should we begin?</div>
+          <div className="w-full max-w-2xl px-4">
+            <ChatInput onSendMessage={sendMessage} disabled={isLoading} placeholder="Ask anything…" />
+          </div>
+        </div>
+      ) : (
+        <>
+          <ConversationPage messages={messages} isLoading={isLoading} className="flex-1 overflow-y-auto" />
+          <div className="flex-shrink-0">
+            <ChatInput onSendMessage={sendMessage} disabled={isLoading} placeholder="Ask anything…" />
+          </div>
+        </>
+      )}
     </div>
   );
 } 

@@ -483,7 +483,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
       )}
       
       {showEmptyState ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-6">
+        <div className="flex-1 flex flex-col items-center justify-center gap-6 min-h-0">
           <div className="text-center text-2xl font-semibold text-gray-300 select-none">Where should we begin?</div>
           <div className="w-full max-w-2xl px-4">
             <ChatInput
@@ -501,11 +501,11 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             messages={messages}
             isLoading={isLoading}
             onAction={handleAction}
-            className="flex-1 min-h-0 overflow-hidden"
+            className="flex-1 overflow-y-auto"
           />
 
           {/* Bottom input when chat active */}
-          <div className="flex-shrink-0 sticky bottom-0 z-10 bg-black/90 backdrop-blur-md">
+          <div className="flex-shrink-0">
             {uploadedFiles.length > 0 && !isIndexed && (
               <div className="p-2 text-center bg-yellow-100 dark:bg-yellow-900 border-t border-b border-gray-200 dark:border-gray-700">
                 <Button onClick={handleIndexDocuments} disabled={isLoading}>

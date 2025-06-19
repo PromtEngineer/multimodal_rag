@@ -108,7 +108,7 @@ export function SessionSidebar({
   }
 
   return (
-    <div className={`w-64 bg-black border-r border-gray-800 flex flex-col ${className}`}>
+    <div className={`w-64 h-full min-h-0 bg-black border-r border-gray-800 flex flex-col ${className}`}>
       {/* Header */}
       <div className="p-4 border-b border-gray-800">
         <div className="flex items-center justify-between mb-3">
@@ -124,7 +124,7 @@ export function SessionSidebar({
       </div>
 
       {/* Sessions List */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0 overflow-y-auto">
         <div className="p-2">
           {error && (
             <div className="mb-4 p-3 bg-red-900 text-red-200 text-sm rounded-lg">

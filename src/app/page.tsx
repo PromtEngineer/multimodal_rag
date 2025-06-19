@@ -2,8 +2,8 @@ import { Demo } from "@/components/demo";
 
 export default function Home() {
   return (
-    <div className="h-screen bg-black">
+    <main className="flex flex-col flex-1 min-h-0">
       <Demo />
-    </div>
+    </main>
   );
 }

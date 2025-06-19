@@ -81,9 +81,9 @@ export function Demo() {
     }
 
     return (
-        <div className="flex h-screen w-screen flex-row bg-black">
+        <div className="flex h-full w-full flex-row bg-black">
             {/* Session Sidebar */}
-            {showConversation && (
+            {showConversation && homeMode !== 'QUICK_CHAT' && (
                 <SessionSidebar
                     currentSessionId={currentSessionId}
                     onSessionSelect={handleSessionSelect}
@@ -93,16 +93,13 @@ export function Demo() {
                 />
             )}
             
-            <main className={`flex h-screen grow flex-col transition-all duration-200 bg-black ${
-                showConversation ? 'overflow-hidden' : 'overflow-auto ml-12'
-            }`}>
+            <main className="flex flex-1 flex-col transition-all duration-200 bg-black min-h-0 overflow-hidden">
                 {homeMode === 'HOME' ? (
                     <div className="flex items-center justify-center h-full">
                         <div className="space-y-4">
                             <LandingMenu onSelect={(m)=>{
                                 if(m==='CHAT_EXISTING'){ setShowIndexPicker(true); return; }
                                 if(m==='QUICK_CHAT'){
-                                    setShowConversation(true);
                                     setHomeMode('QUICK_CHAT');
                                     return;
                                 }
@@ -150,48 +147,11 @@ export function Demo() {
                         </div>
                     </div>
                 ) : homeMode==='CHAT_EXISTING' ? (
-                    <div className="h-full flex flex-col bg-black">
-                        {/* Header */}
-                        <div className="p-4 border-b border-gray-800 bg-black">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <button onClick={()=>setShowIndexInfo(true)} className="text-xl font-medium text-white hover:underline">
-                                        {currentSession?.title || 'New Chat'}
-                                    </button>
-                                    {/* message count removed */}
-                                </div>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={()=>setShowIndexInfo(true)}
-                                        className="px-4 py-2 bg-gray-800 text-white rounded-lg hover:bg-gray-700 transition-colors text-sm"
-                                    >
-                                        Index Info
-                                    </button>
-                                    <div className="flex items-center gap-2 text-sm">
-                                        {backendStatus === 'connected' && (
-                                            <div className="flex items-center gap-2 text-green-400">
-                                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                                Connected
-                                            </div>
-                                        )}
-                                        {backendStatus === 'error' && (
-                                            <div className="flex items-center gap-2 text-red-400">
-                                                <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                                                Offline
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        {/* Session Chat */}
-                        <SessionChat
-                            sessionId={currentSessionId}
-                            onSessionChange={handleSessionChange}
-                            className="flex-1"
-                        />
-                    </div>
+                    <SessionChat
+                        sessionId={currentSessionId}
+                        onSessionChange={handleSessionChange}
+                        className="flex-1"
+                    />
                 ) : homeMode==='QUICK_CHAT' ? (
                     <QuickChat sessionId={currentSessionId} onSessionChange={handleSessionChange} className="flex-1" />
                 ) : null}

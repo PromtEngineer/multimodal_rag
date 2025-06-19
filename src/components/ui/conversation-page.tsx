@@ -288,7 +288,7 @@ export function ConversationPage({
 
   return (
     <div className={`flex flex-col h-full bg-black relative overflow-hidden ${className}`}>
-      <ScrollArea ref={scrollAreaRef} className="flex-1 h-full px-4 py-6 min-h-0">
+      <ScrollArea ref={scrollAreaRef} className="flex-1 h-full px-4 pb-6 min-h-0">
         <div className="max-w-4xl mx-auto space-y-6">
           {messages.map((message) => {
             const isUser = message.sender === "user"
