@@ -82,7 +82,7 @@ export function QuickChat({ sessionId: externalSessionId, onSessionChange, class
     <div className={`flex flex-col h-full ${className}`}>
       {showEmptyState ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-6">
-          <div className="text-center text-2xl font-semibold text-gray-300 select-none">Where should we begin?</div>
+          <div className="text-center text-2xl font-semibold text-gray-300 select-none">What can I help you find today?</div>
           <div className="w-full max-w-2xl px-4">
             <ChatInput onSendMessage={sendMessage} disabled={isLoading} placeholder="Ask anything…" />
           </div>

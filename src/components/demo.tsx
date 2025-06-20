@@ -20,6 +20,7 @@ export function Demo() {
     const [homeMode, setHomeMode] = useState<'HOME' | 'INDEX' | 'CHAT_EXISTING' | 'QUICK_CHAT'>('HOME')
     const [showIndexInfo, setShowIndexInfo] = useState(false)
     const [showIndexPicker, setShowIndexPicker] = useState(false)
+    const [sidebarOpen, setSidebarOpen] = useState(true)
 
     console.log('Demo component rendering...')
 
@@ -83,13 +84,16 @@ export function Demo() {
     return (
         <div className="flex h-full w-full flex-col bg-black">
             {/* Top App Bar */}
-            <header className="h-12 flex items-center justify-between px-4 border-b border-gray-800 flex-shrink-0">
+            <header className="h-12 relative flex items-center justify-center border-b border-gray-800 flex-shrink-0">
+                <button onClick={()=>setSidebarOpen(o=>!o)} className="absolute left-4 p-1 rounded hover:bg-gray-800 text-gray-200 focus:outline-none" title="Toggle sidebar">
+                    {sidebarOpen ? <span className="text-xl leading-none">◀</span> : <span className="text-xl leading-none">▶</span>}
+                </button>
                 <div className="text-lg font-semibold text-white select-none">LocalGPT</div>
             </header>
             {/* Main content row */}
             <div className="flex flex-1 flex-row min-h-0">
                 {/* Session Sidebar */}
-                {showConversation && homeMode !== 'QUICK_CHAT' && (
+                {sidebarOpen && showConversation && homeMode !== 'QUICK_CHAT' && (
                     <SessionSidebar
                         currentSessionId={currentSessionId}
                         onSessionSelect={handleSessionSelect}
@@ -132,23 +136,6 @@ export function Demo() {
                                             </div>
                                         )}
                                     </div>
-                                    
-                                    <button
-                                        onClick={handleStartConversation}
-                                        disabled={backendStatus === 'checking'}
-                                        className="px-6 py-3 bg-white text-black rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        {backendStatus === 'connected' ? 'Start New Chat Session' : 'Backend Required'}
-                                    </button>
-                                    
-                                    {backendStatus === 'error' && (
-                                        <div className="text-center text-xs text-gray-400 max-w-md">
-                                            <p>To enable chat functionality:</p>
-                                            <p className="mt-1 font-mono bg-gray-900 px-2 py-1 rounded">
-                                                cd backend && python server.py
-                                            </p>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         </div>
