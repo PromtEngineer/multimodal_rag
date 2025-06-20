@@ -81,102 +81,109 @@ export function Demo() {
     }
 
     return (
-        <div className="flex h-full w-full flex-row bg-black">
-            {/* Session Sidebar */}
-            {showConversation && homeMode !== 'QUICK_CHAT' && (
-                <SessionSidebar
-                    currentSessionId={currentSessionId}
-                    onSessionSelect={handleSessionSelect}
-                    onNewSession={handleNewSession}
-                    onSessionDelete={handleSessionDelete}
-                    onSessionCreated={setSidebarRef}
-                />
-            )}
-            
-            <main className="flex flex-1 flex-col transition-all duration-200 bg-black min-h-0 overflow-hidden">
-                {homeMode === 'HOME' ? (
-                    <div className="flex items-center justify-center h-full">
-                        <div className="space-y-4">
-                            <LandingMenu onSelect={(m)=>{
-                                if(m==='CHAT_EXISTING'){ setShowIndexPicker(true); return; }
-                                if(m==='QUICK_CHAT'){
-                                    setHomeMode('QUICK_CHAT');
-                                    return;
-                                }
-                                setHomeMode('INDEX');
-                            }} />
-                            <div className="flex flex-col items-center gap-3 mt-12">
-                                <div className="flex items-center gap-2 text-sm">
-                                    {backendStatus === 'checking' && (
-                                        <div className="flex items-center gap-2 text-gray-400">
-                                            <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
-                                            Connecting to backend...
-                                        </div>
-                                    )}
-                                    {backendStatus === 'connected' && (
-                                        <div className="flex items-center gap-2 text-green-400">
-                                            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                            Backend connected • Session-based chat ready
-                                        </div>
-                                    )}
+        <div className="flex h-full w-full flex-col bg-black">
+            {/* Top App Bar */}
+            <header className="h-12 flex items-center justify-between px-4 border-b border-gray-800 flex-shrink-0">
+                <div className="text-lg font-semibold text-white select-none">LocalGPT</div>
+            </header>
+            {/* Main content row */}
+            <div className="flex flex-1 flex-row min-h-0">
+                {/* Session Sidebar */}
+                {showConversation && homeMode !== 'QUICK_CHAT' && (
+                    <SessionSidebar
+                        currentSessionId={currentSessionId}
+                        onSessionSelect={handleSessionSelect}
+                        onNewSession={handleNewSession}
+                        onSessionDelete={handleSessionDelete}
+                        onSessionCreated={setSidebarRef}
+                    />
+                )}
+                
+                <main className="flex flex-1 flex-col transition-all duration-200 bg-black min-h-0 overflow-hidden">
+                    {homeMode === 'HOME' ? (
+                        <div className="flex items-center justify-center h-full">
+                            <div className="space-y-4">
+                                <LandingMenu onSelect={(m)=>{
+                                    if(m==='CHAT_EXISTING'){ setShowIndexPicker(true); return; }
+                                    if(m==='QUICK_CHAT'){
+                                        setHomeMode('QUICK_CHAT');
+                                        return;
+                                    }
+                                    setHomeMode('INDEX');
+                                }} />
+                                <div className="flex flex-col items-center gap-3 mt-12">
+                                    <div className="flex items-center gap-2 text-sm">
+                                        {backendStatus === 'checking' && (
+                                            <div className="flex items-center gap-2 text-gray-400">
+                                                <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+                                                Connecting to backend...
+                                            </div>
+                                        )}
+                                        {backendStatus === 'connected' && (
+                                            <div className="flex items-center gap-2 text-green-400">
+                                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                                Backend connected • Session-based chat ready
+                                            </div>
+                                        )}
+                                        {backendStatus === 'error' && (
+                                            <div className="flex items-center gap-2 text-red-400">
+                                                <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                                                Backend offline • Start backend server to enable chat
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    <button
+                                        onClick={handleStartConversation}
+                                        disabled={backendStatus === 'checking'}
+                                        className="px-6 py-3 bg-white text-black rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {backendStatus === 'connected' ? 'Start New Chat Session' : 'Backend Required'}
+                                    </button>
+                                    
                                     {backendStatus === 'error' && (
-                                        <div className="flex items-center gap-2 text-red-400">
-                                            <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                                            Backend offline • Start backend server to enable chat
+                                        <div className="text-center text-xs text-gray-400 max-w-md">
+                                            <p>To enable chat functionality:</p>
+                                            <p className="mt-1 font-mono bg-gray-900 px-2 py-1 rounded">
+                                                cd backend && python server.py
+                                            </p>
                                         </div>
                                     )}
                                 </div>
-                                
-                                <button
-                                    onClick={handleStartConversation}
-                                    disabled={backendStatus === 'checking'}
-                                    className="px-6 py-3 bg-white text-black rounded-lg hover:bg-gray-200 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {backendStatus === 'connected' ? 'Start New Chat Session' : 'Backend Required'}
-                                </button>
-                                
-                                {backendStatus === 'error' && (
-                                    <div className="text-center text-xs text-gray-400 max-w-md">
-                                        <p>To enable chat functionality:</p>
-                                        <p className="mt-1 font-mono bg-gray-900 px-2 py-1 rounded">
-                                            cd backend && python server.py
-                                        </p>
-                                    </div>
-                                )}
                             </div>
                         </div>
-                    </div>
-                ) : homeMode==='CHAT_EXISTING' ? (
-                    <SessionChat
-                        sessionId={currentSessionId}
-                        onSessionChange={handleSessionChange}
-                        className="flex-1"
-                    />
-                ) : homeMode==='QUICK_CHAT' ? (
-                    <QuickChat sessionId={currentSessionId} onSessionChange={handleSessionChange} className="flex-1" />
-                ) : null}
-            </main>
+                    ) : homeMode==='CHAT_EXISTING' ? (
+                        <SessionChat
+                            sessionId={currentSessionId}
+                            onSessionChange={handleSessionChange}
+                            className="flex-1"
+                        />
+                    ) : homeMode==='QUICK_CHAT' ? (
+                        <QuickChat sessionId={currentSessionId} onSessionChange={handleSessionChange} className="flex-1" />
+                    ) : null}
+                </main>
 
-            {homeMode==='INDEX' && (
-              <div className="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-50">
-                <IndexForm onClose={()=>setHomeMode('HOME')} onIndexed={(s)=>{setHomeMode('CHAT_EXISTING'); handleSessionSelect(s.id);}} />
-              </div>
-            )}
+                {homeMode==='INDEX' && (
+                  <div className="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-50">
+                    <IndexForm onClose={()=>setHomeMode('HOME')} onIndexed={(s)=>{setHomeMode('CHAT_EXISTING'); handleSessionSelect(s.id);}} />
+                  </div>
+                )}
 
-            {showIndexInfo && currentSessionId && (
-              <SessionIndexInfo sessionId={currentSessionId} onClose={()=>setShowIndexInfo(false)} />
-            )}
+                {showIndexInfo && currentSessionId && (
+                  <SessionIndexInfo sessionId={currentSessionId} onClose={()=>setShowIndexInfo(false)} />
+                )}
 
-            {showIndexPicker && (
-              <IndexPicker onClose={()=>setShowIndexPicker(false)} onSelect={async (idxId)=>{
-                // create session and link index then open chat
-                const session = await chatAPI.createSession()
-                await chatAPI.linkIndexToSession(session.id, idxId)
-                setShowIndexPicker(false)
-                setHomeMode('CHAT_EXISTING')
-                handleSessionSelect(session.id)
-              }} />
-            )}
+                {showIndexPicker && (
+                  <IndexPicker onClose={()=>setShowIndexPicker(false)} onSelect={async (idxId)=>{
+                    // create session and link index then open chat
+                    const session = await chatAPI.createSession()
+                    await chatAPI.linkIndexToSession(session.id, idxId)
+                    setShowIndexPicker(false)
+                    setHomeMode('CHAT_EXISTING')
+                    handleSessionSelect(session.id)
+                  }} />
+                )}
+            </div>
         </div>
     );
 } 

@@ -149,7 +149,7 @@ export function ChatInput({
           </div>
         )}
 
-        <div className="bg-gray-900 border border-gray-700 rounded-2xl px-4 pt-3 pb-2">
+        <div className="bg-gray-900 border border-gray-700 rounded-2xl px-5 pt-4 pb-3">
           {/* Hidden file input (kept for future use) */}
           <input ref={fileInputRef} type="file" accept=".pdf" multiple onChange={handleFileChange} className="hidden" />
 
@@ -162,7 +162,7 @@ export function ChatInput({
             placeholder={attachedFiles.length > 0 ? "Ask questions about your attached files..." : placeholder}
             disabled={disabled || isLoading}
             rows={1}
-            className="w-full bg-transparent border-none text-white placeholder-gray-400 resize-none overflow-y-hidden focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-transparent border-none text-white placeholder-gray-400 resize-none overflow-y-hidden focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed text-base"
             style={{ maxHeight: '120px', minHeight: '44px' }}
           />
 

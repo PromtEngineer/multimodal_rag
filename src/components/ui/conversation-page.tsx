@@ -288,7 +288,7 @@ export function ConversationPage({
 
   return (
     <div className={`flex flex-col h-full bg-black relative overflow-hidden ${className}`}>
-      <ScrollArea ref={scrollAreaRef} className="flex-1 h-full px-4 pb-6 min-h-0">
+      <ScrollArea ref={scrollAreaRef} className="flex-1 h-full px-4 pt-4 pb-6 min-h-0">
         <div className="max-w-4xl mx-auto space-y-6">
           {messages.map((message) => {
             const isUser = message.sender === "user"
@@ -303,9 +303,9 @@ export function ConversationPage({
                     />
                   )}
                   
-                  <div className={`flex flex-col space-y-2 ${isUser ? 'items-end' : 'items-start'} max-w-[80%]`}>
+                  <div className={`flex flex-col space-y-2 ${isUser ? 'items-end' : 'items-start'} max-w-full md:max-w-3xl`}>
                     <div
-                      className={`rounded-2xl px-4 py-3 ${
+                      className={`rounded-2xl px-5 py-4 ${
                         isUser 
                           ? "bg-white text-black" 
                           : "bg-gray-800 text-gray-100"
@@ -320,7 +320,7 @@ export function ConversationPage({
                           </div>
                         </div>
                       ) : (
-                        <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                        <div className="whitespace-pre-wrap text-base leading-relaxed">
                           {typeof message.content === 'string' 
                               ? <ThinkingText text={message.content} />
                               : <StructuredMessageBlock content={message.content} />
