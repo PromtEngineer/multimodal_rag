@@ -88,7 +88,6 @@ export function Demo() {
                 <button onClick={()=>setSidebarOpen(o=>!o)} className="absolute left-4 p-1 rounded hover:bg-gray-800 text-gray-200 focus:outline-none" title="Toggle sidebar">
                     {sidebarOpen ? <span className="text-xl leading-none">◀</span> : <span className="text-xl leading-none">▶</span>}
                 </button>
-                <div className="text-lg font-semibold text-white select-none">LocalGPT</div>
             </header>
             {/* Main content row */}
             <div className="flex flex-1 flex-row min-h-0">
@@ -106,7 +105,12 @@ export function Demo() {
                 <main className="flex flex-1 flex-col transition-all duration-200 bg-black min-h-0 overflow-hidden">
                     {homeMode === 'HOME' ? (
                         <div className="flex items-center justify-center h-full">
-                            <div className="space-y-4">
+                            <div className="space-y-8">
+                                <div className="text-center space-y-2">
+                                    <h1 className="text-4xl font-bold text-white">LocalGPT</h1>
+                                    <p className="text-lg text-gray-400">What can I help you find today?</p>
+                                </div>
+
                                 <LandingMenu onSelect={(m)=>{
                                     if(m==='CHAT_EXISTING'){ setShowIndexPicker(true); return; }
                                     if(m==='QUICK_CHAT'){

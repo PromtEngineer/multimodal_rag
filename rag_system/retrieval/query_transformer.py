@@ -98,6 +98,9 @@ JSON Output:
             if not sub_queries or len(sub_queries) == 0:
                 return [query]
             
+            # Deduplicate while preserving order
+            sub_queries = list(dict.fromkeys(sub_queries))
+
             # Limit to maximum 3 sub-queries to avoid excessive API calls
             return sub_queries[:3]
         except json.JSONDecodeError:

@@ -24,6 +24,8 @@ export function IndexForm({ onClose, onIndexed }: Props) {
   const [batchSizeEmbed, setBatchSizeEmbed] = useState(50);
   const [batchSizeEnrich, setBatchSizeEnrich] = useState(25);
   const [loading, setLoading] = useState(false);
+  const [enableLateChunk, setEnableLateChunk] = useState(false);
+  const [enableDoclingChunk, setEnableDoclingChunk] = useState(false);
 
   const handleSubmit = async () => {
     if (!files) return;
@@ -36,7 +38,7 @@ export function IndexForm({ onClose, onIndexed }: Props) {
       await chatAPI.uploadFilesToIndex(index_id, Array.from(files));
 
       // 3. build index (run pipeline)
-      await chatAPI.buildIndex(index_id);
+      await chatAPI.buildIndex(index_id, { latechunk: enableLateChunk, doclingChunk: enableDoclingChunk });
 
       // 4. create chat session and link index
       const session = await chatAPI.createSession(indexName);
@@ -86,13 +88,17 @@ export function IndexForm({ onClose, onIndexed }: Props) {
           {files && <p className="mt-1 text-xs text-green-400">{files.length} file(s) selected</p>}
         </div>
 
-        {/* Retrieval mode */}
+        {/* Retrieval mode & Late-chunk toggle */}
         <div>
           <label className="block text-xs uppercase tracking-wide text-gray-300 mb-1">Retrieval mode</label>
           <div className="flex gap-3">
             {(['hybrid','vector','bm25'] as const).map((m)=>(
               <button key={m} onClick={()=>setRetrievalMode(m)} className={`px-3 py-1 rounded text-xs font-sans ${retrievalMode===m?'bg-white/20':'bg-white/10 hover:bg-white/20'}`}>{m}</button>
             ))}
+          </div>
+          <div className="flex items-center gap-2 mt-3">
+            <span className="text-xs text-gray-400">Late-chunk vectors</span>
+            <GlassToggle checked={enableLateChunk} onChange={setEnableLateChunk} />
           </div>
         </div>
 
@@ -156,6 +162,11 @@ export function IndexForm({ onClose, onIndexed }: Props) {
           </div>
         </div>
         {/* TODO: fusion weights, decomposition toggles, reranker, etc. */}
+        {/* Chunker mode */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400">High-recall chunking (Docling)</span>
+          <GlassToggle checked={enableDoclingChunk} onChange={setEnableDoclingChunk} />
+        </div>
       </AccordionGroup>
 
       <div className="flex justify-end gap-3 pt-4 border-t border-white/10">

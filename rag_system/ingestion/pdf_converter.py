@@ -65,7 +65,10 @@ class PDFConverter:
             markdown_content = result.document.export_to_markdown()
             
             metadata = {"source": pdf_path}
-            pages_data.append((markdown_content, metadata))
+            # Return the *DoclingDocument* object as third tuple element so downstream
+            # chunkers that understand the element tree can use it.  Legacy callers that
+            # expect only (markdown, metadata) can simply ignore the extra value.
+            pages_data.append((markdown_content, metadata, result.document))
             print(f"Successfully converted {pdf_path} with docling {ocr_msg}.")
             return pages_data
         except Exception as e:

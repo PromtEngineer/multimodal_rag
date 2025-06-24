@@ -490,12 +490,36 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
             file_paths=[d['stored_path'] for d in index.get('documents',[])]
             if not file_paths:
                 self.send_json_response({'error':'No documents to index'}, status_code=400); return
+
+            # Parse request body for optional flags
+            latechunk = False
+            docling_chunk = False
+            if 'Content-Length' in self.headers and int(self.headers['Content-Length']) > 0:
+                try:
+                    length = int(self.headers['Content-Length'])
+                    body = self.rfile.read(length)
+                    opts = json.loads(body.decode('utf-8'))
+                    latechunk = bool(opts.get('latechunk'))
+                    docling_chunk = bool(opts.get('doclingChunk'))
+                except Exception:
+                    latechunk = False
+                    docling_chunk = False
+
             # Delegate to advanced RAG API same as session indexing
             rag_api_url = "http://localhost:8001/index"
             import requests, json as _json
-            rag_resp = requests.post(rag_api_url, json={"file_paths": file_paths, "session_id": index_id})
+            payload = {"file_paths": file_paths, "session_id": index_id}
+            if latechunk:
+                payload["enable_latechunk"] = True
+            if docling_chunk:
+                payload["enable_docling_chunk"] = True
+            rag_resp = requests.post(rag_api_url, json=payload)
             if rag_resp.status_code==200:
-                self.send_json_response(rag_resp.json())
+                self.send_json_response({
+                    "response": rag_resp.json(),
+                    "latechunk": latechunk,
+                    "docling_chunk": docling_chunk
+                })
             else:
                 self.send_json_response({"error":f"RAG indexing failed: {rag_resp.text}"}, status_code=500)
         except Exception as e:

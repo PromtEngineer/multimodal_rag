@@ -44,13 +44,18 @@ PIPELINE_CONFIGS = {
             "graph": { 
                 "enabled": False,
                 "graph_path": "./index_store/graph/knowledge_graph.gml"
+            },
+            "latechunk": {
+                "enabled": False,
+                "lancedb_table_name": "text_pages_lc_v3",
+                "top_k": 20
             }
         },
         "contextual_enricher": {
             "enabled": True,
             "window_size": 1
         },
-        "embedding_model_name": "BAAI/bge-small-en-v1.5",
+        "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
         "vision_model_name": None
     },
     "retrieval": {
@@ -60,16 +65,21 @@ PIPELINE_CONFIGS = {
             "text_table_name": "local_text_pages_v3",
             "image_table_name": None,
         },
-        "embedding_model_name": "BAAI/bge-small-en-v1.5",
+        "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
         "vision_model_name": None,
         "graph_rag": {
             "enabled": False,
             "graph_path": "./index_store/graph/knowledge_graph.gml"
         },
         "reranker": {
-            "enabled": False, 
-            "model_name": "BAAI/bge-reranker-base",
+            "enabled": True, 
+            "model_name": "answerdotai/answerai-colbert-small-v1",
             "top_k": 3
+        },
+        "latechunk": {
+            "enabled": False,
+            "lancedb_table_name": "text_pages_lc_v3",
+            "top_k": 20
         },
         "retrieval_k": 20
     },
@@ -95,7 +105,7 @@ PIPELINE_CONFIGS = {
                 "graph_path": "./index_store/graph/knowledge_graph.gml"
             }
         },
-        "embedding_model_name": "BAAI/bge-small-en-v1.5",
+        "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
         "vision_model_name": "Qwen/Qwen-VL-Chat",
         "reranker": {
             "enabled": False, 
@@ -139,7 +149,7 @@ PIPELINE_CONFIGS = {
                 "graph_path": "./index_store/graph/knowledge_graph.gml"
             }
         },
-        "embedding_model_name": "BAAI/bge-small-en-v1.5",
+        "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
         "vision_model_name": "Qwen/Qwen-VL-Chat",
         "reranker": {
             "enabled": True, 

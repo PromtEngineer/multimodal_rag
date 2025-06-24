@@ -416,13 +416,29 @@ class ChatAPI {
     return resp.json();
   }
 
-  async buildIndex(indexId: string): Promise<{ message: string }> {
-    const resp = await fetch(`${API_BASE_URL}/indexes/${indexId}/build`, { method: 'POST' });
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(`Build index error: ${err.error || resp.statusText}`);
+  async buildIndex(indexId: string, opts: { latechunk?: boolean; doclingChunk?: boolean } = {}): Promise<{ message: string }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/indexes/${indexId}/build`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          latechunk: opts.latechunk ?? false,
+          doclingChunk: opts.doclingChunk ?? false,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(`Build index error: ${errorData.error || response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Build index failed:', error);
+      throw error;
     }
-    return resp.json();
   }
 
   async linkIndexToSession(sessionId: string, indexId: string): Promise<{ message: string }> {

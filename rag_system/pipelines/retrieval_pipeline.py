@@ -269,6 +269,24 @@ ORIGINAL QUESTION: "{query}"
                 k=retrieval_k,
                 reranker=lancedb_reranker # Pass the reranker to enable hybrid search
             )
+
+        # ---------------------------------------------------------------
+        # Late-Chunk retrieval (optional)
+        # ---------------------------------------------------------------
+        if self.retriever_configs.get("latechunk", {}).get("enabled"):
+            lc_table = self.retriever_configs["latechunk"].get("lancedb_table_name")
+            if lc_table:
+                try:
+                    lc_docs = dense_retriever.retrieve(
+                        text_query=query,
+                        table_name=lc_table,
+                        k=retrieval_k,
+                        reranker=lancedb_reranker,
+                    )
+                    retrieved_docs.extend(lc_docs)
+                except Exception as e:
+                    print(f"⚠️  Late-chunk retrieval failed: {e}")
+
         if event_callback:
             event_callback("retrieval_done", {"count": len(retrieved_docs)})
         

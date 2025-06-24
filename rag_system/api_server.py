@@ -173,6 +173,8 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             decomp_flag = data.get('query_decompose')
             ai_rerank_flag = data.get('ai_rerank')
             ctx_expand_flag = data.get('context_expand')
+            enable_latechunk = bool(data.get("enable_latechunk"))
+            enable_docling_chunk = bool(data.get("enable_docling_chunk"))
             if not file_paths or not isinstance(file_paths, list):
                 self.send_json_response({
                     "error": "A 'file_paths' list is required."
@@ -191,6 +193,13 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 config_override = copy.deepcopy(INDEXING_PIPELINE.config)
                 config_override["storage"]["text_table_name"] = table_name
                 config_override.setdefault("retrievers", {}).setdefault("dense", {})["lancedb_table_name"] = table_name
+                if enable_latechunk:
+                    config_override["retrievers"].setdefault("latechunk", {})["enabled"] = True
+                else:
+                    # ensure disabled if not requested
+                    config_override["retrievers"].setdefault("latechunk", {})["enabled"] = False
+                if enable_docling_chunk:
+                    config_override["chunker_mode"] = "docling"
                 # Create a temporary pipeline instance with the overridden config
                 temp_pipeline = INDEXING_PIPELINE.__class__(
                     config_override, 
@@ -200,11 +209,17 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 temp_pipeline.run(file_paths)
             else:
                 # Use the default pipeline
+                if enable_latechunk:
+                    INDEXING_PIPELINE.config.setdefault("retrievers", {}).setdefault("latechunk", {})["enabled"] = True
+                if enable_docling_chunk:
+                    INDEXING_PIPELINE.config["chunker_mode"] = "docling"
                 INDEXING_PIPELINE.run(file_paths)
 
             self.send_json_response({
                 "message": f"Indexing process for {len(file_paths)} file(s) completed successfully.",
-                "table_name": table_name or "default_text_table"
+                "table_name": table_name or "default_text_table",
+                "latechunk": enable_latechunk,
+                "docling_chunk": enable_docling_chunk
             })
         except json.JSONDecodeError:
             self.send_json_response({"error": "Invalid JSON"}, status_code=400)

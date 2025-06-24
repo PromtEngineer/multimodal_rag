@@ -16,7 +16,22 @@ class IndexingPipeline:
         self.llm_client = ollama_client
         self.ollama_config = ollama_config
         self.pdf_converter = PDFConverter()
-        self.chunker = MarkdownRecursiveChunker()
+        # Chunker selection: legacy or docling
+        chunker_mode = config.get("chunker_mode", "legacy")
+        if chunker_mode == "docling":
+            try:
+                from rag_system.ingestion.docling_chunker import DoclingChunker
+                self.chunker = DoclingChunker(
+                    max_tokens=config.get("max_tokens", 512),
+                    overlap=config.get("overlap_sentences", 1),
+                    tokenizer_model=config.get("embedding_model_name", "qwen3-embedding-0.6b"),
+                )
+                print("🪄 Using DoclingChunker for high-recall sentence packing.")
+            except Exception as e:
+                print(f"⚠️  Failed to initialise DoclingChunker: {e}. Falling back to legacy chunker.")
+                self.chunker = MarkdownRecursiveChunker()
+        else:
+            self.chunker = MarkdownRecursiveChunker()
 
         retriever_configs = self.config.get("retrievers") or self.config.get("retrieval", {})
         storage_config = self.config["storage"]
@@ -73,6 +88,19 @@ class IndexingPipeline:
             first_n_chunks=self.config.get("overview_first_n_chunks", 5),
         )
 
+        # ------------------------------------------------------------------
+        # Late-Chunk encoder initialisation (optional)
+        # ------------------------------------------------------------------
+        self.latechunk_enabled = retriever_configs.get("latechunk", {}).get("enabled", False)
+        if self.latechunk_enabled:
+            try:
+                from rag_system.indexing.latechunk import LateChunkEncoder
+                self.latechunk_cfg = retriever_configs["latechunk"]
+                self.latechunk_encoder = LateChunkEncoder(model_name=self.config.get("embedding_model_name", "qwen3-embedding-0.6b"))
+            except Exception as e:
+                print(f"⚠️  Failed to initialise LateChunkEncoder: {e}. Disabling latechunk retrieval.")
+                self.latechunk_enabled = False
+
     def run(self, file_paths: List[str] | None = None, *, documents: List[str] | None = None):
         """
         Processes and indexes documents based on the pipeline's configuration.
@@ -93,6 +121,7 @@ class IndexingPipeline:
         with timer("Complete Indexing Pipeline"):
             # Step 1: Document Processing and Chunking
             all_chunks = []
+            doc_chunks_map = {}
             with timer("Document Processing & Chunking"):
                 file_tracker = ProgressTracker(len(file_paths), "Document Processing")
                 
@@ -104,8 +133,16 @@ class IndexingPipeline:
                         pages_data = self.pdf_converter.convert_to_markdown(file_path)
                         file_chunks = []
                         
-                        for markdown_text, metadata in pages_data:
-                            chunks = self.chunker.chunk(markdown_text, document_id, metadata)
+                        for tpl in pages_data:
+                            if len(tpl) == 3:
+                                markdown_text, metadata, doc_obj = tpl
+                                if hasattr(self.chunker, "chunk_document"):
+                                    chunks = self.chunker.chunk_document(doc_obj, document_id=document_id, metadata=metadata)
+                                else:
+                                    chunks = self.chunker.chunk(markdown_text, document_id, metadata)
+                            else:
+                                markdown_text, metadata = tpl
+                                chunks = self.chunker.chunk(markdown_text, document_id, metadata)
                             file_chunks.extend(chunks)
                         
                         # Add a sequential chunk_index to each chunk within the document
@@ -121,6 +158,7 @@ class IndexingPipeline:
                             print(f"  ⚠️  Failed to create overview for {document_id}: {e}")
                         
                         all_chunks.extend(file_chunks)
+                        doc_chunks_map[document_id] = file_chunks  # save for late-chunk step
                         print(f"  Generated {len(file_chunks)} chunks from {document_id}")
                         file_tracker.update(1)
                         
@@ -177,6 +215,47 @@ class IndexingPipeline:
                             print("ℹ️  FTS index already exists – skipped creation.")
                     except Exception as e:
                         print(f"❌ Failed to create/verify FTS index: {e}")
+
+                    # ---------------------------------------------------
+                    # Late-Chunk Embedding + Indexing (optional)
+                    # ---------------------------------------------------
+                    if self.latechunk_enabled:
+                        with timer("Late-Chunk Embedding & Indexing"):
+                            lc_table_name = self.latechunk_cfg.get("lancedb_table_name", f"{table_name}_lc")
+                            print(f"\n--- Generating late-chunk embeddings (table={lc_table_name}) ---")
+
+                            total_lc_vecs = 0
+                            for doc_id, doc_chunks in doc_chunks_map.items():
+                                # Build full text and span list
+                                full_text_parts = []
+                                spans = []
+                                current_pos = 0
+                                for ch in doc_chunks:
+                                    ch_text = ch["text"]
+                                    full_text_parts.append(ch_text)
+                                    start = current_pos
+                                    end = start + len(ch_text)
+                                    spans.append((start, end))
+                                    current_pos = end + 1  # +1 for newline to join later
+                                full_doc = "\n".join(full_text_parts)
+
+                                try:
+                                    lc_vecs = self.latechunk_encoder.encode(full_doc, spans)
+                                except Exception as e:
+                                    print(f"⚠️  LateChunk encode failed for {doc_id}: {e}")
+                                    continue
+
+                                if len(doc_chunks) == 0 or len(lc_vecs) == 0:
+                                    # Nothing to index for this document
+                                    continue
+                                if len(lc_vecs) != len(doc_chunks):
+                                    print(f"⚠️  Mismatch LC vecs ({len(lc_vecs)}) vs chunks ({len(doc_chunks)}) for {doc_id}. Skipping.")
+                                    continue
+
+                                self.vector_indexer.index(lc_table_name, doc_chunks, lc_vecs)
+                                total_lc_vecs += len(lc_vecs)
+
+                            print(f"✅ Late-chunk vectors indexed: {total_lc_vecs}")
                 
             # Step 6: Knowledge Graph Extraction (Optional)
             if hasattr(self, 'graph_extractor'):
