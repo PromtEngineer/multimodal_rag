@@ -133,12 +133,18 @@ Latest User Query: "{query}"
 
     # ---------------- Asynchronous triage using Ollama ----------------
     async def _triage_query_async(self, query: str, history: list) -> str:
+        """
+        The main triage entrypoint. Defers to the overview-based router first,
+        then falls back to a simpler LLM-based triage if no overviews are available.
+        """
         
-        # 1️⃣ Fast routing using precomputed overviews (if available)
-        routed = self._route_via_overviews(query)
-        if routed:
-            return routed
+        # 1️⃣ Fast, context-aware routing using precomputed overviews (if available)
+        if self.doc_overviews:
+            # Add history context to the query before sending to the router
+            contextual_query = self._format_query_with_history(query, history)
+            return self._route_via_overviews(contextual_query)
 
+        # 2️⃣ Fallback to a simpler, general-purpose router if no overviews exist
         if history:
             # If there's history, the query is likely a follow-up, so we default to RAG.
             # A more advanced implementation could use an LLM to see if the new query
@@ -214,407 +220,320 @@ User query: "{query}"
         # 🚀 NEW: Get conversation history
         history = self.chat_histories.get(session_id, []) if session_id else []
         
+        # The triage function now receives the raw query and the history separately
         query_type = await self._triage_query_async(query, history)
         print(f"Agent Triage Decision: '{query_type}'")
+        
+        # NEW: Decide early whether this turn needs any retrieval work
+        needs_rag = query_type in ("rag_query", "graph_query")
         
         # Create a contextual query that includes history for most operations
         contextual_query = self._format_query_with_history(query, history)
         raw_query = query.strip()
         
         # --- Apply runtime AI reranker override (must happen before any retrieval calls) ---
-        if ai_rerank is not None:
+        if ai_rerank is not None and needs_rag:
             rr_cfg = self.retrieval_pipeline.config.setdefault("reranker", {})
             rr_cfg["enabled"] = bool(ai_rerank)
             if ai_rerank:
-                # Ensure the pipeline knows to use the external ColBERT reranker
                 rr_cfg.setdefault("type", "ai")
                 rr_cfg.setdefault("strategy", "rerankers-lib")
                 rr_cfg.setdefault(
                     "model_name",
-                    # Falls back to ColBERT-small if the caller did not supply one
                     self.ollama_config.get("rerank_model", "answerai-colbert-small-v1"),
                 )
 
         query_embedding = None
-        # 🚀 OPTIMIZED: Semantic Cache Check
-        if query_type != "direct_answer":
+        # 🚀 OPTIMIZED: Semantic Cache Check – only if we plan to run retrieval
+        if needs_rag:
             text_embedder = self.retrieval_pipeline._get_text_embedder()
             if text_embedder:
-                # The embedder expects a list, so we wrap the *raw* query only.
                 query_embedding_list = text_embedder.create_embeddings([raw_query])
                 if isinstance(query_embedding_list, np.ndarray):
                     query_embedding = query_embedding_list[0]
                 else:
-                    # Some embedders return a list – convert if necessary
                     query_embedding = np.array(query_embedding_list[0])
 
                 cached_result = self._find_in_semantic_cache(query_embedding, session_id)
-
                 if cached_result:
-                    # Update history even on cache hit
-                    if session_id:
-                        history.append({"query": query, "answer": cached_result.get('answer', 'Cached answer not found.')})
-                        self.chat_histories[session_id] = history
+                    self.chat_histories.setdefault(session_id, []).append({"query": raw_query, "answer": cached_result["answer"]})
                     return cached_result
 
-        if query_type == "direct_answer":
-            if event_callback:
-                event_callback("direct_answer", {})
+        # --- Route based on triage decision ---
+        # A bit of a hack: if the triage returns something other than a known category,
+        # it's the direct answer itself, synthesized from the overviews.
+        if query_type == "rag_query":
+            final_result = await self._run_rag_pipeline(
+                contextual_query, table_name, compose_sub_answers, 
+                query_decompose, ai_rerank, context_expand, 
+                max_retries, event_callback
+            )
+        elif query_type == "graph_query":
+            final_result = self._run_graph_query(query, history)
+        elif query_type == "clarification":
+            final_result = {"answer": "I'm sorry, your query is a bit ambiguous. Could you please clarify?", "source_documents": []}
+        else: # The response is a direct answer synthesized from the overviews.
+            final_result = {"answer": query_type, "source_documents": []}
 
-            prompt = (
-                "You are a helpful assistant. Read the conversation history below. "
-                "If the answer to the user's latest question is already present in the history, quote it concisely. "
-                "Otherwise answer from your general world knowledge. Provide a short, factual reply (1‒2 sentences).\n\n"
-                f"Conversation + Latest Question:\n{contextual_query}\n\nAssistant:"
+        # --- Verification Step ---
+        # Only run verification if the result came from a RAG pipeline and has source documents.
+        if self.pipeline_configs.get("verification", {}).get("enabled", True) and final_result.get("source_documents"):
+            context_str = "\n".join([doc['text'] for doc in final_result['source_documents']])
+            if context_str: # Ensure context is not empty
+                print("\n--- Verifying final answer against sources ---")
+                verification = await self.verifier.verify_async(contextual_query, context_str, final_result['answer'])
+                
+                # Append confidence score to the answer
+                score = verification.confidence_score
+                final_result['answer'] += f" [Confidence: {score}%]"
+                
+                if not verification.is_grounded or score < 50:
+                     final_result['answer'] += f" [Warning: Low confidence. Groundedness: {verification.is_grounded}]"
+                print(f"✅ Verification complete. Grounded: {verification.is_grounded}, Score: {score}%")
+            else:
+                print("⚠️ Skipping verification because context from source documents is empty.")
+        else:
+            print("- Skipping verification step (not applicable or disabled).")
+
+        # Cache the final result (using raw query as key)
+        if needs_rag and query_embedding is not None:
+            cache_key = self._get_cache_key(raw_query, query_type)
+            result_to_cache = final_result.copy()
+            result_to_cache['embedding'] = query_embedding
+            self._cache_result(cache_key, result_to_cache, session_id)
+            
+        # Add the final answer to the conversation history
+        if session_id:
+            self.chat_histories.setdefault(session_id, []).append({"query": raw_query, "answer": final_result["answer"]})
+
+        end_time = time.time()
+        print(f"Agent loop took {end_time - start_time:.2f} seconds.")
+        return final_result
+
+    async def _run_rag_pipeline(self, query: str, table_name: str, compose_sub_answers: bool, query_decompose: bool, ai_rerank: bool, context_expand: bool, max_retries: int, event_callback: callable) -> Dict[str, Any]:
+        """Helper to run the RAG pipeline with all its options."""
+        
+        query_decomp_config = self.pipeline_configs.get("query_decomposition", {})
+        decomp_enabled = query_decomp_config.get("enabled", False)
+        if query_decompose is not None:
+            decomp_enabled = query_decompose
+
+        if not decomp_enabled:
+            # If decomposition is disabled, run a standard single retrieval.
+            window_size = 0 if context_expand is False else None
+            return await asyncio.to_thread(
+                self.retrieval_pipeline.run,
+                query=query,
+                table_name=table_name,
+                window_size_override=window_size,
+                event_callback=event_callback
             )
 
-            async def _run_stream():
-                answer_parts: list[str] = []
+        # --- Query Decomposition is Enabled ---
+        print(f"\n--- Query Decomposition Enabled ---")
+        # Use the raw user query (without conversation history) for decomposition to avoid leakage of prior context
+        # Note: the `query` param to this function is already the contextual_query from the main loop.
+        # We need the original raw query for decomposition. This is a bit awkward. Let's assume for now
+        # the contextual query is okay for decomposition, but this could be improved.
+        sub_queries = self.query_decomposer.decompose(query)
+        if event_callback:
+            event_callback("decomposition", {"sub_queries": sub_queries})
+        print(f"Decomposed query into {len(sub_queries)} sub-queries: {sub_queries}")
 
-                def _blocking_stream():
-                    for tok in self.llm_client.stream_completion(
-                        model=self.ollama_config["generation_model"], prompt=prompt
-                    ):
-                        answer_parts.append(tok)
-                        if event_callback:
-                            event_callback("token", {"text": tok})
+        # If decomposition produced only a single sub-query, skip parallel execution.
+        if len(sub_queries) == 1:
+            print("--- Only one sub-query; using direct retrieval path ---")
+            window_size = 0 if context_expand is False else None
+            result = await asyncio.to_thread(
+                self.retrieval_pipeline.run,
+                sub_queries[0],
+                table_name,
+                window_size_override=window_size,
+                event_callback=event_callback
+            )
+            if event_callback:
+                event_callback("single_query_result", result)
+            return result
 
-                # Run the blocking generator in a thread so the event loop stays responsive
-                await asyncio.to_thread(_blocking_stream)
-                return "".join(answer_parts)
+        # --- Parallel Sub-Query Execution ---
+        compose_from_sub_answers = query_decomp_config.get("compose_from_sub_answers", True)
+        if compose_sub_answers is not None:
+            compose_from_sub_answers = compose_sub_answers
 
-            final_answer = await _run_stream()
-            result = {"answer": final_answer, "source_documents": []}
+        print(f"\n--- Processing {len(sub_queries)} sub-queries in parallel ---")
+        start_time_inner = time.time()
+
+        sub_answers = []
+        all_source_docs = []
+        citations_seen = set()
+
+        def make_cb(idx: int):
+            def _cb(ev_type: str, payload):
+                if event_callback:
+                    if ev_type == "token":
+                        event_callback("sub_query_token", {"index": idx, "text": payload.get("text", ""), "question": sub_queries[idx]})
+                    else:
+                        event_callback(ev_type, payload)
+            return _cb
+
+        # This must run in a thread pool because the underlying pipeline run is sync
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(3, len(sub_queries))) as executor:
+            window_size = 0 if context_expand is False else None
+            future_to_query = {
+                executor.submit(
+                    self.retrieval_pipeline.run,
+                    sub_query,
+                    table_name,
+                    window_size,
+                    make_cb(i),
+                ): (i, sub_query)
+                for i, sub_query in enumerate(sub_queries)
+            }
+
+            for future in concurrent.futures.as_completed(future_to_query):
+                i, sub_query = future_to_query[future]
+                try:
+                    sub_result = future.result()
+                    print(f"✅ Sub-Query {i+1} completed: '{sub_query}'")
+                    if event_callback:
+                        event_callback("sub_query_result", {"index": i, "query": sub_query, "answer": sub_result.get("answer", ""), "source_documents": sub_result.get("source_documents", [])})
+                    
+                    sub_answers.append({"question": sub_query, "answer": sub_result.get("answer", "")})
+                    for doc in sub_result.get("source_documents", [])[:5]:
+                        if doc['chunk_id'] not in citations_seen:
+                            all_source_docs.append(doc)
+                            citations_seen.add(doc['chunk_id'])
+                except Exception as e:
+                    print(f"❌ Sub-Query {i+1} failed: '{sub_query}' - {e}")
         
-        elif query_type == "graph_query" and hasattr(self, 'graph_retriever'):
-            result = self._run_graph_query(query, history)
+        parallel_time = time.time() - start_time_inner
+        print(f"🚀 Parallel processing completed in {parallel_time:.2f}s")
+        
+        # --- Final Answer Composition ---
+        print("\n--- Composing final answer from sub-answers ---")
+        compose_prompt = f"""
+You are an expert answer composer. Your task is to synthesize a single, cohesive answer from a set of question-answer pairs generated by a previous step.
+- Use ONLY the information from the provided sub-answers.
+- If the original question involves a comparison, clearly state the outcome.
+- If a sub-answer is not relevant, ignore it.
+- If the sub-answers are insufficient, state that the information could not be found.
 
-        # --- RAG Query Processing with Optional Query Decomposition ---
-        else: # Default to rag_query
-            query_decomp_config = self.pipeline_configs.get("query_decomposition", {})
-            decomp_enabled = query_decomp_config.get("enabled", False)
-            if query_decompose is not None:
-                decomp_enabled = query_decompose
-
-            if decomp_enabled:
-                print(f"\n--- Query Decomposition Enabled ---")
-                # Use the raw user query (without conversation history) for decomposition to avoid leakage of prior context
-                sub_queries = self.query_decomposer.decompose(raw_query)
-                if event_callback:
-                    event_callback("decomposition", {"sub_queries": sub_queries})
-                print(f"Original query: '{query}' (Contextual: '{contextual_query}')")
-                print(f"Decomposed into {len(sub_queries)} sub-queries: {sub_queries}")
-                
-                # Emit retrieval_started event before any retrievals
-                if event_callback:
-                    event_callback("retrieval_started", {"count": len(sub_queries)})
-                
-                # If decomposition produced only a single sub-query, skip the
-                # parallel/composition machinery for efficiency.
-                if len(sub_queries) == 1:
-                    print("--- Only one sub-query after decomposition; using direct retrieval path ---")
-                    result = self.retrieval_pipeline.run(
-                        sub_queries[0],
-                        table_name,
-                        0 if context_expand is False else None,
-                        event_callback=event_callback
-                    )
-                    if event_callback:
-                        event_callback("single_query_result", result)
-                    # Emit retrieval_done and rerank_done for single sub-query
-                    if event_callback:
-                        event_callback("retrieval_done", {"count": 1})
-                        event_callback("rerank_started", {"count": 1})
-                        event_callback("rerank_done", {"count": 1})
-                else:
-                    compose_from_sub_answers = query_decomp_config.get("compose_from_sub_answers", True)
-                    if compose_sub_answers is not None:
-                        compose_from_sub_answers = compose_sub_answers
-
-                    print(f"\n--- Processing {len(sub_queries)} sub-queries in parallel ---")
-                    start_time_inner = time.time()
-
-                    # Shared containers
-                    sub_answers = []  # For two-stage composition
-                    all_source_docs = []  # For single-stage aggregation
-                    citations_seen = set()
-
-                    # Emit rerank_started event before parallel retrievals (since each sub-query will rerank)
-                    if event_callback:
-                        event_callback("rerank_started", {"count": len(sub_queries)})
-
-                    # Emit token chunks as soon as we receive them. The UI
-                    # keeps answers separated by `index`, so interleaving is
-                    # harmless and gives continuous feedback.
-
-                    def make_cb(idx: int):
-                        def _cb(ev_type: str, payload):
-                            if event_callback is None:
-                                return
-                            if ev_type == "token":
-                                event_callback("sub_query_token", {"index": idx, "text": payload.get("text", ""), "question": sub_queries[idx]})
-                            else:
-                                event_callback(ev_type, payload)
-                        return _cb
-
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=min(3, len(sub_queries))) as executor:
-                        future_to_query = {
-                            executor.submit(
-                                self.retrieval_pipeline.run,
-                                sub_query,
-                                table_name,
-                                0 if context_expand is False else None,
-                                make_cb(i),
-                            ): (i, sub_query)
-                            for i, sub_query in enumerate(sub_queries)
-                        }
-
-                        for future in concurrent.futures.as_completed(future_to_query):
-                            i, sub_query = future_to_query[future]
-                            try:
-                                sub_result = future.result()
-                                print(f"✅ Sub-Query {i+1} completed: '{sub_query}'")
-
-                                if event_callback:
-                                    event_callback("sub_query_result", {
-                                        "index": i,
-                                        "query": sub_query,
-                                        "answer": sub_result.get("answer", ""),
-                                        "source_documents": sub_result.get("source_documents", []),
-                                    })
-
-                                if compose_from_sub_answers:
-                                    sub_answers.append({
-                                        "question": sub_query,
-                                        "answer": sub_result.get("answer", "")
-                                    })
-                                    # Keep up to 5 citations per sub-query for traceability
-                                    for doc in sub_result.get("source_documents", [])[:5]:
-                                        if doc['chunk_id'] not in citations_seen:
-                                            all_source_docs.append(doc)
-                                            citations_seen.add(doc['chunk_id'])
-                                else:
-                                    # Aggregate unique docs (single-stage path)
-                                    for doc in sub_result.get('source_documents', []):
-                                        if doc['chunk_id'] not in citations_seen:
-                                            all_source_docs.append(doc)
-                                            citations_seen.add(doc['chunk_id'])
-                            except Exception as e:
-                                print(f"❌ Sub-Query {i+1} failed: '{sub_query}' - {e}")
-
-                    parallel_time = time.time() - start_time_inner
-                    print(f"🚀 Parallel processing completed in {parallel_time:.2f}s")
-
-                    # Emit retrieval_done and rerank_done after all sub-queries are processed
-                    if event_callback:
-                        event_callback("retrieval_done", {"count": len(sub_queries)})
-                        event_callback("rerank_done", {"count": len(sub_queries)})
-
-                    if compose_from_sub_answers:
-                        print("\n--- Composing final answer from sub-answers ---")
-                        compose_prompt = f"""
-You are an expert answer composer for a Retrieval-Augmented Generation (RAG) system.
-
-Context:
-• The ORIGINAL QUESTION from the user is shown below.
-• That question was automatically decomposed into simpler SUB-QUESTIONS.
-• Each sub-question has already been answered by an earlier step and the resulting Question→Answer pairs are provided to you in JSON.
-
-Your task:
-1. Read every sub-answer carefully.
-2. Write a single, final answer to the ORIGINAL QUESTION **using only the information contained in the sub-answers**. Do NOT invent facts that are not present.
-3. If the original question includes a comparison (e.g., "Which, A or B, …") clearly state the outcome (e.g., "A > B"). Quote concrete numbers when available.
-4. If any aspect of the original question cannot be answered with the given sub-answers, explicitly say so (e.g., "The provided context does not mention …").
-5. Keep the answer concise (≤ 5 sentences) and use a factual, third-person tone.
-
-Input
-------
-ORIGINAL QUESTION:
-"{contextual_query}"
-
-SUB-ANSWERS (JSON):
+Original Question: "{query}"
+Sub-Answers:
 {json.dumps(sub_answers, indent=2)}
 
-------
-FINAL ANSWER:
+Final Answer:
 """
-                        # --- Stream composition answer token-by-token ---
-                        answer_parts: list[str] = []
-
-                        for tok in self.llm_client.stream_completion(
-                            model=self.ollama_config["generation_model"],
-                            prompt=compose_prompt,
-                        ):
-                            answer_parts.append(tok)
-                            if event_callback:
-                                event_callback("token", {"text": tok})
-
-                        final_answer = "".join(answer_parts) or "Unable to generate an answer."
-
-                        result = {
-                            "answer": final_answer,
-                            "source_documents": all_source_docs
-                        }
-                        if event_callback:
-                            event_callback("final_answer", result)
-                    else:
-                        print(f"\n--- Aggregated {len(all_source_docs)} unique documents from all sub-queries ---")
-
-                        if all_source_docs:
-                            aggregated_context = "\n\n".join([doc['text'] for doc in all_source_docs])
-                            final_answer = self.retrieval_pipeline._synthesize_final_answer(contextual_query, aggregated_context)
-                            result = {
-                                "answer": final_answer,
-                                "source_documents": all_source_docs
-                            }
-                            if event_callback:
-                                event_callback("final_answer", result)
-                        else:
-                            result = {
-                                "answer": "I could not find relevant information to answer your question.",
-                                "source_documents": []
-                            }
-                            if event_callback:
-                                event_callback("final_answer", result)
-            else:
-                # Standard retrieval (single-query)
-                retrieved_docs = (self.retrieval_pipeline.retriever.retrieve(
-                    text_query=contextual_query,
-                    table_name=table_name or self.retrieval_pipeline.storage_config["text_table_name"],
-                    k=self.retrieval_pipeline.config.get("retrieval_k", 10),
-                ) if hasattr(self.retrieval_pipeline, "retriever") and self.retrieval_pipeline.retriever else [])
-
-                print("\n=== DEBUG: Original retrieval order ===")
-                for i, d in enumerate(retrieved_docs[:10]):
-                    snippet = (d.get('text','') or '')[:200].replace('\n',' ')
-                    print(f"Orig[{i}] id={d.get('chunk_id')} dist={d.get('_distance','') or d.get('score','')}  {snippet}")
-
-                result = self.retrieval_pipeline.run(contextual_query, table_name, 0 if context_expand is False else None, event_callback=event_callback)
-
-                # After run, result['source_documents'] is reranked list
-                reranked_docs = result.get('source_documents', [])
-                print("\n=== DEBUG: Reranked docs order ===")
-                for i, d in enumerate(reranked_docs[:10]):
-                    snippet = (d.get('text','') or '')[:200].replace('\n',' ')
-                    print(f"ReRank[{i}] id={d.get('chunk_id')} score={d.get('rerank_score','')} {snippet}")
+        final_answer_parts = []
+        for tok in self.llm_client.stream_completion(model=self.ollama_config["generation_model"], prompt=compose_prompt):
+            final_answer_parts.append(tok)
+            if event_callback:
+                event_callback("token", {"text": tok})
         
-        # Verification step (simplified for now) - Skip in fast mode
-        if self.pipeline_configs.get("verification", {}).get("enabled", True) and result.get("source_documents"):
-            context_str = "\n".join([doc['text'] for doc in result['source_documents']])
-            verification = await self.verifier.verify_async(contextual_query, context_str, result['answer'])
+        final_answer = "".join(final_answer_parts) or "Unable to generate a final answer."
+        result = {"answer": final_answer, "source_documents": all_source_docs}
+        if event_callback:
+            event_callback("final_answer", result)
             
-            # Append confidence score to the answer
-            score = verification.confidence_score
-            result['answer'] += f" [Confidence: {score}%]"
-            
-            # Optional: a more nuanced warning based on score
-            if not verification.is_grounded or score < 50:
-                 result['answer'] += f" [Warning: Low confidence. Groundedness: {verification.is_grounded}]"
-        else:
-            print("🚀 Skipping verification for speed or lack of sources")
-        
-        # 🚀 NEW: Update history
-        if session_id:
-            history.append({"query": query, "answer": result['answer']})
-            self.chat_histories[session_id] = history
-            
-        # 🚀 OPTIMIZED: Cache the result for future queries
-        if query_type != "direct_answer" and query_embedding is not None:
-            cache_key = raw_query  # Key is for logging/debugging
-            self._query_cache[cache_key] = {
-                "embedding": query_embedding,
-                "result": result,
-                "session_id": session_id,
-            }
-        
-        total_time = time.time() - start_time
-        print(f"🚀 Total query processing time: {total_time:.2f}s")
-        
         return result
 
-    # ------------------------------------------------------------------
     def _route_via_overviews(self, query: str) -> str | None:
-        """Use document overviews and a small model to decide routing.
-        Returns 'rag_query', 'direct_answer', or None if unsure/disabled."""
-        if not self.doc_overviews:
-            return None
+        """
+        An intelligent router that uses LLM reasoning on document overviews
+        to make a fast, high-quality decision.
+        """
+        if not self.doc_overviews: return None # Should not happen if called correctly
 
-        # Keep prompt concise: if more than 40 overviews, take first 40
-        overviews_snip = self.doc_overviews[:40]
-        overviews_block = "\n".join(f"[{i+1}] {ov}" for i, ov in enumerate(overviews_snip))
+        # Present the overviews to the LLM
+        overview_text = "\n\n".join(f"--- Overview {i+1} ---\n{o}" for i, o in enumerate(self.doc_overviews))
 
-        router_prompt = f"""
-You are an AI router that decides whether a user question should be answered via:
-  • "rag_query"    – search the user's private documents (summarised below)
-  • "graph_query"  – query a public knowledge-graph for a crisp factual triple
-  • "direct_answer" – reply from your own general knowledge (chit-chat, public facts)
+        prompt = f"""
+You are an expert routing agent. Your job is to decide how to answer a user's query based on a set of available document summaries. You must choose one of four actions:
 
-RULES
- 1. If ANY overview clearly relates to the question (entities, numbers, addresses, dates, etc.) → rag_query.
- 2. If the question is a simple factual triple about well-known public entities → graph_query.
- 3. Otherwise → direct_answer.
- 4. Output must be exactly: {{"category": "rag_query"}} or {{"category": "graph_query"}} or {{"category": "direct_answer"}}.
+1.  **RAG Query**: The user's query requires retrieving specific information from the full text of one or more documents. This is the best choice if the query asks for details, quotes, or mentions "the document", "the paper", "the invoice", etc. It's the safest default when in doubt.
 
+2.  **Direct Answer**: The provided overviews ALREADY contain a complete and sufficient answer to the user's query. This is a shortcut for simple factual questions where the summary is enough and no further reading is needed.
 
-Example B
-  Overviews:
-    • Marketing slide deck titled "Q2 Growth Strategy" … outlines campaign budgets and KPIs …
-  Question: "List two key KPIs mentioned in the growth strategy deck."
-  Assistant: {{"category": "rag_query"}}
+3.  **General Chat**: The user's query is conversational, a general knowledge question, or completely unrelated to the documents provided. Examples: "Hello", "What's the weather like?", "Who was the first person on the moon?".
 
-Example C
-  Overviews:
-    • Medical lab report … Patient ID 778-Q … Cholesterol 210 mg/dL …
-  Question: "What is the patient's cholesterol level?"
-  Assistant: {{"category": "rag_query"}}
+4.  **Needs Clarification**: The user's query is ambiguous, or it's unclear which document it refers to when multiple documents seem relevant.
 
-Example D
-  Overviews:
-    • Resume of Jane Doe, Senior Data Scientist …
-  Question: "Who is the CEO of Apple?"
-  Assistant: {{"category": "direct_answer"}}
+**Your thought process:**
+1.  Analyze the user's query to understand their intent. Are they asking a factual question, a summarization, a specific detail, or just chatting?
+2.  Read the provided overviews. Do they seem relevant to the query?
+3.  Decide:
+    *   If the query explicitly asks for information "according to the document" or for specific details not present in the overview, choose **RAG Query**.
+    *   If the answer is clearly and fully present in the overviews, choose **Direct Answer**.
+    *   If the query is unrelated to the documents, choose **General Chat**.
+    *   If you are unsure or the query is vague, choose **Needs Clarification**.
 
-Example E
-  Overviews:
-    • Research paper: "Quantum Entanglement in Photonic Systems" …
-  Question: "Which company acquired DeepMind?"
-  Assistant: {{"category": "graph_query"}}
+Here are the available document overviews:
+{overview_text}
 
-DOCUMENT OVERVIEWS
-+-------------------
-+{overviews_block}
+---
 
-USER QUESTION
-+--------------
-+"{query}"
+Now, analyze the following user query and choose the best action.
 
-Return only the JSON object.
+**User Query**: "{query}"
+
+Respond with a single JSON object with two keys: "action" (one of ["rag_query", "direct_answer", "general_chat", "needs_clarification"]) and "reasoning" (a brief explanation of your choice).
 """
 
+        # Call the LLM
         resp = self.llm_client.generate_completion(
-            model=self.ollama_config["generation_model"], prompt=router_prompt, format="json"
+            model=self.ollama_config["generation_model"],
+            prompt=prompt,
+            format="json"
         )
+        
         try:
-            data = json.loads(resp.get("response", "{}"))
-            return data.get("category", "rag_query")
-        except json.JSONDecodeError:
+            choice_data = _json.loads(resp.get("response", "{}"))
+            action = choice_data.get("action")
+            reasoning = choice_data.get("reasoning", "No reasoning provided.")
+            print(f"Overview Router Decision: '{action}'. Reason: {reasoning}")
+
+            if action == "rag_query":
+                return "rag_query"
+            elif action == "direct_answer":
+                # For a direct answer, we need the LLM to synthesize it from the overviews.
+                # This is a "mini-RAG" on the overviews themselves.
+                return self._answer_from_overviews(query, overview_text)
+            elif action == "general_chat":
+                # Let the main loop handle this by treating it as a direct query to the base model.
+                return self._answer_from_overviews(query, "You are a helpful general-purpose AI assistant.") # Answer with no context
+            elif action == "needs_clarification":
+                return "clarification"
+        except Exception:
+            # If JSON parsing or logic fails, default to the safest option
             return "rag_query"
 
+        return "rag_query" # Fallback
 
+    def _answer_from_overviews(self, query: str, overview_text: str) -> str:
+        """
+        If the router decides the answer is in the overviews, this function
+        generates that answer.
+        """
+        prompt = f"""
+Given the following document summaries, please provide a direct and concise answer to the user's query.
+Use ONLY the information present in the summaries. Do not add any external knowledge.
 
-        # try:
-        #     reply = self.llm_client.generate_completion(
-        #         model=self.ollama_config.get("enrichment_model", "qwen3:0.6b"),
-        #         prompt=router_prompt,
-        #     ).get("response", "").strip().lower()
-        # except Exception as e:
-        #     print(f"⚠️  Overview router failed: {e}")
-        #     return None
-        
-        # return reply
+Summaries:
+{overview_text}
 
-        # if "rag" == reply:
-        #     return "rag_query"
-        # if "direct" == reply:
-        #     return "direct_answer"
-        # return None
+---
+User Query: {query}
+
+Answer:
+"""
+        resp = self.llm_client.generate_completion(
+            model=self.ollama_config["generation_model"],
+            prompt=prompt
+        )
+        # The triage router returns the answer *itself* as the category.
+        # The main loop will then wrap this in the final response dict.
+        return resp.get("response", "I am sorry, I could not formulate an answer.")
+
+    def stream_agent_response(self, query: str, session_id: str):
+        """High-level streaming entry point."""
+        # ... existing code ...

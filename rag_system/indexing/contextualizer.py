@@ -20,7 +20,10 @@ CHUNK_PROMPT_TEMPLATE = """Here is the specific chunk we want to situate within 
 {chunk_content}
 </chunk>
 
-Based *only* on the local context provided, give a very short (1-2 sentence) context summary to situate this specific chunk. Focus on the chunk's topic and its relation to the immediately surrounding text shown in the local context. Answer *only* with the succinct context and nothing else."""
+Based *only* on the local context provided, give a very short (2-5 sentence) context summary to situate this specific chunk. 
+Focus on the chunk's topic and its relation to the immediately surrounding text shown in the local context. 
+Focus on the the overall theme of the context, make sure to include topics, concepts, and other relevant information.
+Answer *only* with the succinct context and nothing else."""
 
 
 class ContextualEnricher:

@@ -11,11 +11,33 @@ class OverviewBuilder:
     """
 
     DEFAULT_PROMPT = (
-        "You will receive the beginning of a document. "
-        "In no more than 120 tokens, describe what the document is about, "
-        "state its type (e.g. invoice, slide deck, policy, research paper, receipt) "
-        "and mention 3-5 important entities, numbers or dates it contains.\n\n"
-        "DOCUMENT_START:\n{text}\n\nOVERVIEW:"
+        """You are an expert document analyst. Your task is to create a concise, one-sentence overview of a document based on its initial text. This overview will be used by a routing agent to decide if a user's query is related to this document.
+
+The overview MUST be a single sentence and include the following key information, if available:
+- Document Type (e.g., Invoice, Research Paper, Report, Agreement, Resume)
+- Key Entities (e.g., companies, people, products)
+- Specific Identifiers (e.g., invoice numbers, report IDs, dates)
+- Main Topic
+
+Here are some examples of high-quality overviews:
+
+===
+DOCUMENT_START: "Invoice #1234. To: ACME Corp. From: Stark Industries. Date: 2024-10-26. Amount: $50,000. For consulting services."
+OVERVIEW: "An invoice (#1234) from Stark Industries to ACME Corp for $50,000, dated October 26, 2024, covering consulting services."
+===
+DOCUMENT_START: "A Study of Quantum Entanglement in Multi-Modal AI Systems. Authors: Dr. Eva Rostova, Dr. Alexi Romanov. Abstract: We explore the...'
+OVERVIEW: "A research paper by Dr. Rostova and Dr. Romanov on quantum entanglement in multi-modal AI systems."
+===
+DOCUMENT_START: "Q4 2024 Financial Report. ACME Corp. Revenue: $1.2M. Net Profit: $250,000. This report details the financial performance of ACME Corp..."
+OVERVIEW: "Q4 2024 financial report for ACME Corp, showing revenue of $1.2M and net profit of $250,000."
+===
+
+Now, generate the overview for the following document.
+
+DOCUMENT_START:
+{text}
+
+OVERVIEW:"""
     )
 
     def __init__(self, llm_client, model: str = "qwen3:0.6b", first_n_chunks: int = 5,
