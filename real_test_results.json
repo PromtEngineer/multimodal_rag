@@ -1,0 +1,26 @@
+{
+  "test_type": "real_world_ollama_test",
+  "model": "qwen3:0.6b",
+  "chunks_tested": 1,
+  "timestamp": "2025-06-26 01:15:44",
+  "original": {
+    "success": true,
+    "time": 1.6814682483673096,
+    "rate": 0.59471833676966
+  },
+  "enhanced": {
+    "success": true,
+    "time": 3.095201015472412,
+    "rate": 0.3230807934609613,
+    "config": {
+      "max_concurrent_llm": 3,
+      "rate_limit_delay": 0.1,
+      "batch_size": 5
+    }
+  },
+  "performance": {
+    "speedup": 0.5432500958619231,
+    "time_saved_seconds": -1.4137327671051025,
+    "time_saved_percent": -84.07727998895157
+  }
+}

@@ -450,7 +450,7 @@ class ChatAPI {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
         throw new Error(`Build index error: ${errorData.error || response.statusText}`);
-      }
+    }
 
       return await response.json();
     } catch (error) {

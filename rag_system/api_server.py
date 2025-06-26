@@ -169,61 +169,73 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             
             file_paths = data.get('file_paths')
             session_id = data.get('session_id')
-            compose_flag = data.get('compose_sub_answers')
-            decomp_flag = data.get('query_decompose')
-            ai_rerank_flag = data.get('ai_rerank')
-            ctx_expand_flag = data.get('context_expand')
             enable_latechunk = bool(data.get("enable_latechunk"))
             enable_docling_chunk = bool(data.get("enable_docling_chunk"))
+
             if not file_paths or not isinstance(file_paths, list):
                 self.send_json_response({
                     "error": "A 'file_paths' list is required."
                 }, status_code=400)
                 return
 
-            # Allow explicit table_name override
             table_name = data.get('table_name')
             if not table_name and session_id:
                 table_name = f"text_pages_{session_id}"
 
-            # The INDEXING_PIPELINE is already initialized. We just need to use it.
-            # If a session-specific table is needed, we can override the config for this run.
-            if table_name:
-                import copy
-                config_override = copy.deepcopy(INDEXING_PIPELINE.config)
-                config_override["storage"]["text_table_name"] = table_name
-                config_override.setdefault("retrievers", {}).setdefault("dense", {})["lancedb_table_name"] = table_name
-                if enable_latechunk:
-                    config_override["retrievers"].setdefault("latechunk", {})["enabled"] = True
+            print(f"--- Received index request for table: {table_name} ---")
+            print(f"--- Files: {file_paths} ---")
+            
+            try:
+                if table_name:
+                    import copy
+                    config_override = copy.deepcopy(INDEXING_PIPELINE.config)
+                    config_override["storage"]["text_table_name"] = table_name
+                    config_override.setdefault("retrievers", {}).setdefault("dense", {})["lancedb_table_name"] = table_name
+                    if enable_latechunk:
+                        config_override["retrievers"].setdefault("latechunk", {})["enabled"] = True
+                    else:
+                        config_override["retrievers"].setdefault("latechunk", {})["enabled"] = False
+                    if enable_docling_chunk:
+                        config_override["chunker_mode"] = "docling"
+                    
+                    print("--- Initializing temporary pipeline with overridden config ---")
+                    temp_pipeline = INDEXING_PIPELINE.__class__(
+                        config_override, 
+                        INDEXING_PIPELINE.ollama_client, 
+                        INDEXING_PIPELINE.ollama_config
+                    )
+                    temp_pipeline.run(file_paths)
+                    print("--- Temporary pipeline run complete ---")
                 else:
-                    # ensure disabled if not requested
-                    config_override["retrievers"].setdefault("latechunk", {})["enabled"] = False
-                if enable_docling_chunk:
-                    config_override["chunker_mode"] = "docling"
-                # Create a temporary pipeline instance with the overridden config
-                temp_pipeline = INDEXING_PIPELINE.__class__(
-                    config_override, 
-                    INDEXING_PIPELINE.llm_client, 
-                    INDEXING_PIPELINE.ollama_config
-                )
-                temp_pipeline.run(file_paths)
-            else:
-                # Use the default pipeline
-                if enable_latechunk:
-                    INDEXING_PIPELINE.config.setdefault("retrievers", {}).setdefault("latechunk", {})["enabled"] = True
-                if enable_docling_chunk:
-                    INDEXING_PIPELINE.config["chunker_mode"] = "docling"
-                INDEXING_PIPELINE.run(file_paths)
+                    print("--- Running default pipeline ---")
+                    if enable_latechunk:
+                        INDEXING_PIPELINE.config.setdefault("retrievers", {}).setdefault("latechunk", {})["enabled"] = True
+                    if enable_docling_chunk:
+                        INDEXING_PIPELINE.config["chunker_mode"] = "docling"
+                    INDEXING_PIPELINE.run(file_paths)
+                    print("--- Default pipeline run complete ---")
 
-            self.send_json_response({
-                "message": f"Indexing process for {len(file_paths)} file(s) completed successfully.",
-                "table_name": table_name or "default_text_table",
-                "latechunk": enable_latechunk,
-                "docling_chunk": enable_docling_chunk
-            })
+                self.send_json_response({
+                    "message": f"Indexing process for {len(file_paths)} file(s) completed successfully.",
+                    "table_name": table_name or "default_text_table",
+                    "latechunk": enable_latechunk,
+                    "docling_chunk": enable_docling_chunk
+                })
+
+            except Exception as e:
+                import traceback
+                print("!!!!!! ERROR DURING INDEXING PIPELINE EXECUTION !!!!!!")
+                traceback.print_exc()
+                print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+                self.send_json_response({"error": f"Pipeline Error: {str(e)}"}, status_code=500)
+
         except json.JSONDecodeError:
             self.send_json_response({"error": "Invalid JSON"}, status_code=400)
         except Exception as e:
+            import traceback
+            print("!!!!!! ERROR IN /index HANDLER !!!!!!")
+            traceback.print_exc()
+            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
             self.send_json_response({"error": f"Failed to start indexing: {str(e)}"}, status_code=500)
 
     def handle_models(self):

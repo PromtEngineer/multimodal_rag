@@ -142,7 +142,7 @@ class IndexingPipeline:
                                     chunks = self.chunker.chunk(markdown_text, document_id, metadata)
                             else:
                                 markdown_text, metadata = tpl
-                                chunks = self.chunker.chunk(markdown_text, document_id, metadata)
+                            chunks = self.chunker.chunk(markdown_text, document_id, metadata)
                             file_chunks.extend(chunks)
                         
                         # Add a sequential chunk_index to each chunk within the document

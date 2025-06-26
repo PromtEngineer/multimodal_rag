@@ -33,7 +33,9 @@ app = Flask(__name__)
 app.name = "MultimodalRAG-Backend"
 
 # Initialize components
-db = EnhancedChatDatabase()
+DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(__file__), '..', 'chat_data.db'))
+logger.info(f"Connecting to database at: {os.path.abspath(DB_PATH)}")
+db = EnhancedChatDatabase(db_path=DB_PATH)
 ollama_client = OllamaClient()
 
 # =============================================

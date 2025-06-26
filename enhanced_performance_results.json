@@ -1,0 +1,24 @@
+{
+  "sequential_baseline": {
+    "method": "sequential_baseline",
+    "chunks": 20,
+    "time": 1.0777580738067627,
+    "rate": 18.557040291387242,
+    "architecture": "no_batching + sequential_llm"
+  },
+  "existing_batch": {
+    "method": "existing_batch",
+    "chunks": 20,
+    "time": 1.088865041732788,
+    "rate": 18.36774920073895,
+    "architecture": "batch_processing + sequential_llm"
+  },
+  "enhanced_async": {
+    "method": "enhanced_async",
+    "chunks": 20,
+    "time": 0.19895505905151367,
+    "rate": 100.52521456527315,
+    "architecture": "batch_processing + async_llm",
+    "max_concurrent": 5
+  }
+}

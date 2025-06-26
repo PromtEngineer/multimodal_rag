@@ -1,0 +1,37 @@
+{
+  "contextual_enrichment": {
+    "sequential": {
+      "method": "sequential",
+      "chunks": 20,
+      "time": 2.072122812271118,
+      "rate": 9.651937559665834
+    },
+    "async": {
+      "method": "async",
+      "chunks": 20,
+      "time": 0.5080869197845459,
+      "rate": 39.36334359577884
+    },
+    "speedup": 0.245201161232169
+  },
+  "memory_optimization": {
+    "method": "streaming",
+    "chunks": 50,
+    "time": 4.10381007194519,
+    "rate": 12.183799718660028,
+    "memory_estimate": 0.08707046508789062
+  },
+  "context_expansion": {
+    "individual_time": 0.17786693572998047,
+    "bulk_time": 0.08517909049987793,
+    "speedup": 2.08815255817078,
+    "chunks": 15
+  },
+  "query_caching": {
+    "no_cache_time": 2.513676404953003,
+    "cache_time": 1.5144901275634766,
+    "speedup": 1.6597509347895354,
+    "queries": 5
+  },
+  "performance_monitoring": true
+}
