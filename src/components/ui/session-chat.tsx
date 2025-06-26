@@ -11,6 +11,7 @@ import { Button } from "./button"
 import type { Step } from '@/lib/api'
 import { ChatSettingsModal } from '@/components/ui/chat-settings-modal'
 import { IndexForm } from '@/components/IndexForm'
+import { useActionHandler } from '@/lib/hooks'
 
 interface SessionChatProps {
   sessionId?: string
@@ -441,36 +442,20 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
     }
   }
 
+  // Use the shared action handler
+  const { handleAction } = useActionHandler({
+    onRegenerate: async (messageId: string, userMessage: string) => {
+      // Remove the AI message and resend the user message
+      setMessages(prev => prev.filter(m => m.id !== messageId))
+      await sendMessage(userMessage)
+    }
+  })
+
   // Expose functions to parent component
   useImperativeHandle(ref, () => ({
     sendMessage,
     currentSession
   }))
-
-  const handleAction = async (action: string, messageId: string, messageContent: string | Record<string, any>[] | { steps: Step[] }) => {
-    console.log(`Action ${action} on message ${messageId}`)
-    
-    switch (action) {
-      case 'copy':
-        await navigator.clipboard.writeText(typeof messageContent === 'string' ? messageContent : JSON.stringify(messageContent, null, 2))
-        break
-      case 'regenerate':
-        // Find the user message before this AI message and resend it
-        const messageIndex = messages.findIndex(m => m.id === messageId)
-        if (messageIndex > 0 && messages[messageIndex].sender === 'assistant') {
-          const userMessage = messages[messageIndex - 1]
-          if (userMessage.sender === 'user') {
-            // Remove the AI message and resend the user message
-            setMessages(prev => prev.filter(m => m.id !== messageId))
-            await sendMessage(userMessage.content as string)
-          }
-        }
-        break
-      default:
-        // Handle other actions
-        break
-    }
-  }
 
   const showEmptyState = (!sessionId || messages.length === 0) && !isLoading
 
@@ -500,7 +485,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
           <ConversationPage 
             messages={messages}
             isLoading={isLoading}
-            onAction={handleAction}
+            onAction={(action, messageId, messageContent) => handleAction(action, messageId, messageContent, messages)}
             className="flex-1 overflow-y-auto"
           />
 

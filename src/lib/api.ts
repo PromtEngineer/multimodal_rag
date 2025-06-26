@@ -138,7 +138,18 @@ class ChatAPI {
       if (!response.ok) {
         throw new Error(`Failed to get sessions: ${response.status}`);
       }
-      return await response.json();
+      const data = await response.json();
+      
+      // Handle new enhanced server response format
+      if (data.status === 'success' && data.data) {
+        return {
+          sessions: data.data.sessions || [],
+          total: data.data.total || data.data.sessions?.length || 0
+        };
+      }
+      
+      // Fallback for old format
+      return data;
     } catch (error) {
       console.error('Get sessions failed:', error);
       throw error;
@@ -160,7 +171,14 @@ class ChatAPI {
       }
 
       const data = await response.json();
-      return data.session;
+      
+      // Handle new enhanced server response format
+      if (data.status === 'success' && data.data?.session) {
+        return data.data.session;
+      }
+      
+      // Fallback for old format
+      return data.session || data;
     } catch (error) {
       console.error('Create session failed:', error);
       throw error;
@@ -455,7 +473,18 @@ class ChatAPI {
     if (!resp.ok) {
       throw new Error(`Failed to list indexes: ${resp.status}`);
     }
-    return resp.json();
+    const data = await resp.json();
+    
+    // Handle new enhanced server response format
+    if (data.status === 'success' && data.data) {
+      return {
+        indexes: data.data.indexes || [],
+        total: data.data.indexes?.length || 0
+      };
+    }
+    
+    // Fallback for old format
+    return data;
   }
 
   async getSessionIndexes(sessionId: string): Promise<{ indexes: any[]; total: number }> {

@@ -18,16 +18,17 @@ export default function IndexPicker({ onSelect, onClose }: Props) {
     (async () => {
       try {
         const data = await chatAPI.listIndexes();
-        setIndexes(data.indexes);
+        setIndexes(Array.isArray(data.indexes) ? data.indexes : []);
       } catch (e: any) {
         setError(e.message || 'Failed to load indexes');
+        setIndexes([]); // Ensure indexes is always an array
       } finally {
         setLoading(false);
       }
     })();
   }, []);
 
-  const filtered = indexes.filter(i => i.name.toLowerCase().includes(search.toLowerCase()));
+  const filtered = (indexes || []).filter(i => i?.name?.toLowerCase().includes(search.toLowerCase()));
 
   async function handleDelete(idxId: string, name: string) {
     if (!confirm(`Delete index "${name}"? This cannot be undone.`)) return;

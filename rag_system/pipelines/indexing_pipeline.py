@@ -208,11 +208,12 @@ class IndexingPipeline:
                         tbl = self.lancedb_manager.get_table(table_name)
                         # Create FTS index only if it does not already exist
                         existing_indices = [idx.name for idx in tbl.list_indices()]
-                        if "fts_text" not in existing_indices:
+                        expected_fts_index_name = "text_idx"  # LanceDB default: column_name + "_idx"
+                        if expected_fts_index_name not in existing_indices:
                             tbl.create_fts_index("text", use_tantivy=False, replace=False)
                             print("✅ FTS index created successfully (using Lance native FTS).")
                         else:
-                            print("ℹ️  FTS index already exists – skipped creation.")
+                            print(f"ℹ️  FTS index '{expected_fts_index_name}' already exists – skipped creation.")
                     except Exception as e:
                         print(f"❌ Failed to create/verify FTS index: {e}")
 

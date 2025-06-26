@@ -1,121 +1,17 @@
-import requests
-import json
+# Import the unified OllamaClient from the RAG system
+import sys
 import os
-from typing import List, Dict
 
-class OllamaClient:
-    def __init__(self, base_url: str = "http://localhost:11434"):
-        self.base_url = base_url
-        self.api_url = f"{base_url}/api"
-    
-    def is_ollama_running(self) -> bool:
-        """Check if Ollama server is running"""
-        try:
-            response = requests.get(f"{self.base_url}/api/tags", timeout=5)
-            return response.status_code == 200
-        except requests.exceptions.RequestException:
-            return False
-    
-    def list_models(self) -> List[str]:
-        """Get list of available models"""
-        try:
-            response = requests.get(f"{self.api_url}/tags")
-            if response.status_code == 200:
-                models = response.json().get("models", [])
-                return [model["name"] for model in models]
-            return []
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching models: {e}")
-            return []
-    
-    def pull_model(self, model_name: str) -> bool:
-        """Pull a model if not available"""
-        try:
-            response = requests.post(
-                f"{self.api_url}/pull",
-                json={"name": model_name},
-                stream=True
-            )
-            
-            if response.status_code == 200:
-                print(f"Pulling model {model_name}...")
-                for line in response.iter_lines():
-                    if line:
-                        data = json.loads(line)
-                        if "status" in data:
-                            print(f"Status: {data['status']}")
-                        if data.get("status") == "success":
-                            return True
-                return True
-            return False
-        except requests.exceptions.RequestException as e:
-            print(f"Error pulling model: {e}")
-            return False
-    
-    def chat(self, message: str, model: str = "llama3.2", conversation_history: List[Dict] = None) -> str:
-        """Send a chat message to Ollama"""
-        if conversation_history is None:
-            conversation_history = []
-        
-        # Add user message to conversation
-        messages = conversation_history + [{"role": "user", "content": message}]
-        
-        try:
-            response = requests.post(
-                f"{self.api_url}/chat",
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "stream": False
-                },
-                timeout=60
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                return result["message"]["content"]
-            else:
-                return f"Error: {response.status_code} - {response.text}"
-                
-        except requests.exceptions.RequestException as e:
-            return f"Connection error: {e}"
-    
-    def chat_stream(self, message: str, model: str = "llama3.2", conversation_history: List[Dict] = None):
-        """Stream chat response from Ollama"""
-        if conversation_history is None:
-            conversation_history = []
-        
-        messages = conversation_history + [{"role": "user", "content": message}]
-        
-        try:
-            response = requests.post(
-                f"{self.api_url}/chat",
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "stream": True
-                },
-                stream=True,
-                timeout=60
-            )
-            
-            if response.status_code == 200:
-                for line in response.iter_lines():
-                    if line:
-                        try:
-                            data = json.loads(line)
-                            if "message" in data and "content" in data["message"]:
-                                yield data["message"]["content"]
-                        except json.JSONDecodeError:
-                            continue
-            else:
-                yield f"Error: {response.status_code} - {response.text}"
-                
-        except requests.exceptions.RequestException as e:
-            yield f"Connection error: {e}"
+# Add the rag_system path to import the unified client
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'rag_system'))
+
+from utils.ollama_client import OllamaClient
+
+# Re-export for backward compatibility
+__all__ = ['OllamaClient']
 
 def main():
-    """Test the Ollama client"""
+    """Test the unified Ollama client"""
     client = OllamaClient()
     
     # Check if Ollama is running

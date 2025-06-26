@@ -1,6 +1,6 @@
 import requests
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import base64
 from io import BytesIO
 from PIL import Image
@@ -8,20 +8,82 @@ import httpx, asyncio
 
 class OllamaClient:
     """
-    An enhanced client for Ollama that now handles image data for VLM models.
+    Unified Ollama client with support for:
+    - Health checks and model management
+    - Chat and completion generation
+    - Multimodal (VLM) support with images
+    - Async operations and streaming
+    - Embedding generation
     """
     def __init__(self, host: str = "http://localhost:11434"):
         self.host = host
+        self.base_url = host
         self.api_url = f"{host}/api"
-        # (Connection check remains the same)
 
+    # =============================================
+    # Health Check and Model Management
+    # =============================================
+    
+    def is_ollama_running(self) -> bool:
+        """Check if Ollama server is running"""
+        try:
+            response = requests.get(f"{self.api_url}/tags", timeout=5)
+            return response.status_code == 200
+        except requests.exceptions.RequestException:
+            return False
+    
+    def list_models(self) -> List[str]:
+        """Get list of available models"""
+        try:
+            response = requests.get(f"{self.api_url}/tags")
+            if response.status_code == 200:
+                models = response.json().get("models", [])
+                return [model["name"] for model in models]
+            return []
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching models: {e}")
+            return []
+    
+    def pull_model(self, model_name: str) -> bool:
+        """Pull a model if not available"""
+        try:
+            response = requests.post(
+                f"{self.api_url}/pull",
+                json={"name": model_name},
+                stream=True
+            )
+            
+            if response.status_code == 200:
+                print(f"Pulling model {model_name}...")
+                for line in response.iter_lines():
+                    if line:
+                        data = json.loads(line)
+                        if "status" in data:
+                            print(f"Status: {data['status']}")
+                        if data.get("status") == "success":
+                            return True
+                return True
+            return False
+        except requests.exceptions.RequestException as e:
+            print(f"Error pulling model: {e}")
+            return False
+
+    # =============================================
+    # Utility Methods
+    # =============================================
+    
     def _image_to_base64(self, image: Image.Image) -> str:
         """Converts a Pillow Image to a base64 string."""
         buffered = BytesIO()
         image.save(buffered, format="PNG")
         return base64.b64encode(buffered.getvalue()).decode('utf-8')
 
+    # =============================================
+    # Embedding Generation
+    # =============================================
+    
     def generate_embedding(self, model: str, text: str) -> List[float]:
+        """Generate embeddings for text using specified model"""
         try:
             response = requests.post(
                 f"{self.api_url}/embeddings",
@@ -33,17 +95,87 @@ class OllamaClient:
             print(f"Error generating embedding: {e}")
             return []
 
+    # =============================================
+    # Chat Interface (Backend-style)
+    # =============================================
+    
+    def chat(self, message: str, model: str = "llama3.2", conversation_history: Optional[List[Dict]] = None) -> str:
+        """Send a chat message to Ollama with conversation history"""
+        if conversation_history is None:
+            conversation_history = []
+        
+        # Add user message to conversation
+        messages = conversation_history + [{"role": "user", "content": message}]
+        
+        try:
+            response = requests.post(
+                f"{self.api_url}/chat",
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "stream": False
+                },
+                timeout=60
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                return result["message"]["content"]
+            else:
+                return f"Error: {response.status_code} - {response.text}"
+                
+        except requests.exceptions.RequestException as e:
+            return f"Connection error: {e}"
+    
+    def chat_stream(self, message: str, model: str = "llama3.2", conversation_history: Optional[List[Dict]] = None):
+        """Stream chat response from Ollama"""
+        if conversation_history is None:
+            conversation_history = []
+        
+        messages = conversation_history + [{"role": "user", "content": message}]
+        
+        try:
+            response = requests.post(
+                f"{self.api_url}/chat",
+                json={
+                    "model": model,
+                    "messages": messages,
+                    "stream": True
+                },
+                stream=True,
+                timeout=60
+            )
+            
+            if response.status_code == 200:
+                for line in response.iter_lines():
+                    if line:
+                        try:
+                            data = json.loads(line)
+                            if "message" in data and "content" in data["message"]:
+                                yield data["message"]["content"]
+                        except json.JSONDecodeError:
+                            continue
+            else:
+                yield f"Error: {response.status_code} - {response.text}"
+                
+        except requests.exceptions.RequestException as e:
+            yield f"Connection error: {e}"
+
+    # =============================================
+    # Completion Interface (RAG-style with multimodal)
+    # =============================================
+
     def generate_completion(
         self,
         model: str,
         prompt: str,
         *,
         format: str = "",
-        images: List[Image.Image] | None = None,
-        enable_thinking: bool | None = None,
+        images: Optional[List[Image.Image]] = None,
+        enable_thinking: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """
-        Generates a completion, now with optional support for images.
+        Generates a completion with optional multimodal support.
 
         Args:
             model: The name of the generation model (e.g., 'llava', 'qwen-vl').
@@ -81,18 +213,18 @@ class OllamaClient:
             print(f"Error generating completion: {e}")
             return {}
 
-    # -------------------------------------------------------------
-    # Async variant – uses httpx so the caller can await multiple
-    # LLM calls concurrently (triage, verification, etc.).
-    # -------------------------------------------------------------
+    # =============================================
+    # Async Operations
+    # =============================================
+    
     async def generate_completion_async(
         self,
         model: str,
         prompt: str,
         *,
         format: str = "",
-        images: List[Image.Image] | None = None,
-        enable_thinking: bool | None = None,
+        images: Optional[List[Image.Image]] = None,
+        enable_thinking: Optional[bool] = None,
         timeout: int = 60,
     ) -> Dict[str, Any]:
         """Asynchronous version of generate_completion using httpx."""
@@ -115,24 +247,19 @@ class OllamaClient:
             print(f"Async Ollama completion error: {e}")
             return {}
 
-    # -------------------------------------------------------------
-    # Streaming variant – yields token chunks in real time
-    # -------------------------------------------------------------
+    # =============================================
+    # Streaming Operations
+    # =============================================
+    
     def stream_completion(
         self,
         model: str,
         prompt: str,
         *,
-        images: List[Image.Image] | None = None,
-        enable_thinking: bool | None = None,
+        images: Optional[List[Image.Image]] = None,
+        enable_thinking: Optional[bool] = None,
     ):
-        """Generator that yields partial *response* strings as they arrive.
-
-        Example:
-
-            for tok in client.stream_completion("qwen2", "Hello"):
-                print(tok, end="", flush=True)
-        """
+        """Generator that yields partial response strings as they arrive."""
         payload: Dict[str, Any] = {"model": model, "prompt": prompt, "stream": True}
         if images:
             payload["images"] = [self._image_to_base64(img) for img in images]
@@ -156,26 +283,45 @@ class OllamaClient:
                 if data.get("done"):
                     break
 
-if __name__ == '__main__':
-    # This test now requires a VLM model like 'llava' or 'qwen-vl' to be pulled.
-    print("Ollama client updated for multimodal (VLM) support.")
-    try:
-        client = OllamaClient()
-        # Create a dummy black image for testing
-        dummy_image = Image.new('RGB', (100, 100), 'black')
-        
-        # Test VLM completion
-        vlm_response = client.generate_completion(
-            model="llava", # Make sure you have run 'ollama pull llava'
-            prompt="What color is this image?",
-            images=[dummy_image]
-        )
-        
-        if vlm_response and 'response' in vlm_response:
-            print("\n--- VLM Test Response ---")
-            print(vlm_response['response'])
-        else:
-            print("\nFailed to get VLM response. Is 'llava' model pulled and running?")
 
-    except Exception as e:
-        print(f"An error occurred: {e}")
+def main():
+    """Test the unified Ollama client"""
+    client = OllamaClient()
+    
+    # Check if Ollama is running
+    if not client.is_ollama_running():
+        print("❌ Ollama is not running. Please start Ollama first.")
+        print("Install: https://ollama.ai")
+        print("Run: ollama serve")
+        return
+    
+    print("✅ Ollama is running!")
+    
+    # List available models
+    models = client.list_models()
+    print(f"Available models: {models}")
+    
+    # Try to use llama3.2, pull if needed
+    model_name = "llama3.2"
+    if model_name not in [m.split(":")[0] for m in models]:
+        print(f"Model {model_name} not found. Pulling...")
+        if client.pull_model(model_name):
+            print(f"✅ Model {model_name} pulled successfully!")
+        else:
+            print(f"❌ Failed to pull model {model_name}")
+            return
+    
+    # Test chat
+    print("\n🤖 Testing chat...")
+    response = client.chat("Hello! Can you tell me a short joke?", model_name)
+    print(f"AI: {response}")
+    
+    # Test completion
+    print("\n🤖 Testing completion...")
+    completion = client.generate_completion(model_name, "Complete this sentence: The weather today is")
+    if completion and 'response' in completion:
+        print(f"Completion: {completion['response']}")
+
+
+if __name__ == '__main__':
+    main()

@@ -9,6 +9,7 @@ import { Copy, RefreshCcw, ThumbsUp, ThumbsDown, Volume2, MoreHorizontal, Chevro
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ChatMessage } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { useActionHandler } from "@/lib/hooks"
 
 interface ConversationPageProps {
   messages: ChatMessage[]
@@ -205,6 +206,9 @@ export function ConversationPage({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [showScrollButton, setShowScrollButton] = useState(false)
 
+  // Use the shared action handler
+  const { handleAction } = useActionHandler({ onAction })
+
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     scrollToBottom()
@@ -244,47 +248,7 @@ export function ConversationPage({
     }, 100)
   }
 
-  const handleAction = (action: string, messageId: string, messageContent: string) => {
-    if (onAction) {
-      // For structured messages, we'll just join the text parts for copy/paste
-      let contentToPass: string;
-      if (typeof messageContent === 'string') {
-        contentToPass = messageContent;
-      } else if (Array.isArray(messageContent)) {
-        contentToPass = (messageContent as any[]).map((s: any) => s.text || s.answer || '').join('\n');
-      } else if (messageContent && typeof messageContent === 'object' && Array.isArray((messageContent as any).steps)) {
-        // For {steps: Step[]} structure
-        contentToPass = (messageContent as any).steps.map((s: any) => s.label + (s.details ? (typeof s.details === 'string' ? (': ' + s.details) : '') : '')).join('\n');
-      } else {
-        contentToPass = '';
-      }
-      onAction(action, messageId, contentToPass)
-      return
-    }
-    
-    console.log(`Action ${action} clicked for message ${messageId}`)
-    // Handle different actions here
-    switch (action) {
-      case 'copy':
-        navigator.clipboard.writeText(messageContent)
-        break
-      case 'regenerate':
-        // Regenerate AI response
-        break
-      case 'like':
-        // Add like reaction
-        break
-      case 'dislike':
-        // Add dislike reaction
-        break
-      case 'speak':
-        // Text to speech
-        break
-      case 'more':
-        // Show more options
-        break
-    }
-  }
+
 
   return (
     <div className={`flex flex-col h-full bg-black relative overflow-hidden ${className}`}>

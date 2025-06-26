@@ -1,0 +1,825 @@
+# Multimodal RAG Retrieval System - Complete Documentation
+
+## Table of Contents
+1. [System Overview](#system-overview)
+2. [Architecture Components](#architecture-components)
+3. [Data Flow & Processing Pipeline](#data-flow--processing-pipeline)
+4. [Index Creation & Management](#index-creation--management)
+5. [Document Indexing Process](#document-indexing-process)
+6. [Retrieval Pipeline](#retrieval-pipeline)
+7. [Query Processing & Execution](#query-processing--execution)
+8. [Database Schema & Relationships](#database-schema--relationships)
+9. [Configuration & Deployment](#configuration--deployment)
+10. [Troubleshooting & Common Issues](#troubleshooting--common-issues)
+
+---
+
+## System Overview
+
+The Multimodal RAG (Retrieval-Augmented Generation) system is a sophisticated document search and question-answering platform that combines multiple retrieval strategies to provide accurate, context-aware responses. The system processes documents (primarily PDFs) through an advanced indexing pipeline and retrieves relevant information using hybrid search techniques.
+
+### Key Features
+- **Hybrid Retrieval**: Combines vector similarity search and full-text search (FTS)
+- **Contextual Enrichment**: Enhances chunks with surrounding context for better embeddings
+- **AI Reranking**: Uses ColBERT-based models to refine search results
+- **Multi-Modal Support**: Handles text, images, and structured data
+- **Session Management**: Maintains conversation context and index associations
+- **Real-time Processing**: Supports streaming responses and progress tracking
+
+---
+
+## Architecture Components
+
+### 1. **Frontend (Next.js)**
+- **Port**: 3000
+- **Purpose**: User interface for document upload, index management, and chat
+- **Key Files**: `src/components/`, `src/lib/api.ts`
+
+### 2. **Enhanced Backend Server (Flask)**
+- **Port**: 8000  
+- **Purpose**: Main API server for session/index management, file uploads
+- **Key Files**: `backend/enhanced_server.py`, `backend/enhanced_database.py`
+- **Database**: SQLite (`chat_history.db`) with connection pooling
+
+### 3. **RAG API Server (Python HTTP)**
+- **Port**: 8001
+- **Purpose**: Advanced RAG processing, indexing pipeline, query execution
+- **Key Files**: `rag_system/api_server.py`, `rag_system/pipelines/`
+
+### 4. **Storage Systems**
+- **SQLite Database**: Session, index, and document metadata
+- **LanceDB**: Vector embeddings and full-text search indexes
+- **File System**: Original documents in `shared_uploads/`
+
+---
+
+## Data Flow & Processing Pipeline
+
+```mermaid
+graph TD
+    A[User Upload] --> B[Enhanced Server :8000]
+    B --> C[File Storage]
+    B --> D[Database Entry]
+    
+    E[Build Index] --> F[RAG API :8001]
+    F --> G[Document Processing]
+    G --> H[Chunking]
+    H --> I[Contextual Enrichment]
+    I --> J[Vector Embeddings]
+    J --> K[LanceDB Storage]
+    
+    L[User Query] --> M[Session Context]
+    M --> N[Table Name Resolution]
+    N --> O[Hybrid Retrieval]
+    O --> P[AI Reranking]
+    P --> Q[Context Expansion]
+    Q --> R[Answer Generation]
+```
+
+---
+
+## Index Creation & Management
+
+### 1. **Index Creation Flow**
+
+#### Step 1: Create Index Record
+```bash
+POST /indexes
+{
+  "name": "My Documents",
+  "description": "Company documents collection"
+}
+```
+
+**Response:**
+```json
+{
+  "data": {
+    "index": {
+      "id": "07297182-ce0e-4fd2-91ad-be0e066316b3",
+      "name": "My Documents", 
+      "vector_table_name": "text_pages_07297182-ce0e-4fd2-91ad-be0e066316b3",
+      "created_at": "2025-06-25T20:36:12.098871",
+      "documents": []
+    }
+  }
+}
+```
+
+#### Step 2: Upload Documents
+```bash
+POST /indexes/{index_id}/upload
+Content-Type: multipart/form-data
+files: [file1.pdf, file2.pdf]
+```
+
+#### Step 3: Build Index (Trigger Processing)
+```bash
+POST /indexes/{index_id}/build
+{
+  "latechunk": false,
+  "doclingChunk": false  
+}
+```
+
+### 2. **Database Schema for Indexes**
+
+```sql
+-- Main indexes table
+CREATE TABLE indexes (
+    id TEXT PRIMARY KEY,                    -- UUID
+    name TEXT NOT NULL,                     -- Human-readable name
+    description TEXT,                       -- Optional description
+    created_at TEXT NOT NULL,               -- ISO timestamp
+    updated_at TEXT NOT NULL,               -- ISO timestamp  
+    vector_table_name TEXT,                 -- LanceDB table name
+    metadata TEXT DEFAULT '{}'              -- JSON metadata
+);
+
+-- Documents associated with indexes
+CREATE TABLE index_documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    index_id TEXT NOT NULL,                 -- Foreign key to indexes.id
+    original_filename TEXT,                 -- User's filename
+    stored_path TEXT,                       -- Absolute file path
+    FOREIGN KEY(index_id) REFERENCES indexes(id)
+);
+
+-- Links between sessions and indexes  
+CREATE TABLE session_indexes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT,                        -- Foreign key to sessions.id
+    index_id TEXT,                          -- Foreign key to indexes.id
+    linked_at TEXT,                         -- ISO timestamp
+    FOREIGN KEY(session_id) REFERENCES sessions(id),
+    FOREIGN KEY(index_id) REFERENCES indexes(id)
+);
+```
+
+### 3. **Critical Naming Convention**
+
+The system uses a **strict naming convention** to link database records with LanceDB tables:
+
+```python
+# When index is created
+vector_table_name = f"text_pages_{index_id}"
+
+# When indexing pipeline runs  
+table_name = f"text_pages_{session_id}"  # session_id = index_id
+
+# When retrieval runs
+table_name = f"text_pages_{session_id}"  # session_id = index_id
+```
+
+**⚠️ Critical**: The `session_id` parameter in the RAG API acts as the `index_id` for table naming consistency.
+
+---
+
+## Document Indexing Process
+
+### 1. **Document Processing Pipeline**
+
+When `/indexes/{id}/build` is called:
+
+```python
+# Enhanced server delegates to RAG API
+payload = {
+    "file_paths": ["/path/to/doc1.pdf", "/path/to/doc2.pdf"],
+    "session_id": index_id  # ← This becomes the table name
+}
+requests.post("http://localhost:8001/index", json=payload)
+```
+
+### 2. **Indexing Pipeline Steps**
+
+#### **Step 1: Document Conversion**
+- **Input**: PDF files
+- **Processor**: `docling` library with OCR support
+- **Output**: Clean Markdown per page with metadata
+
+```python
+# Example chunk metadata
+{
+  "source": "/path/to/document.pdf",
+  "document_id": "uuid_document.pdf", 
+  "chunk_index": 0,
+  "heading_path": ["Chapter 1", "Introduction"],
+  "block_type": "paragraph"
+}
+```
+
+#### **Step 2: Chunking**
+- **Method**: `MarkdownRecursiveChunker`
+- **Strategy**: Splits on headers while preserving semantic coherence
+- **Size**: ~1500 characters with 100 character overlap
+- **Output**: Structured chunks with hierarchy metadata
+
+#### **Step 3: Contextual Enrichment** 
+- **Purpose**: Enhance embeddings by adding surrounding context
+- **Window Size**: Configurable (default: 1 chunk before/after)
+- **Process**: 
+  ```python
+  enriched_text = f"Context: {contextual_summary}\n\n---\n\n{original_text}"
+  ```
+- **Storage**: Original text preserved in `metadata.original_text`
+
+#### **Step 4: Vector Embedding**
+- **Model**: `Qwen/Qwen3-Embedding-0.6B` (768 dimensions)
+- **Input**: Enriched text (not original)
+- **Batch Size**: 50 chunks per batch
+- **Output**: Dense vector representations
+
+#### **Step 5: LanceDB Storage**
+- **Table Creation**: Uses `vector_table_name` from database
+- **Schema**:
+  ```python
+  schema = pa.schema([
+      pa.field("vector", pa.list_(pa.float32(), 768)),      # Embedding
+      pa.field("text", pa.string()),                        # Enriched text  
+      pa.field("chunk_id", pa.string()),                    # Unique ID
+      pa.field("document_id", pa.string()),                 # Source document
+      pa.field("chunk_index", pa.int32()),                  # Position in doc
+      pa.field("metadata", pa.string())                     # JSON metadata
+  ])
+  ```
+
+#### **Step 6: Full-Text Search Index**
+- **Technology**: LanceDB native FTS (not Tantivy)
+- **Field**: `text` field (enriched content)
+- **Index Name**: `fts_text`
+
+### 3. **Example: Complete Index Build**
+
+```bash
+# 1. Index "LLM" with 4 documents gets built
+curl -X POST http://localhost:8000/indexes/07297182-ce0e-4fd2-91ad-be0e066316b3/build
+
+# 2. Creates LanceDB table: text_pages_07297182-ce0e-4fd2-91ad-be0e066316b3
+# 3. Processes 4 PDFs → 156 chunks with embeddings
+# 4. Creates FTS index on enriched text
+```
+
+**Result Verification:**
+```python
+import lancedb
+db = lancedb.connect("./lancedb")
+print(db.table_names())  # Shows: text_pages_07297182-ce0e-4fd2-91ad-be0e066316b3
+table = db.open_table("text_pages_07297182-ce0e-4fd2-91ad-be0e066316b3")  
+print(len(table))        # Shows: 156 rows
+```
+
+---
+
+## Retrieval Pipeline
+
+### 1. **Query Processing Flow**
+
+```mermaid
+graph TD
+    A[User Query] --> B[Session/Index Resolution]
+    B --> C[Table Name Generation]
+    C --> D[Hybrid Retrieval]
+    D --> E[Vector Search]
+    D --> F[Full-Text Search] 
+    E --> G[Score Fusion]
+    F --> G
+    G --> H[AI Reranking]
+    H --> I[Context Expansion]
+    I --> J[Answer Synthesis]
+```
+
+### 2. **Session to Table Resolution**
+
+The system resolves user queries to the correct LanceDB table:
+
+```python
+# In RAG API (/chat endpoint)
+def handle_chat(self):
+    session_id = data.get('session_id')
+    table_name = data.get('table_name')
+    
+    # Auto-generate table name if not provided
+    if not table_name and session_id:
+        table_name = f"text_pages_{session_id}"
+    
+    # Pass to retrieval pipeline
+    result = RAG_AGENT.run(query, table_name=table_name, session_id=session_id)
+```
+
+**⚠️ Key Insight**: When using session-based chat, the `session_id` must correspond to an `index_id` that has been built.
+
+### 3. **Hybrid Retrieval Strategy**
+
+The system performs **two parallel searches** and combines results:
+
+#### **Vector Search**
+- **Input**: Query → Qwen embedding (768d)
+- **Method**: Cosine similarity against stored vectors
+- **Returns**: `_distance` scores (lower = better)
+
+#### **Full-Text Search**  
+- **Input**: Query → FTS index
+- **Method**: BM25-like scoring with wildcards
+- **Enhancement**: Single words get fuzzy matching (`word*` OR `word~`)
+- **Returns**: `score` values (higher = better)
+
+#### **Score Fusion**
+```python
+# Manual hybrid: fetch k/2 from each method
+fts_k = k // 2        # e.g., 10 → 5 FTS results
+vec_k = k - fts_k     # e.g., 10 → 5 vector results
+
+# Combine and deduplicate by chunk_id or _rowid
+combined_results = pd.concat([fts_df, vec_df]).drop_duplicates()
+
+# Optional weighted fusion if both scores exist
+if '_distance' in row and 'score' in row:
+    vec_sim = 1.0 / (1.0 + row['_distance'])  # Convert distance to similarity
+    combined_score = 0.5 * row['score'] + 0.5 * vec_sim
+```
+
+### 4. **AI Reranking**
+
+After hybrid retrieval, results are reranked using ColBERT:
+
+```python
+# Configuration
+reranker_config = {
+    "enabled": True,
+    "model_name": "answerdotai/answerai-colbert-small-v1", 
+    "strategy": "rerankers-lib",
+    "top_k": 3
+}
+
+# Reranking process
+texts = [doc['text'] for doc in retrieved_docs]
+ranked = ai_reranker.rank(query=query, docs=texts)
+
+# Results get rerank_score field
+reranked_docs = [
+    retrieved_docs[idx] | {"rerank_score": score} 
+    for score, idx in ranked.results
+]
+```
+
+### 5. **Context Expansion**
+
+For top reranked documents, the system retrieves surrounding chunks:
+
+```python
+def _get_surrounding_chunks_lancedb(self, chunk, window_size=1):
+    document_id = chunk.get("document_id")
+    chunk_index = chunk.get("chunk_index")
+    
+    # Get chunks around target: [chunk_index-1, chunk_index, chunk_index+1]
+    start_index = max(0, chunk_index - window_size)
+    end_index = chunk_index + window_size
+    
+    sql_filter = f"document_id = '{document_id}' AND chunk_index >= {start_index} AND chunk_index <= {end_index}"
+    results = table.search().where(sql_filter).to_list()
+    
+    return sorted(results, key=lambda c: c['chunk_index'])
+```
+
+---
+
+## Query Processing & Execution
+
+### 1. **Complete Query Example**
+
+**Input:**
+```bash
+curl -X POST http://localhost:8001/chat -H "Content-Type: application/json" -d '{
+  "query": "what is promptx?", 
+  "session_id": "07297182-ce0e-4fd2-91ad-be0e066316b3"
+}'
+```
+
+**Processing Steps:**
+
+1. **Table Resolution**: `session_id` → `text_pages_07297182-ce0e-4fd2-91ad-be0e066316b3`
+
+2. **Hybrid Retrieval**: 
+   - Vector search: Query embedding vs 156 stored vectors
+   - FTS search: "promptx* OR promptx~" against enriched text
+   - Combined: ~10 candidate documents
+
+3. **AI Reranking**:
+   - ColBERT scores all candidates against query
+   - Keeps top 3 with highest `rerank_score`
+
+4. **Context Expansion**:
+   - For each top document, fetch surrounding chunks
+   - Maintains chunk order by `chunk_index`
+
+5. **Answer Synthesis**:
+   - Concatenate final document texts
+   - Generate answer using LLM with context
+
+### 2. **Successful Retrieval Output**
+
+```json
+{
+  "answer": "PromptX AI LLC is a business entity based in Sacramento, California...",
+  "source_documents": [
+    {
+      "text": "Context: PromptX AI LLC, a business located at...",
+      "chunk_id": "e85f874f-fa23-4d69-9abb-ff6b6771207c_invoice_1039.pdf_0",
+      "document_id": "e85f874f-fa23-4d69-9abb-ff6b6771207c_invoice_1039.pdf", 
+      "chunk_index": 0,
+      "rerank_score": 1.9454582929611206,
+      "metadata": {
+        "original_text": "PromptX AI LLC engineerprompt@gmail.com...",
+        "contextual_summary": "PromptX AI LLC, a business located at...",
+        "source": "/Users/.../invoice_1039.pdf"
+      }
+    }
+  ]
+}
+```
+
+### 3. **Query Failure Scenarios**
+
+#### **Table Not Found**
+```
+Could not search table 'text_pages_xyz': Table 'text_pages_xyz' was not found
+```
+**Cause**: Index was created but never built (no LanceDB table exists)
+**Solution**: Run `/indexes/{id}/build`
+
+#### **No Results**  
+```json
+{
+  "answer": "I could not find an answer in the documents.",
+  "source_documents": []
+}
+```
+**Cause**: Query doesn't match any content in hybrid search
+**Solution**: Try different query terms or check index content
+
+---
+
+## Database Schema & Relationships
+
+### 1. **Core Tables**
+
+```sql
+-- Sessions (chat conversations)
+sessions (
+    id TEXT PRIMARY KEY,          -- UUID
+    title TEXT,
+    created_at TEXT,
+    updated_at TEXT,
+    model_used TEXT,
+    message_count INTEGER
+)
+
+-- Messages in conversations
+messages (
+    id TEXT PRIMARY KEY,
+    session_id TEXT → sessions.id,
+    content TEXT,
+    sender TEXT,                  -- 'user' | 'assistant'  
+    timestamp TEXT,
+    metadata TEXT                 -- JSON
+)
+
+-- Document indexes
+indexes (
+    id TEXT PRIMARY KEY,          -- UUID
+    name TEXT,
+    description TEXT,
+    created_at TEXT,
+    updated_at TEXT,
+    vector_table_name TEXT,       -- LanceDB table name
+    metadata TEXT                 -- JSON
+)
+
+-- Documents in indexes
+index_documents (
+    id INTEGER PRIMARY KEY,
+    index_id TEXT → indexes.id,
+    original_filename TEXT,       -- User's filename
+    stored_path TEXT              -- Absolute file path
+)
+
+-- Session-Index associations
+session_indexes (
+    id INTEGER PRIMARY KEY,
+    session_id TEXT → sessions.id,
+    index_id TEXT → indexes.id,
+    linked_at TEXT
+)
+```
+
+### 2. **Data Relationships**
+
+```mermaid
+erDiagram
+    SESSIONS ||--o{ MESSAGES : contains
+    SESSIONS ||--o{ SESSION_INDEXES : links_to
+    INDEXES ||--o{ INDEX_DOCUMENTS : contains  
+    INDEXES ||--o{ SESSION_INDEXES : linked_from
+    INDEXES ||--|| LANCEDB_TABLE : creates
+    
+    SESSIONS {
+        string id PK
+        string title
+        string model_used
+    }
+    
+    INDEXES {
+        string id PK  
+        string name
+        string vector_table_name
+    }
+    
+    LANCEDB_TABLE {
+        vector embedding
+        string text
+        string chunk_id
+        string document_id
+        int chunk_index
+        string metadata
+    }
+```
+
+### 3. **Compatibility Between Database Systems**
+
+The enhanced database maintains compatibility with the original schema:
+
+| Field | Enhanced DB | Original DB | Notes |
+|-------|------------|-------------|-------|
+| `index_documents.original_filename` | ✅ | ✅ | Compatible |
+| `index_documents.stored_path` | ✅ | ✅ | Compatible |
+| `session_indexes` table | ✅ | ✅ | Compatible |
+| `indexes.vector_table_name` | ✅ | ✅ | Compatible |
+| `indexes.updated_at` | ✅ | ✅ | Compatible |
+
+---
+
+## Configuration & Deployment
+
+### 1. **Server Configuration**
+
+#### **Enhanced Server (Port 8000)**
+```python
+# backend/enhanced_server.py
+app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB upload limit
+
+# Database connection pooling
+db_manager = DatabaseManager("chat_history.db")
+db_manager.max_connections = 10
+```
+
+#### **RAG API Server (Port 8001)**
+```python
+# rag_system/api_server.py  
+PIPELINE_CONFIGS = {
+    "retrieval": {
+        "storage": {
+            "lancedb_uri": "./lancedb",              # LanceDB path
+            "text_table_name": "local_text_pages_v3" # Default table
+        },
+        "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
+        "reranker": {
+            "enabled": True,
+            "model_name": "answerdotai/answerai-colbert-small-v1",
+            "top_k": 3
+        },
+        "retrieval_k": 20,           # Initial retrieval count
+        "context_window_size": 1     # Surrounding chunks
+    }
+}
+```
+
+### 2. **Environment Setup**
+
+#### **Requirements**
+```bash
+# Backend dependencies
+pip install flask sqlite3 requests
+
+# RAG system dependencies  
+pip install lancedb sentence-transformers transformers
+pip install docling pandas pyarrow numpy
+pip install rerankers  # For ColBERT reranking
+```
+
+#### **Directory Structure**
+```
+multimodal_rag/
+├── backend/
+│   ├── enhanced_server.py         # Main API server
+│   ├── enhanced_database.py       # Database layer  
+│   ├── shared_uploads/            # Document storage
+│   └── chat_history.db           # SQLite database
+├── rag_system/
+│   ├── api_server.py             # RAG processing server
+│   ├── pipelines/                # Indexing & retrieval
+│   └── index_store/              # Indexes and graphs
+├── lancedb/                      # Vector database
+└── src/                          # Frontend (Next.js)
+```
+
+### 3. **Startup Sequence**
+
+```bash
+# 1. Start enhanced backend server  
+cd backend && python enhanced_server.py &
+
+# 2. Start RAG API server
+cd rag_system && python api_server.py &  
+
+# 3. Start frontend
+npm run dev &
+
+# 4. Verify all services
+curl http://localhost:8000/health     # Enhanced server
+curl http://localhost:8001/models     # RAG API  
+curl http://localhost:3000           # Frontend
+```
+
+---
+
+## Troubleshooting & Common Issues
+
+### 1. **Index Shows Documents But No Retrieval Results**
+
+**Symptoms:**
+```bash
+curl http://localhost:8000/indexes
+# Shows: "documents": [{"filename": "doc.pdf"}]
+
+curl -X POST http://localhost:8001/chat -d '{"query":"test","session_id":"xyz"}'  
+# Returns: "Could not search table 'text_pages_xyz': Table not found"
+```
+
+**Root Cause**: Index was created and documents uploaded, but **build process never ran**.
+
+**Solution:**
+```bash
+# Build the index to create LanceDB table
+curl -X POST http://localhost:8000/indexes/{INDEX_ID}/build \
+  -H "Content-Type: application/json" -d '{}'
+```
+
+**Verification:**
+```python
+import lancedb
+db = lancedb.connect("./lancedb") 
+print("text_pages_{INDEX_ID}" in db.table_names())  # Should be True
+```
+
+### 2. **Table Exists But No Results**
+
+**Symptoms:**
+- LanceDB table exists with data
+- Queries return empty `source_documents: []`
+
+**Debugging Steps:**
+
+1. **Check table content:**
+```python
+table = db.open_table("text_pages_xyz")
+print(f"Rows: {len(table)}")
+sample = table.search().limit(1).to_pandas()
+print(sample[['text', 'chunk_id']].head())
+```
+
+2. **Test direct search:**
+```python
+# Vector search
+query_vec = embedding_model.create_embeddings(["test query"])[0]
+results = table.search(query_vec).limit(5).to_pandas()
+
+# FTS search  
+fts_results = table.search(query="test", query_type="fts").limit(5).to_pandas()
+```
+
+3. **Check retrieval config:**
+```python
+# Verify retrieval_k is reasonable
+retrieval_k = 20  # Should be > 0
+```
+
+### 3. **Database Connection Issues**
+
+**Symptoms:**
+```
+sqlite3.OperationalError: database is locked
+```
+
+**Solution:**
+```python
+# Enhanced database uses connection pooling
+db_manager = DatabaseManager("chat_history.db")
+db_manager.close_all_connections()  # Reset pool
+```
+
+### 4. **Memory Issues During Indexing**
+
+**Symptoms:**
+```
+OutOfMemoryError during embedding generation
+```
+
+**Solution:**
+```python
+# Reduce batch sizes in config
+config = {
+    "embedding_batch_size": 25,    # Reduce from 50  
+    "enrichment_batch_size": 5     # Reduce from 10
+}
+```
+
+### 5. **Port Conflicts**
+
+**Symptoms:**
+```
+OSError: [Errno 48] Address already in use
+```
+
+**Solution:**
+```bash
+# Find and kill existing processes
+lsof -i :8000 -i :8001 -i :3000
+kill -9 <PID>
+
+# Or use different ports
+python enhanced_server.py --port 8002
+```
+
+### 6. **Model Download Issues**
+
+**Symptoms:**
+```
+ConnectionError: Failed to download answerdotai/answerai-colbert-small-v1
+```
+
+**Solution:**
+```bash
+# Pre-download models
+python -c "
+from sentence_transformers import SentenceTransformer
+SentenceTransformer('Qwen/Qwen3-Embedding-0.6B')
+
+from rerankers import Reranker  
+Reranker('answerdotai/answerai-colbert-small-v1', model_type='colbert')
+"
+```
+
+---
+
+## Performance Optimization
+
+### 1. **Indexing Performance**
+
+- **Batch Processing**: Use optimal batch sizes (50 for embeddings, 10 for enrichment)
+- **Parallel Processing**: Multiple documents processed concurrently  
+- **Memory Management**: Monitor usage during large document sets
+- **Progress Tracking**: Real-time feedback on indexing status
+
+### 2. **Retrieval Performance**
+
+- **Hybrid Search**: Parallel FTS + vector search reduces latency
+- **LRU Caching**: Query embeddings cached for repeated queries
+- **Connection Pooling**: Database connections reused efficiently
+- **Smart Reranking**: Only rerank top candidates, not all results
+
+### 3. **Scaling Considerations**
+
+- **Horizontal Scaling**: RAG API servers can be load balanced
+- **Database Sharding**: Large indexes can use separate LanceDB instances
+- **Caching Layers**: Redis for frequently accessed embeddings
+- **Async Processing**: Background indexing with progress tracking
+
+---
+
+## API Reference
+
+### Enhanced Server Endpoints (Port 8000)
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET` | `/indexes` | List all indexes |
+| `POST` | `/indexes` | Create new index |
+| `GET` | `/indexes/{id}` | Get specific index |
+| `POST` | `/indexes/{id}/upload` | Upload files to index |
+| `POST` | `/indexes/{id}/build` | Build/process index |
+| `DELETE` | `/indexes/{id}` | Delete index |
+| `POST` | `/sessions/{id}/indexes/{idx}` | Link index to session |
+
+### RAG API Endpoints (Port 8001)  
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `POST` | `/chat` | Query with retrieval |
+| `POST` | `/chat/stream` | Streaming query response |
+| `POST` | `/index` | Run indexing pipeline |
+| `GET` | `/models` | List available models |
+
+---
+
+This documentation provides a complete understanding of how the multimodal RAG retrieval system works, from document ingestion to query response generation. The system's strength lies in its hybrid approach, combining multiple retrieval strategies with advanced reranking to deliver highly relevant results. 
