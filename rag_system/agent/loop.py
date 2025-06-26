@@ -272,8 +272,13 @@ User query: "{query}"
             final_result = self._run_graph_query(query, history)
         elif query_type == "clarification":
             final_result = {"answer": "I'm sorry, your query is a bit ambiguous. Could you please clarify?", "source_documents": []}
-        else: # The response is a direct answer synthesized from the overviews.
-            final_result = {"answer": query_type, "source_documents": []}
+        else:  # The triage router already produced the final answer (general chat or direct answer)
+            direct_ans = query_type  # this string holds the answer text itself
+            # Stream it token-by-token if the caller provided an event callback
+            if event_callback:
+                for token in direct_ans.split():
+                    event_callback("token", {"text": token + " "})
+            final_result = {"answer": direct_ans, "source_documents": []}
 
         # --- Verification Step ---
         # Only run verification if the result came from a RAG pipeline and has source documents.
@@ -465,7 +470,10 @@ You are an expert routing agent. Your job is to decide how to answer a user's qu
     *   If the query explicitly asks for information "according to the document" or for specific details not present in the overview, choose **RAG Query**.
     *   If the answer is clearly and fully present in the overviews, choose **Direct Answer**.
     *   If the query is unrelated to the documents, choose **General Chat**.
+    *   If the overviews do **not** contain the requested fact—or contain it only partially—choose **RAG Query**. Do **NOT** return a "Direct Answer" that simply says "information not provided".
     *   If you are unsure or the query is vague, choose **Needs Clarification**.
+    *   If the query is a general knowledge question, choose **General Chat**.
+    *   If the overview has information about the query but not specifically answers the query, choose **RAG Query**.
 
 Here are the available document overviews:
 {overview_text}
@@ -496,11 +504,24 @@ Respond with a single JSON object with two keys: "action" (one of ["rag_query", 
                 return "rag_query"
             elif action == "direct_answer":
                 # For a direct answer, we need the LLM to synthesize it from the overviews.
-                # This is a "mini-RAG" on the overviews themselves.
-                return self._answer_from_overviews(query, overview_text)
+                answer = self._answer_from_overviews(query, overview_text)
+                # Heuristic fallback: if the answer basically says information is missing, reroute to rag_query
+                neg_phrases = [
+                    "not provided",
+                    "not mentioned",
+                    "not available",
+                    "cannot find",
+                    "could not find",
+                    "no direct",
+                ]
+                ans_lc = answer.lower()
+                if any(p in ans_lc for p in neg_phrases):
+                    print("🔄 Overview answer indicates missing info – falling back to full RAG query…")
+                    return "rag_query"
+                return answer
             elif action == "general_chat":
-                # Let the main loop handle this by treating it as a direct query to the base model.
-                return self._answer_from_overviews(query, "You are a helpful general-purpose AI assistant.") # Answer with no context
+                # Generate a free-form answer using general knowledge (no document constraints)
+                return self._answer_general_chat(query)
             elif action == "needs_clarification":
                 return "clarification"
         except Exception:
@@ -532,6 +553,23 @@ Answer:
         )
         # The triage router returns the answer *itself* as the category.
         # The main loop will then wrap this in the final response dict.
+        return resp.get("response", "I am sorry, I could not formulate an answer.")
+
+    def _answer_general_chat(self, query: str) -> str:
+        """
+        Generates a free-form answer using general knowledge (no document constraints)
+        """
+        prompt = f"""
+You are a helpful general-purpose AI assistant. Answer the following user query using general knowledge.
+
+User Query: "{query}"
+
+Answer:
+"""
+        resp = self.llm_client.generate_completion(
+            model=self.ollama_config["generation_model"],
+            prompt=prompt
+        )
         return resp.get("response", "I am sorry, I could not formulate an answer.")
 
     def stream_agent_response(self, query: str, session_id: str):

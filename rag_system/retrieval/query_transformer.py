@@ -99,7 +99,15 @@ JSON Output:
                 return [query]
             
             # Deduplicate while preserving order
-            sub_queries = list(dict.fromkeys(sub_queries))
+            deduped = []
+            seen_keys = set()
+            for q in sub_queries:
+                key = q.strip().lower()
+                if key not in seen_keys:
+                    deduped.append(q.strip())
+                    seen_keys.add(key)
+
+            sub_queries = deduped
 
             # Limit to maximum 3 sub-queries to avoid excessive API calls
             return sub_queries[:3]
