@@ -171,6 +171,7 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             session_id = data.get('session_id')
             enable_latechunk = bool(data.get("enable_latechunk"))
             enable_docling_chunk = bool(data.get("enable_docling_chunk"))
+            config_overrides = data.get('config_overrides', {})
 
             if not file_paths or not isinstance(file_paths, list):
                 self.send_json_response({
@@ -184,6 +185,8 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
 
             print(f"--- Received index request for table: {table_name} ---")
             print(f"--- Files: {file_paths} ---")
+            if config_overrides:
+                print(f"--- Configuration overrides: {config_overrides} ---")
             
             try:
                 if table_name:
@@ -191,6 +194,10 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                     config_override = copy.deepcopy(INDEXING_PIPELINE.config)
                     config_override["storage"]["text_table_name"] = table_name
                     config_override.setdefault("retrievers", {}).setdefault("dense", {})["lancedb_table_name"] = table_name
+                    
+                    # Apply configuration overrides from frontend
+                    self._apply_config_overrides(config_override, config_overrides)
+                    
                     if enable_latechunk:
                         config_override["retrievers"].setdefault("latechunk", {})["enabled"] = True
                     else:
@@ -201,7 +208,7 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                     print("--- Initializing temporary pipeline with overridden config ---")
                     temp_pipeline = INDEXING_PIPELINE.__class__(
                         config_override, 
-                        INDEXING_PIPELINE.ollama_client, 
+                        INDEXING_PIPELINE.llm_client, 
                         INDEXING_PIPELINE.ollama_config
                     )
                     temp_pipeline.run(file_paths)
@@ -257,6 +264,36 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             })
         except Exception as e:
             self.send_json_response({"error": f"Could not list models: {e}"}, status_code=500)
+
+    def _apply_config_overrides(self, config, overrides):
+        """Apply configuration overrides from frontend to the pipeline config."""
+        
+        # Apply chunking configuration
+        if 'chunking' in overrides:
+            chunking_config = overrides['chunking']
+            if 'max_chunk_size' in chunking_config:
+                # Store in a place where MarkdownRecursiveChunker can use it
+                config.setdefault('chunking', {})['max_chunk_size'] = chunking_config['max_chunk_size']
+            if 'chunk_overlap' in chunking_config:
+                config.setdefault('chunking', {})['chunk_overlap'] = chunking_config['chunk_overlap']
+        
+        # Apply contextual enricher configuration
+        if 'contextual_enricher' in overrides:
+            config.setdefault('contextual_enricher', {}).update(overrides['contextual_enricher'])
+        
+        # Apply indexing batch sizes
+        if 'indexing' in overrides:
+            config.setdefault('indexing', {}).update(overrides['indexing'])
+        
+        # Apply embedding model
+        if 'embedding_model_name' in overrides:
+            config['embedding_model_name'] = overrides['embedding_model_name']
+        
+        # Apply retriever configuration
+        if 'retrievers' in overrides:
+            config.setdefault('retrievers', {}).update(overrides['retrievers'])
+        
+        print(f"✅ Applied configuration overrides to pipeline config")
 
     def send_json_response(self, data, status_code=200):
         """Utility to send a JSON response with CORS headers."""

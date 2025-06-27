@@ -31,7 +31,17 @@ class IndexingPipeline:
                 print(f"⚠️  Failed to initialise DoclingChunker: {e}. Falling back to legacy chunker.")
                 self.chunker = MarkdownRecursiveChunker()
         else:
-            self.chunker = MarkdownRecursiveChunker()
+            # Apply chunking configuration from frontend
+            chunking_config = config.get("chunking", {})
+            max_chunk_size = chunking_config.get("max_chunk_size", 1500)
+            min_chunk_size = chunking_config.get("min_chunk_size", 200)
+            chunk_overlap = chunking_config.get("chunk_overlap", 100)
+            print(f"🔧 Chunking config: max_size={max_chunk_size}, min_size={min_chunk_size}, overlap={chunk_overlap}")
+            self.chunker = MarkdownRecursiveChunker(
+                max_chunk_size=max_chunk_size,
+                min_chunk_size=min_chunk_size,
+                chunk_overlap=chunk_overlap
+            )
 
         retriever_configs = self.config.get("retrievers") or self.config.get("retrieval", {})
         storage_config = self.config["storage"]
@@ -41,6 +51,7 @@ class IndexingPipeline:
         self.embedding_batch_size = indexing_config.get("embedding_batch_size", 50)
         self.enrichment_batch_size = indexing_config.get("enrichment_batch_size", 10)
         self.enable_progress_tracking = indexing_config.get("enable_progress_tracking", True)
+        print(f"🔧 Batch config: embedding_batch={self.embedding_batch_size}, enrichment_batch={self.enrichment_batch_size}")
 
         # Treat dense retrieval as enabled by default unless explicitly disabled
         dense_cfg = retriever_configs.setdefault("dense", {})
@@ -74,6 +85,9 @@ class IndexingPipeline:
             )
 
         if self.config.get("contextual_enricher", {}).get("enabled"):
+            enrichment_config = self.config.get("contextual_enricher", {})
+            window_size = enrichment_config.get("window_size", 1)
+            print(f"🔧 Contextual enricher enabled: window_size={window_size}, batch_size={self.enrichment_batch_size}")
             enrichment_model = self.ollama_config.get("enrichment_model", self.ollama_config["generation_model"])
             self.contextual_enricher = ContextualEnricher(
                 llm_client=self.llm_client,

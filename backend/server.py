@@ -491,34 +491,91 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
             if not file_paths:
                 self.send_json_response({'error':'No documents to index'}, status_code=400); return
 
-            # Parse request body for optional flags
+            # Parse request body for optional flags and configuration parameters
             latechunk = False
             docling_chunk = False
+            config_overrides = {}
+            
             if 'Content-Length' in self.headers and int(self.headers['Content-Length']) > 0:
                 try:
                     length = int(self.headers['Content-Length'])
                     body = self.rfile.read(length)
-                    opts = json.loads(body.decode('utf-8'))
-                    latechunk = bool(opts.get('latechunk'))
-                    docling_chunk = bool(opts.get('doclingChunk'))
-                except Exception:
+                    data = json.loads(body.decode('utf-8'))
+                    
+                    # Basic flags
+                    latechunk = bool(data.get('latechunk'))
+                    docling_chunk = bool(data.get('doclingChunk'))
+                    
+                    # Build configuration overrides from frontend parameters
+                    # Chunking configuration
+                    if data.get('chunkSize') is not None or data.get('chunkOverlap') is not None:
+                        config_overrides['chunking'] = {}
+                        if data.get('chunkSize') is not None:
+                            config_overrides['chunking']['max_chunk_size'] = int(data.get('chunkSize'))
+                        if data.get('chunkOverlap') is not None:
+                            config_overrides['chunking']['chunk_overlap'] = int(data.get('chunkOverlap'))
+                    
+                    # Contextual enricher configuration
+                    contextual_config = {}
+                    if data.get('enableContextualEnrich') is not None:
+                        contextual_config['enabled'] = bool(data.get('enableContextualEnrich'))
+                    if data.get('contextWindow') is not None:
+                        contextual_config['window_size'] = int(data.get('contextWindow'))
+                    if contextual_config:
+                        config_overrides['contextual_enricher'] = contextual_config
+                    
+                    # Indexing batch sizes
+                    indexing_config = {}
+                    if data.get('embeddingBatchSize') is not None:
+                        indexing_config['embedding_batch_size'] = int(data.get('embeddingBatchSize'))
+                    if data.get('enrichmentBatchSize') is not None:
+                        indexing_config['enrichment_batch_size'] = int(data.get('enrichmentBatchSize'))
+                    if indexing_config:
+                        config_overrides['indexing'] = indexing_config
+                    
+                    # Embedding model
+                    if data.get('embeddingModel'):
+                        config_overrides['embedding_model_name'] = data.get('embeddingModel')
+                    
+                    # Retrieval mode
+                    if data.get('retrievalMode'):
+                        retrieval_mode = data.get('retrievalMode')
+                        config_overrides['retrievers'] = {
+                            'dense': {'enabled': retrieval_mode in ['hybrid', 'vector']},
+                            'bm25': {'enabled': retrieval_mode in ['hybrid', 'bm25']}
+                        }
+                        
+                    print(f"🔧 Frontend configuration received: {config_overrides}")
+                    
+                except Exception as e:
+                    print(f"⚠️ Error parsing configuration: {e}")
                     latechunk = False
                     docling_chunk = False
+                    config_overrides = {}
 
-            # Delegate to advanced RAG API same as session indexing
+            # Delegate to advanced RAG API with configuration overrides
             rag_api_url = "http://localhost:8001/index"
             import requests, json as _json
-            payload = {"file_paths": file_paths, "session_id": index_id}
+            payload = {
+                "file_paths": file_paths, 
+                "session_id": index_id,
+                "config_overrides": config_overrides
+            }
             if latechunk:
                 payload["enable_latechunk"] = True
             if docling_chunk:
                 payload["enable_docling_chunk"] = True
+                
+            print(f"🚀 Sending to RAG API: config_overrides={config_overrides}")
             rag_resp = requests.post(rag_api_url, json=payload)
             if rag_resp.status_code==200:
                 self.send_json_response({
-                    "response": rag_resp.json(),
+                    "message": f"Index built successfully with {len(file_paths)} documents",
+                    "details": rag_resp.json(),
                     "latechunk": latechunk,
-                    "docling_chunk": docling_chunk
+                    "docling_chunk": docling_chunk,
+                    "config_overrides": config_overrides,
+                    "table_name": f"text_pages_{index_id}"
                 })
             else:
                 self.send_json_response({"error":f"RAG indexing failed: {rag_resp.text}"}, status_code=500)

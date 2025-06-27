@@ -38,7 +38,18 @@ export function IndexForm({ onClose, onIndexed }: Props) {
       await chatAPI.uploadFilesToIndex(index_id, Array.from(files));
 
       // 3. build index (run pipeline)
-      await chatAPI.buildIndex(index_id, { latechunk: enableLateChunk, doclingChunk: enableDoclingChunk });
+      await chatAPI.buildIndex(index_id, { 
+        latechunk: enableLateChunk, 
+        doclingChunk: enableDoclingChunk,
+        chunkSize: chunkSize,
+        chunkOverlap: chunkOverlap,
+        contextWindow: windowSize,
+        embeddingBatchSize: batchSizeEmbed,
+        enrichmentBatchSize: batchSizeEnrich,
+        retrievalMode: retrievalMode,
+        embeddingModel: embeddingModel,
+        enableContextualEnrich: enableEnrich
+      });
 
       // 4. create chat session and link index
       const session = await chatAPI.createSession(indexName);

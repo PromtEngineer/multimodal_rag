@@ -2,7 +2,10 @@ import uuid
 import json
 from datetime import datetime
 from typing import List, Dict, Optional
-from database_manager import DatabaseManager
+try:
+    from .database_manager import DatabaseManager
+except ImportError:
+    from database_manager import DatabaseManager
 import logging
 
 logger = logging.getLogger(__name__)
@@ -157,32 +160,23 @@ class EnhancedChatDatabase:
     # Document Management
     # =============================================
     
-    def add_document_to_session(self, session_id: str, file_path: str):
-        """Add a document to a session"""
-        document_id = str(uuid.uuid4())
-        now = datetime.now().isoformat()
+    def add_document_to_session(self, session_id: str, file_path: str) -> int:
+        """Add a document to a session (compatible with original database.py schema)"""
+        result = self.db_manager.execute_update('''
+            INSERT INTO session_documents (session_id, file_path, indexed)
+            VALUES (?, ?, 0)
+        ''', (session_id, file_path))
         
-        # Extract file info
-        import os
-        filename = os.path.basename(file_path)
-        file_size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
-        file_type = os.path.splitext(filename)[1].lower()
-        
-        self.db_manager.execute_update('''
-            INSERT INTO documents (id, session_id, filename, original_filename, 
-                                 file_type, file_size, uploaded_at, content)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (document_id, session_id, filename, filename, file_type, file_size, now, ""))
-        
-        return document_id
+        logger.info(f"📄 Added document '{file_path}' to session {session_id[:8]}...")
+        return result
     
     def get_documents_for_session(self, session_id: str) -> List[str]:
-        """Get file paths for all documents in a session"""
+        """Get file paths for all documents in a session (compatible with original database.py schema)"""
         rows = self.db_manager.execute_query('''
-            SELECT filename FROM documents WHERE session_id = ?
+            SELECT file_path FROM session_documents WHERE session_id = ?
         ''', (session_id,), fetch_all=True)
         
-        return [row['filename'] for row in rows] if rows else []
+        return [row['file_path'] for row in rows] if rows else []
     
     # =============================================
     # Index Management
@@ -280,7 +274,7 @@ class EnhancedChatDatabase:
         return False
     
     def add_document_to_index(self, index_id: str, filename: str, file_path: str):
-        """Add a document to an index (compatible with old schema)"""
+        """Add a document to an index (compatible with original database.py schema)"""
         self.db_manager.execute_update('''
             INSERT INTO index_documents (index_id, original_filename, stored_path)
             VALUES (?, ?, ?)

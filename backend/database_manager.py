@@ -195,6 +195,17 @@ class DatabaseManager:
                 )
             ''')
             
+            # Session documents table (matching original database.py schema)
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS session_documents (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    indexed INTEGER DEFAULT 0,
+                    FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE
+                )
+            ''')
+            
             # Document chunks table
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS document_chunks (
@@ -206,32 +217,56 @@ class DatabaseManager:
                 )
             ''')
             
-            # Indexes table
+            # Indexes table (matching original database.py schema)
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS indexes (
                     id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
+                    name TEXT UNIQUE,
                     description TEXT,
-                    created_at TEXT NOT NULL,
-                    metadata TEXT DEFAULT '{}'
+                    created_at TEXT,
+                    updated_at TEXT,
+                    vector_table_name TEXT,
+                    metadata TEXT
                 )
             ''')
             
-            # Index documents table
+            # Add missing columns to existing indexes table if they don't exist
+            try:
+                conn.execute('ALTER TABLE indexes ADD COLUMN updated_at TEXT')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            try:
+                conn.execute('ALTER TABLE indexes ADD COLUMN vector_table_name TEXT')
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            
+            # Index documents table (matching original database.py schema)
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS index_documents (
-                    id TEXT PRIMARY KEY,
-                    index_id TEXT NOT NULL,
-                    filename TEXT NOT NULL,
-                    file_path TEXT NOT NULL,
-                    uploaded_at TEXT NOT NULL,
-                    FOREIGN KEY (index_id) REFERENCES indexes (id) ON DELETE CASCADE
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    index_id TEXT,
+                    original_filename TEXT,
+                    stored_path TEXT,
+                    FOREIGN KEY(index_id) REFERENCES indexes(id)
                 )
             ''')
             
             # Session index links table
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS session_index_links (
+                    session_id TEXT NOT NULL,
+                    index_id TEXT NOT NULL,
+                    linked_at TEXT NOT NULL,
+                    PRIMARY KEY (session_id, index_id),
+                    FOREIGN KEY (session_id) REFERENCES sessions (id) ON DELETE CASCADE,
+                    FOREIGN KEY (index_id) REFERENCES indexes (id) ON DELETE CASCADE
+                )
+            ''')
+            
+            # Also create the session_indexes table for compatibility
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS session_indexes (
                     session_id TEXT NOT NULL,
                     index_id TEXT NOT NULL,
                     linked_at TEXT NOT NULL,

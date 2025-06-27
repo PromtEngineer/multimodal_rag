@@ -7,9 +7,10 @@ class MarkdownRecursiveChunker:
     and embeds document-level metadata into each chunk.
     """
 
-    def __init__(self, max_chunk_size: int = 1500, min_chunk_size: int = 200):
+    def __init__(self, max_chunk_size: int = 1500, min_chunk_size: int = 200, chunk_overlap: int = 100):
         self.max_chunk_size = max_chunk_size
         self.min_chunk_size = min_chunk_size
+        self.chunk_overlap = chunk_overlap
         self.split_priority = ["\n## ", "\n### ", "\n#### ", "```", "\n\n"]
 
     def _split_text(self, text: str, separators: List[str]) -> List[str]:
@@ -71,7 +72,9 @@ class MarkdownRecursiveChunker:
                  current_chunk += chunk_text
             else:
                 merged_chunks_text.append(current_chunk)
-                current_chunk = chunk_text
+                # Apply chunk overlap by keeping the last part of the current chunk
+                overlap_text = current_chunk[-self.chunk_overlap:] if len(current_chunk) > self.chunk_overlap else current_chunk
+                current_chunk = overlap_text + chunk_text
         if current_chunk:
             merged_chunks_text.append(current_chunk)
 

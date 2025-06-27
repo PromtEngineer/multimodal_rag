@@ -434,7 +434,18 @@ class ChatAPI {
     return resp.json();
   }
 
-  async buildIndex(indexId: string, opts: { latechunk?: boolean; doclingChunk?: boolean } = {}): Promise<{ message: string }> {
+  async buildIndex(indexId: string, opts: { 
+    latechunk?: boolean; 
+    doclingChunk?: boolean;
+    chunkSize?: number;
+    chunkOverlap?: number;
+    contextWindow?: number;
+    embeddingBatchSize?: number;
+    enrichmentBatchSize?: number;
+    retrievalMode?: 'hybrid' | 'vector' | 'bm25';
+    embeddingModel?: string;
+    enableContextualEnrich?: boolean;
+  } = {}): Promise<{ message: string }> {
     try {
       const response = await fetch(`${API_BASE_URL}/indexes/${indexId}/build`, {
         method: 'POST',
@@ -444,6 +455,14 @@ class ChatAPI {
         body: JSON.stringify({ 
           latechunk: opts.latechunk ?? false,
           doclingChunk: opts.doclingChunk ?? false,
+          chunkSize: opts.chunkSize,
+          chunkOverlap: opts.chunkOverlap,
+          contextWindow: opts.contextWindow,
+          embeddingBatchSize: opts.embeddingBatchSize,
+          enrichmentBatchSize: opts.enrichmentBatchSize,
+          retrievalMode: opts.retrievalMode,
+          embeddingModel: opts.embeddingModel,
+          enableContextualEnrich: opts.enableContextualEnrich,
         }),
       });
 

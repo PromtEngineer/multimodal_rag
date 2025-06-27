@@ -4,6 +4,11 @@ import os
 PIPELINE_CONFIGS = {
     "default": {
         "description": "A comprehensive pipeline using a multi-vector retriever with hybrid search, reranking, and verification.",
+        "storage": {
+            "db_path": "lancedb",
+            "text_table_name": "text_pages_default",
+            "image_table_name": "image_pages"
+        },
         "reranker": {
             "enabled": True,
             "strategy": "rerankers-lib",
@@ -26,9 +31,18 @@ PIPELINE_CONFIGS = {
             "enabled": True,
             "window_size": 1
         },
+        "indexing": {
+            "embedding_batch_size": 50,
+            "enrichment_batch_size": 10
+        }
     },
     "fast": {
         "description": "A pipeline optimized for speed, with caching and vector search but no reranking or verification.",
+        "storage": {
+            "db_path": "lancedb",
+            "text_table_name": "text_pages_fast",
+            "image_table_name": "image_pages"
+        },
         "retrieval": {
             "retriever": "multivector",
             "embeddings": "qwen",
@@ -38,6 +52,10 @@ PIPELINE_CONFIGS = {
         },
         "verification": {"enabled": False},
         "caching": {"enabled": True},
+        "indexing": {
+            "embedding_batch_size": 50,
+            "enrichment_batch_size": 10
+        }
     },
     "react": {
         "description": "A ReAct-style agent that uses tools to answer queries.",

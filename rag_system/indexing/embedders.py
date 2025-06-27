@@ -22,7 +22,14 @@ class LanceDBManager:
 
     def create_table(self, table_name: str, schema: pa.Schema, mode: str = "overwrite"):
         print(f"Creating table '{table_name}' with mode '{mode}'...")
-        return self.db.create_table(table_name, schema=schema, mode=mode)
+        try:
+            return self.db.create_table(table_name, schema=schema, mode=mode)
+        except ValueError as e:
+            if "already exists" in str(e):
+                print(f"⚠️  Table '{table_name}' already exists, using overwrite mode...")
+                return self.db.create_table(table_name, schema=schema, mode="overwrite")
+            else:
+                raise e
 
 class VectorIndexer:
     """
@@ -85,7 +92,8 @@ class VectorIndexer:
             print(f"Appending {len(data)} vectors to existing table '{table_name}'.")
         else:
             print(f"Creating table '{table_name}' (new) and adding {len(data)} vectors...")
-            tbl = self.db_manager.create_table(table_name, schema=schema, mode="create")
+            # Use overwrite mode to handle cases where table exists but wasn't detected
+            tbl = self.db_manager.create_table(table_name, schema=schema, mode="overwrite")
 
         tbl.add(data)
         print(f"Indexed {len(data)} vectors into table '{table_name}'.")

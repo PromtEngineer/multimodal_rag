@@ -770,6 +770,22 @@ Reranker('answerdotai/answerai-colbert-small-v1', model_type='colbert')
 "
 ```
 
+### 7. **Frontend Configuration Issues**
+
+**Symptoms:**
+- Configuration parameters from frontend are ignored
+- `'IndexingPipeline' object has no attribute 'ollama_client'` errors
+- Database schema compatibility issues when switching servers
+
+**Solution:**
+See the dedicated [Frontend Configuration Troubleshooting Guide](FRONTEND_CONFIGURATION_TROUBLESHOOTING.md) for comprehensive error resolution, including:
+- Parameter name mismatches between factory and constructors
+- Attribute access issues in API server
+- Database schema compatibility problems
+- Server restart requirements for code changes
+
+This guide provides detailed analysis of the most common configuration-related issues and their solutions.
+
 ---
 
 ## Performance Optimization
@@ -794,6 +810,189 @@ Reranker('answerdotai/answerai-colbert-small-v1', model_type='colbert')
 - **Database Sharding**: Large indexes can use separate LanceDB instances
 - **Caching Layers**: Redis for frequently accessed embeddings
 - **Async Processing**: Background indexing with progress tracking
+
+---
+
+## Frontend Configuration Support
+
+### Overview
+
+The system now supports **complete dynamic configuration** of indexing parameters through the frontend interface. This replaces the previous hardcoded backend configuration approach, enabling users to customize chunking behavior, contextual enrichment, batch processing, and retrieval modes without modifying backend code.
+
+**✅ Implementation Status**: Fully functional as of latest implementation
+
+### Supported Configuration Parameters
+
+| Parameter | Type | Default | Description | Impact |
+|-----------|------|---------|-------------|--------|
+| `chunkSize` | number | 512 | Maximum size of text chunks in characters | Processing speed vs context quality |
+| `chunkOverlap` | number | 64 | Overlap between consecutive chunks in characters | Information continuity |
+| `enableContextualEnrich` | boolean | true | Enable contextual enrichment of chunks | Retrieval quality vs processing time |
+| `contextWindow` | number | 3 | Number of surrounding chunks for context | Context richness |
+| `embeddingBatchSize` | number | 50 | Batch size for embedding generation | Memory usage vs speed |
+| `enrichmentBatchSize` | number | 25 | Batch size for contextual enrichment | Concurrent LLM calls |
+| `embeddingModel` | string | "qwen3-embedding-0.6b" | Embedding model to use | Vector quality |
+| `retrievalMode` | string | "hybrid" | Retrieval strategy: "dense", "bm25", or "hybrid" | Search strategy |
+
+### Configuration Flow
+
+```mermaid
+graph LR
+    A[Frontend Form] --> B[Enhanced Server :8000]
+    B --> C[Parse Config Parameters]
+    C --> D[Build config_overrides]
+    D --> E[RAG API :8001]
+    E --> F[Apply to IndexingPipeline]
+    F --> G[Dynamic Chunking & Processing]
+```
+
+### Example Usage
+
+#### Frontend Configuration
+```javascript
+// Frontend API call with configuration
+const buildResult = await chatAPI.buildIndex(indexId, {
+  chunkSize: 800,
+  chunkOverlap: 100,
+  enableContextualEnrich: true,
+  contextWindow: 2,
+  embeddingBatchSize: 25,
+  enrichmentBatchSize: 5,
+  embeddingModel: "qwen3-embedding-0.6b",
+  retrievalMode: "dense"
+});
+```
+
+#### Backend Processing
+```python
+# backend/server.py - Configuration parsing
+def handle_build_index(self, index_id: str):
+    # Parse frontend parameters
+    config_overrides = {}
+    
+    # Chunking configuration
+    if data.get('chunkSize') is not None:
+        config_overrides['chunking'] = {
+            'max_chunk_size': int(data.get('chunkSize')),
+            'chunk_overlap': int(data.get('chunkOverlap', 0))
+        }
+    
+    # Contextual enricher configuration
+    if data.get('enableContextualEnrich') is not None:
+        config_overrides['contextual_enricher'] = {
+            'enabled': bool(data.get('enableContextualEnrich')),
+            'window_size': int(data.get('contextWindow', 1))
+        }
+    
+    # Send to RAG API
+    payload = {
+        "file_paths": file_paths,
+        "session_id": index_id,
+        "config_overrides": config_overrides
+    }
+```
+
+#### Configuration Application
+```python
+# rag_system/api_server.py - Apply overrides
+def _apply_config_overrides(self, config, overrides):
+    # Apply chunking configuration
+    if 'chunking' in overrides:
+        config.setdefault('chunking', {}).update(overrides['chunking'])
+    
+    # Apply contextual enricher configuration
+    if 'contextual_enricher' in overrides:
+        config.setdefault('contextual_enricher', {}).update(overrides['contextual_enricher'])
+    
+    # Apply indexing batch sizes
+    if 'indexing' in overrides:
+        config.setdefault('indexing', {}).update(overrides['indexing'])
+```
+
+### Response Format
+
+When configuration is applied successfully, the response includes the processed configuration:
+
+```json
+{
+  "message": "Index built successfully with 1 documents",
+  "details": {
+    "message": "Indexing process for 1 file(s) completed successfully.",
+    "table_name": "text_pages_fe04046e-7f4c-41b2-a17c-06d6a396223f"
+  },
+  "config_overrides": {
+    "chunking": {
+      "max_chunk_size": 800,
+      "chunk_overlap": 100
+    },
+    "contextual_enricher": {
+      "enabled": true,
+      "window_size": 2
+    },
+    "indexing": {
+      "embedding_batch_size": 25,
+      "enrichment_batch_size": 5
+    },
+    "embedding_model_name": "qwen3-embedding-0.6b",
+    "retrievers": {
+      "dense": {"enabled": true},
+      "bm25": {"enabled": false}
+    }
+  },
+  "table_name": "text_pages_fe04046e-7f4c-41b2-a17c-06d6a396223f"
+}
+```
+
+### Configuration Impact
+
+#### Chunking Behavior
+- **Small chunks** (256-512 chars): Better precision, more chunks to process
+- **Large chunks** (1500-2000 chars): Better context, fewer chunks
+- **Overlap**: Ensures important information isn't split across boundaries
+
+#### Contextual Enrichment
+- **Enabled**: Chunks get surrounding context for better embeddings
+- **Window Size**: Controls how much context is added (1-3 chunks recommended)
+- **Performance**: Increases processing time but improves retrieval quality
+
+#### Batch Processing
+- **Embedding Batch Size**: Higher values use more memory but process faster
+- **Enrichment Batch Size**: Controls concurrent LLM calls for context generation
+
+#### Retrieval Mode
+- **Dense**: Vector similarity search only
+- **BM25**: Full-text search only  
+- **Hybrid**: Combines both methods (recommended)
+
+### Verification & Success Indicators
+
+**✅ Successful Configuration Application:**
+- Server logs show: `🔧 Frontend configuration received: {...}`
+- RAG API logs show: `🚀 Sending to RAG API: config_overrides={...}`
+- Processing logs show: `🔧 Chunking config: max_size=X, min_size=Y, overlap=Z`
+- LanceDB tables created with expected number of chunks
+- Contextual enrichment visible in chunk content (if enabled)
+
+**Example Successful Run:**
+```
+Index: e0c93ab9-2803-4a86-8614-47c04a9840f7
+Chunks: 120 successfully indexed
+Config Applied: chunk_size=512, overlap=64, window_size=3
+Features: ✅ Contextual enrichment, ✅ Vector embeddings, ✅ FTS index
+```
+
+### Troubleshooting Configuration Issues
+
+For detailed error resolution including:
+- `ollama_client` attribute errors
+- LanceDB table creation conflicts  
+- Missing configuration sections
+- Database schema compatibility issues
+
+See: 
+- [Frontend Configuration Complete Guide](FRONTEND_CONFIGURATION_COMPLETE_GUIDE.md) - Full implementation details
+- [Frontend Configuration Troubleshooting Guide](FRONTEND_CONFIGURATION_TROUBLESHOOTING.md) - Error resolution steps
+- [Frontend Configuration Summary](FRONTEND_CONFIGURATION_SUMMARY.md) - Quick reference
 
 ---
 
@@ -841,7 +1040,7 @@ Reranker('answerdotai/answerai-colbert-small-v1', model_type='colbert')
 | `GET` | `/indexes/{id}` | Get specific index | None | `{"index": Index}` |
 | `DELETE` | `/indexes/{id}` | Delete index | None | `{"message": string}` |
 | `POST` | `/indexes/{id}/upload` | Upload files to index | `multipart/form-data` | `{"message": string, "uploaded_files": [...]}` |
-| `POST` | `/indexes/{id}/build` | Build/process index | `{"latechunk"?: boolean, "doclingChunk"?: boolean}` | `{"message": string}` |
+| `POST` | `/indexes/{id}/build` | Build/process index | `{"latechunk"?: boolean, "doclingChunk"?: boolean, "chunkSize"?: number, "chunkOverlap"?: number, "enableContextualEnrich"?: boolean, "contextWindow"?: number, "embeddingBatchSize"?: number, "enrichmentBatchSize"?: number, "embeddingModel"?: string, "retrievalMode"?: string}` | `{"message": string, "config_overrides": {...}}` |
 
 #### Session-Index Linking
 
@@ -863,7 +1062,7 @@ Reranker('answerdotai/answerai-colbert-small-v1', model_type='colbert')
 
 | Method | Endpoint | Purpose | Request Body | Response |
 |--------|----------|---------|-------------|----------|
-| `POST` | `/index` | Run indexing pipeline | `{"file_paths": string[], "session_id": string, "table_name"?: string, "enable_latechunk"?: boolean, "enable_docling_chunk"?: boolean}` | `{"message": string, "indexed_files": [...]}` |
+| `POST` | `/index` | Run indexing pipeline | `{"file_paths": string[], "session_id": string, "table_name"?: string, "enable_latechunk"?: boolean, "enable_docling_chunk"?: boolean, "config_overrides"?: {...}}` | `{"message": string, "indexed_files": [...]}` |
 
 #### System Information
 
@@ -899,7 +1098,7 @@ The frontend provides a `ChatAPI` class with the following methods:
 #### Index Management
 - `createIndex(name: string, description?: string, metadata?: {...}): Promise<{index_id: string}>`
 - `uploadFilesToIndex(indexId: string, files: File[]): Promise<{...}>`
-- `buildIndex(indexId: string, opts?: {...}): Promise<{message: string}>`
+- `buildIndex(indexId: string, opts?: {chunkSize?: number, chunkOverlap?: number, enableContextualEnrich?: boolean, contextWindow?: number, embeddingBatchSize?: number, enrichmentBatchSize?: number, embeddingModel?: string, retrievalMode?: string}): Promise<{message: string, config_overrides: {...}}>`
 - `linkIndexToSession(sessionId: string, indexId: string): Promise<{message: string}>`
 - `listIndexes(): Promise<{indexes: any[], total: number}>`
 - `getSessionIndexes(sessionId: string): Promise<{indexes: any[], total: number}>`

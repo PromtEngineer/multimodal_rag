@@ -44,7 +44,7 @@ def get_indexing_pipeline(mode: str = "default"):
     from rag_system.utils.ollama_client import OllamaClient
 
     load_dotenv()
-    llm_client = OllamaClient(host=OLLAMA_CONFIG["host"])
+    ollama_client = OllamaClient(host=OLLAMA_CONFIG["host"])
     config = PIPELINE_CONFIGS.get(mode, PIPELINE_CONFIGS['default'])
     
-    return IndexingPipeline(config, llm_client, OLLAMA_CONFIG) 
+    return IndexingPipeline(config, ollama_client, OLLAMA_CONFIG) 
