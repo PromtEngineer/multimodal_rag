@@ -43,7 +43,7 @@ User ↔ Frontend  ↔  │ localGPT backend 8000│ ← uploads / chat
 | `rag_system/retrieval` | Runtime search. `MultiVectorRetriever` performs half-FTS / half-vector hybrid with dedup, supports BM25 & graph fallbacks |
 | `rag_system/pipelines` | End-to-end flows:<br>• **IndexingPipeline** – orchestrates embedding + DB write<br>• **RetrievalPipeline** – orchestrates search → rerank → context expansion → LLM synth |
 | `rag_system/agent` | Long-running stateful helper: triages query → decomposition → retrieval pipeline → verifier → caching |
-| `rag_system/rerankers` | Lazy-loaded AI cross-encoder (BAAI/bge-reranker-base) plug-in |
+| `rag_system/rerankers` | AI reranking via ColBERT (answerdotai/answerai-colbert-small-v1) |
 | `rag_system/utils` | Thin wrapper around **Ollama** HTTP API, logging helpers |
 
 ---

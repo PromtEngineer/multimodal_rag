@@ -28,7 +28,7 @@ The system is composed of several key Python modules that work together to form 
     -   `embedders.py`: Manages the connection to the **LanceDB** vector database and handles the indexing of vector embeddings.
 -   `rag_system/retrieval/`: Contains modules for retrieving and ranking documents.
     -   `retrievers.py`: Implements the logic for searching the vector database to find relevant text and image chunks.
-    -   `reranker.py`: Contains the `QwenReranker` class, which re-ranks the retrieved documents for improved relevance.
+    -   Reranking is handled via ColBERT through the `rerankers` library for improved relevance scoring.
 -   `rag_system/agent/`: Contains the `Agent` loop that interacts with the user and the RAG pipelines.
 -   `rag_system/utils/`: Contains utility clients, such as the `OllamaClient` for interacting with the Ollama server.
 
@@ -43,7 +43,7 @@ The system is composed of several key Python modules that work together to form 
 2.  **Retrieval**:
     -   A user submits a query to the `Agent`.
     -   The `RetrievalPipeline`'s `MultiVectorRetriever` searches both the text and image tables in LanceDB for relevant chunks.
-    -   The retrieved documents are passed to the `QwenReranker`, which re-orders them based on relevance to the query.
+    -   The retrieved documents are passed to the ColBERT reranker, which re-orders them based on relevance to the query.
     -   The top-ranked documents (containing both text and image references) are passed to the Vision Language Model (`qwen-vl`).
     -   The VLM analyzes the text and images to extract key facts.
     -   A final text generation model (`llama3`) synthesizes these facts into a coherent, human-readable answer.

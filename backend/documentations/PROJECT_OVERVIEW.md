@@ -97,7 +97,7 @@ This pipeline is activated by a user query via the `/chat` endpoint. Its goal is
     *   The results from both retrievers are collected, and duplicates are removed.
 
 2.  **Reranking:**
-    *   The combined list of candidate chunks is passed to the `QwenReranker`.
+    *   The combined list of candidate chunks is passed to the ColBERT reranker via the `rerankers` library.
     *   This specialized model re-evaluates the relevance of each chunk against the original query, assigning a new score. This step is crucial for filtering out "near miss" documents that were retrieved but aren't truly relevant.
     *   Only the top `k` chunks (a configurable number) with the highest reranking scores are kept for the final step.
 
