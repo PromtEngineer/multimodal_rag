@@ -134,8 +134,11 @@ Latest User Query: "{query}"
     # ---------------- Asynchronous triage using Ollama ----------------
     async def _triage_query_async(self, query: str, history: list) -> str:
         """
-        The main triage entrypoint. Defers to the overview-based router first,
-        then falls back to a simpler LLM-based triage if no overviews are available.
+        Simplified binary triage: RAG vs Direct LLM response.
+        
+        Logic:
+        1. If query seems to be about documents/overviews → Use RAG pipeline
+        2. For general questions/greetings → Use direct LLM (qwen3:0.6b with think=False)
         """
         
         # 1️⃣ Fast, context-aware routing using precomputed overviews (if available)
@@ -144,32 +147,64 @@ Latest User Query: "{query}"
             contextual_query = self._format_query_with_history(query, history)
             return self._route_via_overviews(contextual_query)
 
-        # 2️⃣ Fallback to a simpler, general-purpose router if no overviews exist
-        if history:
-            # If there's history, the query is likely a follow-up, so we default to RAG.
-            # A more advanced implementation could use an LLM to see if the new query
-            # changes the topic entirely.
-            return "rag_query"
-
+        # 2️⃣ Binary triage for queries without overviews
         prompt = f"""
-You are a query routing expert. Analyse the user's question and decide which backend should handle it. Choose **exactly one** of the following categories:
+You are a query router. Analyze the user's question and decide whether it needs document search or can be answered directly.
 
-1. "graph_query" – The user asks for a specific factual relation best served by a knowledge-graph lookup (e.g. "Who is the CEO of Apple?", "Which company acquired DeepMind?").
-2. "rag_query" – The answer is most likely inside the user's uploaded documents (reports, PDFs, slide decks, invoices, research papers, etc.). Examples: "What is the total on invoice 1041?", "Summarise the Q3 earnings report".
-3. "direct_answer" – General chit-chat or open-domain knowledge that does **not** rely on the user's private documents or the knowledge graph (e.g. "Hello", "What is the capital of France?", "Explain quantum entanglement").
+Choose **exactly one** of these options:
 
-Respond with JSON of the form: {{"category": "<your_choice>"}}
+1. "needs_rag" – The question is about specific documents, data, invoices, reports, technical content, or information that would be stored in user's uploaded files. Examples: "What's the total on invoice 1041?", "Summarize the research paper", "What did the report say about Q3?"
+
+2. "direct_answer" – General knowledge, greetings, casual conversation, or questions that don't require document lookup. Examples: "Hello", "What's the weather like?", "Explain quantum physics", "How are you?"
+
+If you're unsure, choose "needs_rag" to be safe.
+
+Respond with JSON: {{"category": "<your_choice>", "reasoning": "<brief explanation>"}}
 
 User query: "{query}"
 """
+        
         resp = self.llm_client.generate_completion(
-            model=self.ollama_config["generation_model"], prompt=prompt, format="json"
+            model=self.ollama_config["generation_model"], 
+            prompt=prompt, 
+            format="json",
+            enable_thinking=False  # Disable chain-of-thought for faster triage
         )
+        
         try:
             data = json.loads(resp.get("response", "{}"))
-            return data.get("category", "rag_query")
+            category = data.get("category", "needs_rag")
+            reasoning = data.get("reasoning", "No reasoning provided")
+            print(f"Binary Triage Decision: '{category}'. Reason: {reasoning}")
+            return category
         except json.JSONDecodeError:
-            return "rag_query"
+            print("Failed to parse triage response, defaulting to needs_rag")
+            return "needs_rag"
+
+    async def _check_history_first(self, query: str, history: list) -> str | None:
+        """
+        REMOVED: Simplified approach doesn't need history pre-check.
+        Binary triage handles all routing decisions.
+        """
+        return None
+
+    async def _triage_with_history(self, query: str, history: list) -> str:
+        """
+        REMOVED: Simplified to binary decision only.
+        """
+        return await self._triage_query_async(query, history)
+
+    async def _answer_from_history(self, query: str, history: list) -> str:
+        """
+        REMOVED: Binary system routes either to RAG or direct LLM.
+        """
+        return "This method is no longer used in the simplified binary triage."
+
+    def _stream_history_answer(self, query: str, history: list, event_callback: callable) -> str:
+        """
+        REMOVED: Binary system routes either to RAG or direct LLM.
+        """
+        return "This method is no longer used in the simplified binary triage."
 
     def _run_graph_query(self, query: str, history: list) -> Dict[str, Any]:
         contextual_query = self._format_query_with_history(query, history)
@@ -260,25 +295,54 @@ User query: "{query}"
                     return cached_result
 
         # --- Route based on triage decision ---
-        # A bit of a hack: if the triage returns something other than a known category,
-        # it's the direct answer itself, synthesized from the overviews.
-        if query_type == "rag_query":
+        if query_type == "needs_rag":
+            # Use RAG pipeline for document-related queries
             final_result = await self._run_rag_pipeline(
                 contextual_query, table_name, compose_sub_answers, 
                 query_decompose, ai_rerank, context_expand, 
                 max_retries, event_callback
             )
-        elif query_type == "graph_query":
-            final_result = self._run_graph_query(query, history)
-        elif query_type == "clarification":
-            final_result = {"answer": "I'm sorry, your query is a bit ambiguous. Could you please clarify?", "source_documents": []}
-        else:  # The triage router already produced the final answer (general chat or direct answer)
-            direct_ans = query_type  # this string holds the answer text itself
-            # Stream it token-by-token if the caller provided an event callback
-            if event_callback:
-                for token in direct_ans.split():
-                    event_callback("token", {"text": token + " "})
-            final_result = {"answer": direct_ans, "source_documents": []}
+        elif query_type == "direct_answer":
+            # For overview-based direct answers, extract from overviews
+            if self.doc_overviews:
+                overview_text = "\n\n".join(f"--- Overview {i+1} ---\n{o}" for i, o in enumerate(self.doc_overviews))
+                if event_callback:
+                    answer_parts = []
+                    for token in self.llm_client.stream_completion(
+                        model=self.ollama_config["enrichment_model"],  # Use qwen3:0.6b for speed
+                        prompt=f"""
+You are a precise information extractor. Extract the exact factual answer from the document summaries below.
+
+CRITICAL INSTRUCTIONS:
+- Provide ONLY the direct factual answer
+- Do NOT include thinking, reasoning, or explanations
+- Do NOT use <think> tags or show your work
+- If asking for an address, provide just the address
+- If asking for a number, provide just the number
+- Be concise and factual
+
+Document Summaries:
+{overview_text}
+
+User Query: {query}
+
+Direct Answer (factual information only):
+""",
+                        enable_thinking=False  # Explicitly disable chain-of-thought
+                    ):
+                        answer_parts.append(token)
+                        event_callback("token", {"text": token})
+                    final_answer = "".join(answer_parts)
+                else:
+                    final_answer = self._answer_from_overviews(query, overview_text)
+            else:
+                # Fallback to general chat if no overviews available
+                final_answer = self._answer_general_chat(query)
+            final_result = {"answer": final_answer, "source_documents": []}
+        else:
+            # Fallback for any unexpected triage results - use direct answer approach
+            final_answer = self._answer_general_chat(query)
+            final_result = {"answer": final_answer, "source_documents": []}
 
         # --- Verification Step ---
         # Only run verification if the result came from a RAG pipeline and has source documents.
@@ -444,8 +508,8 @@ Final Answer:
 
     def _route_via_overviews(self, query: str) -> str | None:
         """
-        An intelligent router that uses LLM reasoning on document overviews
-        to make a fast, high-quality decision.
+        Simplified overview-based router for binary triage system.
+        Returns either "needs_rag" or "direct_answer".
         """
         if not self.doc_overviews: return None # Should not happen if called correctly
 
@@ -453,45 +517,37 @@ Final Answer:
         overview_text = "\n\n".join(f"--- Overview {i+1} ---\n{o}" for i, o in enumerate(self.doc_overviews))
 
         prompt = f"""
-You are an expert routing agent. Your job is to decide how to answer a user's query based on a set of available document summaries. You must choose one of four actions:
+You are an expert routing agent. Analyze the user's query and the document overviews to decide how to respond.
 
-1.  **RAG Query**: The user's query requires retrieving specific information from the full text of one or more documents. This is the best choice if the query asks for details, quotes, or mentions "the document", "the paper", "the invoice", etc. It's the safest default when in doubt.
+Choose **exactly one** of these options:
 
-2.  **Direct Answer**: The provided overviews ALREADY contain a complete and sufficient answer to the user's query. This is a shortcut for simple factual questions where the summary is enough and no further reading is needed.
+1. "needs_rag" – The query requires retrieving specific information from the full documents. Use this when:
+   - Query asks for specific details, quotes, or data not fully present in overviews
+   - Query mentions "the document", "the paper", "the invoice", etc.
+   - Overviews contain relevant info but not the complete answer
+   - When in doubt, choose this option
 
-3.  **General Chat**: The user's query is conversational, a general knowledge question, or completely unrelated to the documents provided. Examples: "Hello", "What's the weather like?", "Who was the first person on the moon?".
+2. "direct_answer" – The overviews ALREADY contain a complete and sufficient answer. Use this when:
+   - The answer is clearly and fully present in the overviews
+   - No additional document retrieval is needed
+   - Simple factual questions where the summary is enough
 
-4.  **Needs Clarification**: The user's query is ambiguous, or it's unclear which document it refers to when multiple documents seem relevant.
+If the query is completely unrelated to the documents, choose "needs_rag" (it will be handled by the general triage system).
 
-**Your thought process:**
-1.  Analyze the user's query to understand their intent. Are they asking a factual question, a summarization, a specific detail, or just chatting?
-2.  Read the provided overviews. Do they seem relevant to the query?
-3.  Decide:
-    *   If the query explicitly asks for information "according to the document" or for specific details not present in the overview, choose **RAG Query**.
-    *   If the answer is clearly and fully present in the overviews, choose **Direct Answer**.
-    *   If the query is unrelated to the documents, choose **General Chat**.
-    *   If the overviews do **not** contain the requested fact—or contain it only partially—choose **RAG Query**. Do **NOT** return a "Direct Answer" that simply says "information not provided".
-    *   If you are unsure or the query is vague, choose **Needs Clarification**.
-    *   If the query is a general knowledge question, choose **General Chat**.
-    *   If the overview has information about the query but not specifically answers the query, choose **RAG Query**.
-
-Here are the available document overviews:
+Document Overviews:
 {overview_text}
 
----
+User Query: "{query}"
 
-Now, analyze the following user query and choose the best action.
-
-**User Query**: "{query}"
-
-Respond with a single JSON object with two keys: "action" (one of ["rag_query", "direct_answer", "general_chat", "needs_clarification"]) and "reasoning" (a brief explanation of your choice).
+Respond with JSON: {{"action": "<needs_rag|direct_answer>", "reasoning": "<brief explanation>"}}
 """
 
         # Call the LLM
         resp = self.llm_client.generate_completion(
             model=self.ollama_config["generation_model"],
             prompt=prompt,
-            format="json"
+            format="json",
+            enable_thinking=False  # Disable thinking for faster routing
         )
         
         try:
@@ -500,75 +556,73 @@ Respond with a single JSON object with two keys: "action" (one of ["rag_query", 
             reasoning = choice_data.get("reasoning", "No reasoning provided.")
             print(f"Overview Router Decision: '{action}'. Reason: {reasoning}")
 
-            if action == "rag_query":
-                return "rag_query"
+            if action == "needs_rag":
+                return "needs_rag"
             elif action == "direct_answer":
-                # For a direct answer, we need the LLM to synthesize it from the overviews.
-                answer = self._answer_from_overviews(query, overview_text)
-                # Heuristic fallback: if the answer basically says information is missing, reroute to rag_query
-                neg_phrases = [
-                    "not provided",
-                    "not mentioned",
-                    "not available",
-                    "cannot find",
-                    "could not find",
-                    "no direct",
-                ]
-                ans_lc = answer.lower()
-                if any(p in ans_lc for p in neg_phrases):
-                    print("🔄 Overview answer indicates missing info – falling back to full RAG query…")
-                    return "rag_query"
-                return answer
-            elif action == "general_chat":
-                # Generate a free-form answer using general knowledge (no document constraints)
-                return self._answer_general_chat(query)
-            elif action == "needs_clarification":
-                return "clarification"
+                # Return "direct_answer" - the main logic will handle generating the response
+                return "direct_answer"
+            else:
+                # Fallback to RAG if unexpected response
+                return "needs_rag"
         except Exception:
-            # If JSON parsing or logic fails, default to the safest option
-            return "rag_query"
+            # If JSON parsing fails, default to the safest option
+            return "needs_rag"
 
-        return "rag_query" # Fallback
+        return "needs_rag" # Fallback
 
     def _answer_from_overviews(self, query: str, overview_text: str) -> str:
         """
         If the router decides the answer is in the overviews, this function
-        generates that answer.
+        generates that answer using the smaller, faster model.
         """
         prompt = f"""
-Given the following document summaries, please provide a direct and concise answer to the user's query.
-Use ONLY the information present in the summaries. Do not add any external knowledge.
+You are a precise information extractor. Extract the exact factual answer from the document summaries below.
 
-Summaries:
+CRITICAL INSTRUCTIONS:
+- Provide ONLY the direct factual answer
+- Do NOT include thinking, reasoning, or explanations
+- Do NOT use <think> tags or show your work
+- If asking for an address, provide just the address
+- If asking for a number, provide just the number
+- Be concise and factual
+
+Document Summaries:
 {overview_text}
 
----
 User Query: {query}
 
-Answer:
+Direct Answer (factual information only):
 """
         resp = self.llm_client.generate_completion(
-            model=self.ollama_config["generation_model"],
-            prompt=prompt
+            model=self.ollama_config["enrichment_model"],  # Use qwen3:0.6b for speed
+            prompt=prompt,
+            enable_thinking=False  # Explicitly disable chain-of-thought
         )
-        # The triage router returns the answer *itself* as the category.
-        # The main loop will then wrap this in the final response dict.
         return resp.get("response", "I am sorry, I could not formulate an answer.")
 
     def _answer_general_chat(self, query: str) -> str:
         """
         Generates a free-form answer using general knowledge (no document constraints)
+        Uses the smaller, faster qwen3:0.6b model with think=False for optimal performance
         """
         prompt = f"""
-You are a helpful general-purpose AI assistant. Answer the following user query using general knowledge.
+You are a helpful AI assistant. Provide a direct, concise answer to the user's query.
+
+CRITICAL INSTRUCTIONS:
+- Provide ONLY the direct answer
+- Do NOT include thinking, reasoning, or explanations
+- Do NOT use <think> tags or show your work
+- Be natural, friendly, and concise
+- For greetings, respond warmly and offer help
 
 User Query: "{query}"
 
-Answer:
+Direct Answer:
 """
         resp = self.llm_client.generate_completion(
-            model=self.ollama_config["generation_model"],
-            prompt=prompt
+            model=self.ollama_config["enrichment_model"],  # Use qwen3:0.6b for speed
+            prompt=prompt,
+            enable_thinking=False  # Explicitly disable chain-of-thought
         )
         return resp.get("response", "I am sorry, I could not formulate an answer.")
 

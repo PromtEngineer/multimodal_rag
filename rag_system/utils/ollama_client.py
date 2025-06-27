@@ -198,7 +198,7 @@ class OllamaClient:
 
             # Optional: disable thinking mode for Qwen3 / DeepSeek models
             if enable_thinking is not None:
-                payload["chat_template_kwargs"] = {"enable_thinking": enable_thinking}
+                payload["think"] = enable_thinking
 
             response = requests.post(
                 f"{self.api_url}/generate",
@@ -236,7 +236,7 @@ class OllamaClient:
             payload["images"] = [self._image_to_base64(img) for img in images]
 
         if enable_thinking is not None:
-            payload["chat_template_kwargs"] = {"enable_thinking": enable_thinking}
+            payload["think"] = enable_thinking
 
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
@@ -264,7 +264,7 @@ class OllamaClient:
         if images:
             payload["images"] = [self._image_to_base64(img) for img in images]
         if enable_thinking is not None:
-            payload["chat_template_kwargs"] = {"enable_thinking": enable_thinking}
+            payload["think"] = enable_thinking
 
         with requests.post(f"{self.api_url}/generate", json=payload, stream=True) as resp:
             resp.raise_for_status()
