@@ -283,6 +283,42 @@ class OllamaClient:
                 if data.get("done"):
                     break
 
+    async def stream_completion_async(
+        self,
+        model: str,
+        prompt: str,
+        *,
+        images: Optional[List[Image.Image]] = None,
+        enable_thinking: Optional[bool] = None,
+        timeout: int = 60,
+    ):
+        """Async generator that yields partial response strings as they arrive."""
+        payload: Dict[str, Any] = {"model": model, "prompt": prompt, "stream": True}
+        if images:
+            payload["images"] = [self._image_to_base64(img) for img in images]
+        if enable_thinking is not None:
+            payload["think"] = enable_thinking
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                async with client.stream("POST", f"{self.api_url}/generate", json=payload) as resp:
+                    resp.raise_for_status()
+                    async for raw_line in resp.aiter_lines():
+                        if not raw_line:
+                            continue
+                        try:
+                            data = json.loads(raw_line)
+                        except json.JSONDecodeError:
+                            continue
+                        chunk = data.get("response", "")
+                        if chunk:
+                            yield chunk
+                        if data.get("done"):
+                            break
+        except (httpx.HTTPError, asyncio.CancelledError) as e:
+            print(f"Async streaming error: {e}")
+            return
+
 
 def main():
     """Test the unified Ollama client"""

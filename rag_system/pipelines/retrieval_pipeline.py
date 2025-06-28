@@ -350,9 +350,11 @@ ORIGINAL QUESTION: "{query}"
             # If no AI reranker, proceed with the initially retrieved docs
             reranked_docs = retrieved_docs
 
-        window_size = self.config.get("context_window_size", 1)
+        # Use override first, then config, then default
         if window_size_override is not None:
             window_size = window_size_override
+        else:
+            window_size = self.config.get("context_window_size", 1)
         if window_size > 0 and reranked_docs:
             if event_callback:
                 event_callback("context_expand_started", {"count": len(reranked_docs)})

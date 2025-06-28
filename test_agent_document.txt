@@ -1,0 +1,76 @@
+ENHANCED RAG SYSTEM TEST DOCUMENT
+
+Company: TechCorp Innovation Labs
+Date: December 27, 2024
+Document Type: Technical Specification
+
+OVERVIEW
+========
+This document describes the enhanced multimodal RAG system with advanced agent capabilities. The system has been upgraded with model-aware thinking token support, index-specific overview management, and improved streaming functionality.
+
+KEY FEATURES
+============
+
+1. Model Capability Detection
+   - Automatically detects whether models support thinking tokens
+   - Supports Gemma models (no thinking) and Qwen models (with thinking)
+   - Smart thinking control: disabled for fast operations, enabled for reasoning
+
+2. Index-Specific Overviews
+   - Per-index document overview support
+   - Fallback to global overviews when index-specific not available
+   - Enhanced triage system using document context
+
+3. Streaming Support
+   - Full async streaming for all LLM operations
+   - Enhanced stream_completion_async method in OllamaClient
+   - Real-time token streaming for better user experience
+
+4. Enhanced Caching
+   - Semantic similarity caching with embedding comparison
+   - Session-aware or global cache scoping
+   - TTL-based cache management
+
+TECHNICAL SPECIFICATIONS
+========================
+
+Model Support:
+- Qwen models: qwen3:8b, qwen3:0.6b, qwen2.5vl:7b (thinking enabled)
+- Gemma models: gemma:7b, gemma3n:e4b (thinking disabled)
+- Automatic detection based on model name prefixes
+
+System Requirements:
+- Python 3.11+
+- Ollama server running locally
+- LanceDB for vector storage
+- FastAPI for backend services
+
+Performance Metrics:
+- Query processing: < 2 seconds average
+- Index creation: 50 documents per minute
+- Cache hit ratio: 85%+ with semantic similarity
+
+USAGE EXAMPLES
+==============
+
+Basic Query:
+"What are the key features of the enhanced RAG system?"
+
+Technical Query:
+"How does the model capability detection work for different LLM types?"
+
+Performance Query:
+"What are the performance metrics for query processing?"
+
+CONFIGURATION
+=============
+
+The system supports multiple configuration profiles:
+- default: Full-featured with verification and reranking
+- fast: Speed-optimized with minimal processing
+- react: ReAct agent with tool usage
+
+Contact Information:
+- Technical Lead: Agent Development Team
+- Support: enhanced-rag@techcorp.com
+- Documentation: https://docs.techcorp.com/rag-system

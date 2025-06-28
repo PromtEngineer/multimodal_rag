@@ -1,0 +1,60 @@
+{
+  "success": true,
+  "index_id": "test-advanced-full",
+  "table_name": "text_pages_test-advanced-full",
+  "config": {
+    "storage": {
+      "lancedb_uri": "./lancedb",
+      "doc_path": "indexed_documents",
+      "text_table_name": "text_pages_test-advanced-full",
+      "image_table_name": "image_pages_test-advanced-full",
+      "bm25_path": "./index_store/bm25"
+    },
+    "indexing": {
+      "embedding_batch_size": 5,
+      "enrichment_batch_size": 3,
+      "enable_multimodal": true,
+      "late_chunking": true,
+      "chunk_size": 1024,
+      "chunk_overlap": 50
+    },
+    "contextual_enricher": {
+      "enabled": true,
+      "window_size": 5,
+      "model_name": "qwen3:0.6b"
+    },
+    "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
+    "chunker_type": "docling",
+    "reranker": {
+      "enabled": true,
+      "model_name": "answerdotai/answerai-colbert-small-v1",
+      "top_k": 10
+    }
+  },
+  "ollama_config": {
+    "host": "http://localhost:11434",
+    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+    "generation_model": "gemma3n:e4b",
+    "enrichment_model": "qwen3:0.6b",
+    "rerank_model": "answerdotai/answerai-colbert-small-v1",
+    "qwen_vl_model": "qwen2.5vl:7b"
+  },
+  "files_processed": [
+    "docs/DeepSeek_V3.pdf",
+    "docs/invoice_1041.pdf",
+    "docs/invoice_1039.pdf"
+  ],
+  "result": {
+    "success": true,
+    "documents_processed": 3,
+    "chunks_created": 46,
+    "table_name": "text_pages_test-advanced-full",
+    "components": {
+      "contextual_enrichment": true,
+      "vector_indexing": true,
+      "knowledge_graph": false
+    }
+  },
+  "created_at": "2025-06-27 23:48:53",
+  "duration_seconds": 119.43125700950623
+}

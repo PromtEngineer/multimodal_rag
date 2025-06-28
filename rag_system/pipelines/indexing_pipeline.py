@@ -291,6 +291,19 @@ class IndexingPipeline:
                     
         print("\n--- ✅ Indexing Complete ---")
         self._print_final_statistics(len(file_paths), len(all_chunks))
+        
+        # Return success result for calling scripts
+        return {
+            "success": True,
+            "documents_processed": len(file_paths),
+            "chunks_created": len(all_chunks),
+            "table_name": self.config["storage"]["text_table_name"],
+            "components": {
+                "contextual_enrichment": hasattr(self, 'contextual_enricher'),
+                "vector_indexing": hasattr(self, 'vector_indexer'),
+                "knowledge_graph": hasattr(self, 'graph_extractor')
+            }
+        }
     
     def _print_final_statistics(self, num_files: int, num_chunks: int):
         """Print final indexing statistics"""

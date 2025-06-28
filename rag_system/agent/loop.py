@@ -1,631 +1,660 @@
-from typing import Dict, Any, Optional
-import json
-import concurrent.futures
-import time
 import asyncio
-from cachetools import TTLCache, LRUCache
+import concurrent.futures
+import json
+import logging
+import os
+import time
+from typing import Any, Callable, Dict, List, Optional
+
 import numpy as np
+from cachetools import LRUCache, TTLCache
+
+# Assume these imports work and provide SYNC clients/functions
 from rag_system.utils.ollama_client import OllamaClient
 from rag_system.pipelines.retrieval_pipeline import RetrievalPipeline
 from rag_system.agent.verifier import Verifier
-from rag_system.retrieval.query_transformer import QueryDecomposer, GraphQueryTranslator
-from rag_system.retrieval.retrievers import GraphRetriever
-import os
-import json as _json
+from rag_system.retrieval.query_transformer import QueryDecomposer
+from rag_system.config import get_model_capabilities, get_thinking_setting
+
+# Set up basic logging (You might want to configure this more robustly)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+log = logging.getLogger(__name__)
 
 class Agent:
     """
-    The main agent, now fully wired to use a live Ollama client.
+    Refactored Agent: Implements Overview-based Triage, runs RAG or
+    Direct LLM paths, and handles async operations safely by running
+    assumed-sync components in threads. GraphRAG removed.
     """
-    def __init__(self, pipeline_configs: Dict[str, Dict], llm_client: OllamaClient, ollama_config: Dict[str, str]):
+    def __init__(self, pipeline_configs: Dict[str, Dict], llm_client: OllamaClient, ollama_config: Dict[str, str], current_index_id: str = None):
         self.pipeline_configs = pipeline_configs
         self.llm_client = llm_client
         self.ollama_config = ollama_config
+        self.current_index_id = current_index_id
         
-        gen_model = self.ollama_config["generation_model"]
+        self.gen_model = self.ollama_config["generation_model"]
+        self.fast_model = self.ollama_config.get("enrichment_model", self.gen_model)
         
-        # Initialize the single, persistent retrieval pipeline for this agent
+        # Auto-detect model capabilities for thinking token support
+        self.gen_model_caps = get_model_capabilities(self.gen_model)
+        self.fast_model_caps = get_model_capabilities(self.fast_model)
+        
+        log.info(f"Agent Models -> Gen: {self.gen_model} (thinking: {self.gen_model_caps['supports_thinking']}), "
+                f"Fast: {self.fast_model} (thinking: {self.fast_model_caps['supports_thinking']})")
+        
         self.retrieval_pipeline = RetrievalPipeline(pipeline_configs, self.llm_client, self.ollama_config)
+        self.verifier = Verifier(llm_client, self.gen_model)
+        self.query_decomposer = QueryDecomposer(llm_client, self.gen_model) # Use reasoning model
         
-        self.verifier = Verifier(llm_client, gen_model)
-        self.query_decomposer = QueryDecomposer(llm_client, gen_model)
-        
-        # 🚀 OPTIMIZED: TTL cache now stores embeddings for semantic matching
-        self._cache_max_size = 100  # fallback size limit for manual eviction helper
-        self._query_cache: TTLCache = TTLCache(maxsize=self._cache_max_size, ttl=300)
-        self.semantic_cache_threshold = self.pipeline_configs.get("semantic_cache_threshold", 0.98)
-        # If set to "session", semantic-cache hits will be restricted to the same chat session.
-        # Otherwise (default "global") answers can be reused across sessions.
-        self.cache_scope = self.pipeline_configs.get("cache_scope", "global")  # 'global' or 'session'
-        
-        # 🚀 NEW: In-memory store for conversational history per session
-        self.chat_histories: LRUCache = LRUCache(maxsize=100) # Stores history for 100 recent sessions
+        # Caching
+        cache_max_size = int(pipeline_configs.get("cache_max_size", 100))
+        self._query_cache: TTLCache = TTLCache(maxsize=cache_max_size, ttl=300)
+        self.semantic_cache_threshold = float(pipeline_configs.get("semantic_cache_threshold", 0.98))
+        self.cache_scope = pipeline_configs.get("cache_scope", "global")
 
-        graph_config = self.pipeline_configs.get("graph_strategy", {})
-        if graph_config.get("enabled"):
-            self.graph_query_translator = GraphQueryTranslator(llm_client, gen_model)
-            self.graph_retriever = GraphRetriever(graph_config["graph_path"])
-            print("Agent initialized with live GraphRAG capabilities.")
+        # History
+        self.chat_histories: LRUCache = LRUCache(maxsize=100)
+
+        # Load Document Overviews (index-specific or global)
+        self.doc_overviews: List[str] = self._load_doc_overviews()
+        self.overview_text: str = "\n\n".join(
+            f"- {o}" for o in self.doc_overviews
+        ) if self.doc_overviews else "No document overviews are available."
+
+        index_info = f" for index {current_index_id[:8]}..." if current_index_id else " (global)"
+        log.info(f"Agent initialized{index_info}. Overviews Loaded: {len(self.doc_overviews)}")
+
+    def _load_doc_overviews(self) -> List[str]:
+        """Loads document overview strings from index-specific or global jsonl file."""
+        # Determine overview path - index-specific first, then global fallback
+        if self.current_index_id:
+            overview_path = f"index_store/overviews/overviews_{self.current_index_id}.jsonl"
+            fallback_path = os.path.join("index_store", "overviews", "overviews.jsonl")
         else:
-            print("Agent initialized (GraphRAG disabled).")
-
-        # ---- Load document overviews for fast routing ----
-        overview_path = os.path.join("index_store", "overviews", "overviews.jsonl")
-        self.doc_overviews: list[str] = []
+            overview_path = self.pipeline_configs.get("overview_path", 
+                                                 os.path.join("index_store", "overviews", "overviews.jsonl"))
+            fallback_path = None
+            
+        overviews = []
+        
+        # Try index-specific file first
         if os.path.exists(overview_path):
             try:
-                with open(overview_path, encoding="utf-8") as fh:
+                with open(overview_path, "r", encoding="utf-8") as fh:
                     for line in fh:
                         try:
-                            rec = _json.loads(line)
+                            rec = json.loads(line.strip())
                             if isinstance(rec, dict) and rec.get("overview"):
-                                self.doc_overviews.append(rec["overview"].strip())
-                        except Exception:
-                            continue
+                                overviews.append(rec["overview"].strip())
+                        except json.JSONDecodeError as json_err:
+                            log.warning(f"Skipping malformed line in overviews: {json_err} - Line: '{line.strip()}'")
+                log.info(f"Loaded {len(overviews)} document overviews from {overview_path}")
+                return overviews
             except Exception as e:
-                print(f"⚠️  Failed to load document overviews: {e}")
+                log.error(f"Failed to load document overviews from {overview_path}: {e}", exc_info=True)
+        else:
+            log.warning(f"Index-specific overview file not found: {overview_path}")
+            
+        # Fallback to global overviews if index-specific not found
+        if fallback_path and os.path.exists(fallback_path):
+            try:
+                with open(fallback_path, "r", encoding="utf-8") as fh:
+                    for line in fh:
+                        try:
+                            rec = json.loads(line.strip())
+                            if isinstance(rec, dict) and rec.get("overview"):
+                                overviews.append(rec["overview"].strip())
+                        except json.JSONDecodeError as json_err:
+                            log.warning(f"Skipping malformed line in overviews: {json_err} - Line: '{line.strip()}'")
+                log.info(f"Loaded {len(overviews)} document overviews from fallback {fallback_path}")
+                return overviews
+            except Exception as e:
+                log.error(f"Failed to load document overviews from fallback {fallback_path}: {e}", exc_info=True)
+        
+        if self.current_index_id:
+            log.warning(f"No overview files found for index {self.current_index_id} or global fallback")
+        else:
+            log.warning(f"No overview files found")
+            
+        return []
 
     def _cosine_similarity(self, v1: np.ndarray, v2: np.ndarray) -> float:
         """Computes cosine similarity between two vectors."""
-        if not isinstance(v1, np.ndarray): v1 = np.array(v1)
-        if not isinstance(v2, np.ndarray): v2 = np.array(v2)
-        
+        v1 = np.array(v1); v2 = np.array(v2)
         if v1.shape != v2.shape:
-            raise ValueError("Vectors must have the same shape for cosine similarity.")
-
-        if np.all(v1 == 0) or np.all(v2 == 0):
+            log.warning(f"Cosine shape mismatch: {v1.shape} vs {v2.shape}")
             return 0.0
-            
-        dot_product = np.dot(v1, v2)
-        norm_v1 = np.linalg.norm(v1)
-        norm_v2 = np.linalg.norm(v2)
-        
-        # Avoid division by zero
-        if norm_v1 == 0 or norm_v2 == 0:
-            return 0.0
-        
-        return dot_product / (norm_v1 * norm_v2)
+        norm_v1 = np.linalg.norm(v1); norm_v2 = np.linalg.norm(v2)
+        if norm_v1 == 0 or norm_v2 == 0: return 0.0
+        return np.dot(v1, v2) / (norm_v1 * norm_v2)
 
     def _find_in_semantic_cache(self, query_embedding: np.ndarray, session_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Finds a semantically similar query in the cache."""
-        if not self._query_cache or query_embedding is None:
-            return None
-
-        for key, cached_item in self._query_cache.items():
+        if query_embedding is None: return None
+        for key, cached_item in list(self._query_cache.items()): 
             cached_embedding = cached_item.get('embedding')
-            if cached_embedding is None:
-                continue
-
-            # Respect cache scoping: if scope is session-level, skip results from other sessions
-            if self.cache_scope == "session" and session_id is not None:
-                if cached_item.get("session_id") != session_id:
-                    continue
-
-            try:
-                similarity = self._cosine_similarity(query_embedding, cached_embedding)
-
-                if similarity >= self.semantic_cache_threshold:
-                    print(f"🚀 Semantic cache hit! Similarity: {similarity:.3f} with cached query '{key}'")
-                    return cached_item.get('result')
-            except ValueError:
-                # In case of shape mismatch, just skip
-                continue
-
+            if cached_embedding is None: continue
+            if self.cache_scope == "session" and session_id != cached_item.get("session_id"): continue
+            similarity = self._cosine_similarity(query_embedding, np.array(cached_embedding))
+            if similarity >= self.semantic_cache_threshold:
+                log.info(f"Semantic cache hit! Similarity: {similarity:.3f} with '{key}'")
+                return cached_item.get('result') 
         return None
 
-    def _format_query_with_history(self, query: str, history: list) -> str:
-        """Formats the user query with conversation history for context."""
-        if not history:
-            return query
-        
-        formatted_history = "\n".join([f"User: {turn['query']}\nAssistant: {turn['answer']}" for turn in history])
-        
-        prompt = f"""
-Given the following conversation history, answer the user's latest query. The history provides context for resolving pronouns or follow-up questions.
-
---- Conversation History ---
-{formatted_history}
----
-
-Latest User Query: "{query}"
-"""
-        return prompt
-
-    # ---------------- Asynchronous triage using Ollama ----------------
-    async def _triage_query_async(self, query: str, history: list) -> str:
-        """
-        Simplified binary triage: RAG vs Direct LLM response.
-        
-        Logic:
-        1. If query seems to be about documents/overviews → Use RAG pipeline
-        2. For general questions/greetings → Use direct LLM (qwen3:0.6b with think=False)
-        """
-        
-        # 1️⃣ Fast, context-aware routing using precomputed overviews (if available)
-        if self.doc_overviews:
-            # Add history context to the query before sending to the router
-            contextual_query = self._format_query_with_history(query, history)
-            return self._route_via_overviews(contextual_query)
-
-        # 2️⃣ Binary triage for queries without overviews
-        prompt = f"""
-You are a query router. Analyze the user's question and decide whether it needs document search or can be answered directly.
-
-Choose **exactly one** of these options:
-
-1. "needs_rag" – The question is about specific documents, data, invoices, reports, technical content, or information that would be stored in user's uploaded files. Examples: "What's the total on invoice 1041?", "Summarize the research paper", "What did the report say about Q3?"
-
-2. "direct_answer" – General knowledge, greetings, casual conversation, or questions that don't require document lookup. Examples: "Hello", "What's the weather like?", "Explain quantum physics", "How are you?"
-
-If you're unsure, choose "needs_rag" to be safe.
-
-Respond with JSON: {{"category": "<your_choice>", "reasoning": "<brief explanation>"}}
-
-User query: "{query}"
-"""
-        
-        resp = self.llm_client.generate_completion(
-            model=self.ollama_config["generation_model"], 
-            prompt=prompt, 
-            format="json",
-            enable_thinking=False  # Disable chain-of-thought for faster triage
-        )
-        
-        try:
-            data = json.loads(resp.get("response", "{}"))
-            category = data.get("category", "needs_rag")
-            reasoning = data.get("reasoning", "No reasoning provided")
-            print(f"Binary Triage Decision: '{category}'. Reason: {reasoning}")
-            return category
-        except json.JSONDecodeError:
-            print("Failed to parse triage response, defaulting to needs_rag")
-            return "needs_rag"
-
-    async def _check_history_first(self, query: str, history: list) -> str | None:
-        """
-        REMOVED: Simplified approach doesn't need history pre-check.
-        Binary triage handles all routing decisions.
-        """
-        return None
-
-    async def _triage_with_history(self, query: str, history: list) -> str:
-        """
-        REMOVED: Simplified to binary decision only.
-        """
-        return await self._triage_query_async(query, history)
-
-    async def _answer_from_history(self, query: str, history: list) -> str:
-        """
-        REMOVED: Binary system routes either to RAG or direct LLM.
-        """
-        return "This method is no longer used in the simplified binary triage."
-
-    def _stream_history_answer(self, query: str, history: list, event_callback: callable) -> str:
-        """
-        REMOVED: Binary system routes either to RAG or direct LLM.
-        """
-        return "This method is no longer used in the simplified binary triage."
-
-    def _run_graph_query(self, query: str, history: list) -> Dict[str, Any]:
-        contextual_query = self._format_query_with_history(query, history)
-        structured_query = self.graph_query_translator.translate(contextual_query)
-        if not structured_query.get("start_node"):
-            return self.retrieval_pipeline.run(contextual_query, window_size_override=0)
-        results = self.graph_retriever.retrieve(structured_query)
-        if not results:
-            return self.retrieval_pipeline.run(contextual_query, window_size_override=0)
-        answer = ", ".join([res['details']['node_id'] for res in results])
-        return {"answer": f"From the knowledge graph: {answer}", "source_documents": results}
-
-    def _get_cache_key(self, query: str, query_type: str) -> str:
-        """Generate a cache key for the query"""
-        # Simple cache key based on query and type
-        return f"{query_type}:{query.strip().lower()}"
+    def _get_cache_key(self, query: str) -> str:
+        """Generate a simple cache key."""
+        return query.strip().lower()
     
-    def _cache_result(self, cache_key: str, result: Dict[str, Any], session_id: Optional[str] = None):
-        """Cache a result with size limit"""
-        if len(self._query_cache) >= self._cache_max_size:
-            # Remove oldest entry (simple FIFO eviction)
-            oldest_key = next(iter(self._query_cache))
-            del self._query_cache[oldest_key]
-        
+    def _cache_result(self, cache_key: str, result: Dict[str, Any], query_embedding: np.ndarray, session_id: Optional[str] = None):
+        """Cache a result. TTLCache handles size/TTL."""
+        if query_embedding is None: return
         self._query_cache[cache_key] = {
             'result': result,
+            'embedding': query_embedding,
             'timestamp': time.time(),
             'session_id': session_id
         }
 
-    # ---------------- Public sync API (kept for backwards compatibility) --------------
-    def run(self, query: str, table_name: str = None, session_id: str = None, compose_sub_answers: Optional[bool] = None, query_decompose: Optional[bool] = None, ai_rerank: Optional[bool] = None, context_expand: Optional[bool] = None, max_retries: int = 1, event_callback: Optional[callable] = None) -> Dict[str, Any]:
-        """Synchronous helper. If *event_callback* is supplied, important
-        milestones will be forwarded to that callable as
+    def _format_query_with_history(self, query: str, history: list) -> str:
+        """Formats the user query with recent conversation history for context."""
+        if not history: return query
+        history_snippet = history[-3:] 
+        formatted_history = "\n".join([f"User: {turn['query']}\nAssistant: {turn['answer']}" for turn in history_snippet])
+        return f"--- Conversation History ---\n{formatted_history}\n---\nLatest User Query: \"{query}\""
 
-            event_callback(phase:str, payload:Any)
-        """
-        return asyncio.run(self._run_async(query, table_name, session_id, compose_sub_answers, query_decompose, ai_rerank, context_expand, max_retries, event_callback))
+    async def _triage_query_async(self, query: str) -> str:
+        """Uses Doc Overviews for RAG vs LLM routing. Returns 'USE_RAG' or 'DIRECT_LLM'."""
+        
+        # Simple pre-filter for basic chat. Consider making this list configurable.
+        simple_chat_starters = ["hi", "hello", "hey", "thanks", "thank you", "ok", "okay"]
+        if query.strip().lower() in simple_chat_starters:
+            log.info("Triage Decision: Simple Chat (Pre-Filter) -> DIRECT_LLM")
+            return "DIRECT_LLM"
 
-    # ---------------- Main async implementation --------------------------------------
-    async def _run_async(self, query: str, table_name: str = None, session_id: str = None, compose_sub_answers: Optional[bool] = None, query_decompose: Optional[bool] = None, ai_rerank: Optional[bool] = None, context_expand: Optional[bool] = None, max_retries: int = 1, event_callback: Optional[callable] = None) -> Dict[str, Any]:
-        start_time = time.time()
-        
-        # Emit analyze event at the start
-        if event_callback:
-            event_callback("analyze", {"query": query})
-        
-        # 🚀 NEW: Get conversation history
-        history = self.chat_histories.get(session_id, []) if session_id else []
-        
-        # The triage function now receives the raw query and the history separately
-        query_type = await self._triage_query_async(query, history)
-        print(f"Agent Triage Decision: '{query_type}'")
-        
-        # NEW: Decide early whether this turn needs any retrieval work
-        needs_rag = query_type in ("rag_query", "graph_query")
-        
-        # Create a contextual query that includes history for most operations
-        contextual_query = self._format_query_with_history(query, history)
-        raw_query = query.strip()
-        
-        # --- Apply runtime AI reranker override (must happen before any retrieval calls) ---
-        if ai_rerank is not None and needs_rag:
-            rr_cfg = self.retrieval_pipeline.config.setdefault("reranker", {})
-            rr_cfg["enabled"] = bool(ai_rerank)
-            if ai_rerank:
-                rr_cfg.setdefault("type", "ai")
-                rr_cfg.setdefault("strategy", "rerankers-lib")
-                rr_cfg.setdefault(
-                    "model_name",
-                    self.ollama_config.get("rerank_model", "answerai-colbert-small-v1"),
-                )
+        prompt = f"""Your task is to decide if a query should use our Knowledge Base (KB) or answer directly.
 
-        query_embedding = None
-        # 🚀 OPTIMIZED: Semantic Cache Check – only if we plan to run retrieval
-        if needs_rag:
-            text_embedder = self.retrieval_pipeline._get_text_embedder()
-            if text_embedder:
-                query_embedding_list = text_embedder.create_embeddings([raw_query])
-                if isinstance(query_embedding_list, np.ndarray):
-                    query_embedding = query_embedding_list[0]
-                else:
-                    query_embedding = np.array(query_embedding_list[0])
+CRITICAL PRINCIPLE: **When documents exist in the KB, strongly prefer USE_RAG unless the query is purely conversational or completely unrelated to any possible document content.**
 
-                cached_result = self._find_in_semantic_cache(query_embedding, session_id)
-                if cached_result:
-                    self.chat_histories.setdefault(session_id, []).append({"query": raw_query, "answer": cached_result["answer"]})
-                    return cached_result
+You MUST choose ONE decision:
+1.  **"USE_RAG"**: Choose this for ANY query that could potentially be answered by document content, including:
+    - Questions about documents, invoices, reports, data, amounts, dates, names, companies
+    - Requests to summarize, explain, or analyze anything
+    - Questions about "the document", "this file", or any specific information
+    - Any factual question that might relate to document content
+    - When in doubt, choose this option
 
-        # --- Route based on triage decision ---
-        if query_type == "needs_rag":
-            # Use RAG pipeline for document-related queries
-            final_result = await self._run_rag_pipeline(
-                contextual_query, table_name, compose_sub_answers, 
-                query_decompose, ai_rerank, context_expand, 
-                max_retries, event_callback
+2.  **"DIRECT_LLM"**: ONLY use this for:
+    - Simple greetings: "Hi", "Hello", "Thanks"
+    - Basic math: "What is 2+2?"
+    - General world knowledge clearly unrelated to documents: "Who is the president of France?"
+    - Weather, current events, or topics obviously not in documents
+
+--- Knowledge Base (KB) Content ---
+Our KB contains these types of documents:
+{self.overview_text}
+
+--- Decision Examples ---
+*   Query: "What is the total amount?" -> {{"decision": "USE_RAG"}} (document-specific)
+*   Query: "Can you summarize?" -> {{"decision": "USE_RAG"}} (document operation)
+*   Query: "What are the key features?" -> {{"decision": "USE_RAG"}} (could be about documents)
+*   Query: "Who is mentioned in the invoice?" -> {{"decision": "USE_RAG"}} (document content)
+*   Query: "What is the date?" -> {{"decision": "USE_RAG"}} (likely document date)
+*   Query: "Hi there" -> {{"decision": "DIRECT_LLM"}} (greeting only)
+*   Query: "What is 2+2?" -> {{"decision": "DIRECT_LLM"}} (pure math)
+*   Query: "Who is the US president?" -> {{"decision": "DIRECT_LLM"}} (world knowledge)
+
+**Remember: If ANY document might contain relevant information, use USE_RAG. Only use DIRECT_LLM for clearly unrelated queries.**
+
+User Query: "{query}"
+
+Respond ONLY with a valid JSON object: {{"decision": "<Your Choice Here>"}}"""
+
+        raw_response_text = "" # Keep track for logging
+        try:
+            # Auto-determine thinking setting for fast triage operations
+            thinking_enabled = get_thinking_setting(self.fast_model, "fast")
+            resp = await asyncio.to_thread(
+                self.llm_client.generate_completion,
+                model=self.fast_model, prompt=prompt, format="json", enable_thinking=thinking_enabled
             )
-        elif query_type == "direct_answer":
-            # For overview-based direct answers, extract from overviews
-            if self.doc_overviews:
-                overview_text = "\n\n".join(f"--- Overview {i+1} ---\n{o}" for i, o in enumerate(self.doc_overviews))
-                if event_callback:
-                    answer_parts = []
-                    for token in self.llm_client.stream_completion(
-                        model=self.ollama_config["enrichment_model"],  # Use qwen3:0.6b for speed
-                        prompt=f"""
-You are a precise information extractor. Extract the exact factual answer from the document summaries below.
+            raw_response_text = resp.get("response", "{}").strip()
+            log.debug(f"Triage Raw LLM Response: '{raw_response_text}'")
 
-CRITICAL INSTRUCTIONS:
-- Provide ONLY the direct factual answer
-- Do NOT include thinking, reasoning, or explanations
-- Do NOT use <think> tags or show your work
-- If asking for an address, provide just the address
-- If asking for a number, provide just the number
-- Be concise and factual
+            # Handle markdown code blocks if the LLM adds them.
+            if raw_response_text.startswith("```json"):
+                 raw_response_text = raw_response_text.split("```json")[1].split("```")[0].strip()
+            elif raw_response_text.startswith("`"):
+                raw_response_text = raw_response_text.strip("`").strip()
 
-Document Summaries:
-{overview_text}
-
-User Query: {query}
-
-Direct Answer (factual information only):
-""",
-                        enable_thinking=False  # Explicitly disable chain-of-thought
-                    ):
-                        answer_parts.append(token)
-                        event_callback("token", {"text": token})
-                    final_answer = "".join(answer_parts)
-                else:
-                    final_answer = self._answer_from_overviews(query, overview_text)
-            else:
-                # Fallback to general chat if no overviews available
-                final_answer = self._answer_general_chat(query)
-            final_result = {"answer": final_answer, "source_documents": []}
-        else:
-            # Fallback for any unexpected triage results - use direct answer approach
-            final_answer = self._answer_general_chat(query)
-            final_result = {"answer": final_answer, "source_documents": []}
-
-        # --- Verification Step ---
-        # Only run verification if the result came from a RAG pipeline and has source documents.
-        if self.pipeline_configs.get("verification", {}).get("enabled", True) and final_result.get("source_documents"):
-            context_str = "\n".join([doc['text'] for doc in final_result['source_documents']])
-            if context_str: # Ensure context is not empty
-                print("\n--- Verifying final answer against sources ---")
-                verification = await self.verifier.verify_async(contextual_query, context_str, final_result['answer'])
-                
-                # Append confidence score to the answer
-                score = verification.confidence_score
-                final_result['answer'] += f" [Confidence: {score}%]"
-                
-                if not verification.is_grounded or score < 50:
-                     final_result['answer'] += f" [Warning: Low confidence. Groundedness: {verification.is_grounded}]"
-                print(f"✅ Verification complete. Grounded: {verification.is_grounded}, Score: {score}%")
-            else:
-                print("⚠️ Skipping verification because context from source documents is empty.")
-        else:
-            print("- Skipping verification step (not applicable or disabled).")
-
-        # Cache the final result (using raw query as key)
-        if needs_rag and query_embedding is not None:
-            cache_key = self._get_cache_key(raw_query, query_type)
-            result_to_cache = final_result.copy()
-            result_to_cache['embedding'] = query_embedding
-            self._cache_result(cache_key, result_to_cache, session_id)
+            data = json.loads(raw_response_text)
+            decision = data.get("decision")
             
-        # Add the final answer to the conversation history
-        if session_id:
-            self.chat_histories.setdefault(session_id, []).append({"query": raw_query, "answer": final_result["answer"]})
+            if decision in ["USE_RAG", "DIRECT_LLM"]:
+                log.info(f"Triage Decision: {decision} for query '{query}'")
+                return decision
+            else:
+                 # Default to RAG as 'safe' if JSON is bad, but log a warning.
+                 log.warning(f"Triage: LLM returned invalid JSON or decision '{decision}'. Defaulting to USE_RAG.")
+                 return "USE_RAG" 
+        except Exception as e:
+            log.error(f"Triage call or JSON parsing failed: {e}. Raw Response: '{raw_response_text}'. Defaulting to USE_RAG.", exc_info=True)
+            return "USE_RAG" # Safe default on any error.
 
-        end_time = time.time()
-        print(f"Agent loop took {end_time - start_time:.2f} seconds.")
-        return final_result
+    async def _answer_direct_llm_async(self, query_with_history: str) -> str:
+        """Generates a direct answer using LLM (Fast Model), no RAG."""
+        prompt = f"You are a helpful AI Assistant. Provide a direct, concise answer to the latest user query, using history for context: {query_with_history}"
+        try:
+            # Use fast operation thinking setting for direct answers
+            thinking_enabled = get_thinking_setting(self.fast_model, "fast")
+            resp = await asyncio.to_thread(
+                self.llm_client.generate_completion, 
+                model=self.fast_model, 
+                prompt=prompt,
+                enable_thinking=thinking_enabled
+            )
+            return resp.get("response", "I am sorry, I could not formulate an answer.")
+        except Exception as e:
+            log.error(f"Direct LLM call failed: {e}", exc_info=True)
+            return "I encountered an issue while generating an answer."
 
-    async def _run_rag_pipeline(self, query: str, table_name: str, compose_sub_answers: bool, query_decompose: bool, ai_rerank: bool, context_expand: bool, max_retries: int, event_callback: callable) -> Dict[str, Any]:
-        """Helper to run the RAG pipeline with all its options."""
-        
+    def _run_rag_sub_query_sync(self, sub_query: str, table_name: Optional[str], window_size: Optional[int], max_retries: int) -> Dict[str, Any]:
+        """Sync wrapper to run one RAG call with basic retries. For ThreadPool use."""
+        for attempt in range(max_retries):
+            try:
+                # Assuming retrieval_pipeline.run is SYNC
+                return self.retrieval_pipeline.run(sub_query, table_name, window_size, None)
+            except Exception as e:
+                log.warning(f"Sub-query '{sub_query}' attempt {attempt+1}/{max_retries} failed: {e}")
+                if attempt + 1 >= max_retries:
+                    log.error(f"Sub-query '{sub_query}' FAILED after {max_retries} attempts.")
+                    return {"answer": f"Failed to process: '{sub_query}'.", "source_documents": []}
+                time.sleep(0.5) # Simple backoff before retry
+        return {"answer": "Error: Max retries loop finished unexpectedly.", "source_documents": []}
+
+    async def _run_rag_pipeline_async(self, raw_query: str, contextual_query: str, table_name: Optional[str], query_decompose_override: Optional[bool], context_expand: Optional[bool], max_retries: int, event_callback: Optional[Callable]) -> Dict[str, Any]:
+        """Runs RAG, handles decomposition, and uses async/threads."""
         query_decomp_config = self.pipeline_configs.get("query_decomposition", {})
         decomp_enabled = query_decomp_config.get("enabled", False)
-        if query_decompose is not None:
-            decomp_enabled = query_decompose
+        if query_decompose_override is not None:
+            decomp_enabled = query_decompose_override
+            
+        window_size = 0 if context_expand is False else None
+        
+        # Use contextual query if not decomposing, otherwise raw query for sub-queries
+        query_to_run = contextual_query if not decomp_enabled else raw_query
 
         if not decomp_enabled:
-            # If decomposition is disabled, run a standard single retrieval.
-            window_size = 0 if context_expand is False else None
             return await asyncio.to_thread(
-                self.retrieval_pipeline.run,
-                query=query,
-                table_name=table_name,
-                window_size_override=window_size,
-                event_callback=event_callback
+                self._run_rag_sub_query_sync, query_to_run, table_name, window_size, max_retries
             )
 
-        # --- Query Decomposition is Enabled ---
-        print(f"\n--- Query Decomposition Enabled ---")
-        # Use the raw user query (without conversation history) for decomposition to avoid leakage of prior context
-        # Note: the `query` param to this function is already the contextual_query from the main loop.
-        # We need the original raw query for decomposition. This is a bit awkward. Let's assume for now
-        # the contextual query is okay for decomposition, but this could be improved.
-        sub_queries = self.query_decomposer.decompose(query)
-        if event_callback:
-            event_callback("decomposition", {"sub_queries": sub_queries})
-        print(f"Decomposed query into {len(sub_queries)} sub-queries: {sub_queries}")
+        log.info("RAG: Query Decomposition Enabled.")
+        sub_queries = await asyncio.to_thread(self.query_decomposer.decompose, raw_query)
+        if not sub_queries: sub_queries = [raw_query]
+        if event_callback: event_callback("decomposition", {"sub_queries": sub_queries})
+        log.info(f"Decomposed into {len(sub_queries)} queries: {sub_queries}")
 
-        # If decomposition produced only a single sub-query, skip parallel execution.
         if len(sub_queries) == 1:
-            print("--- Only one sub-query; using direct retrieval path ---")
-            window_size = 0 if context_expand is False else None
-            result = await asyncio.to_thread(
-                self.retrieval_pipeline.run,
-                sub_queries[0],
-                table_name,
-                window_size_override=window_size,
-                event_callback=event_callback
+            log.info("Only one sub-query; using direct RAG path.")
+            return await asyncio.to_thread(
+                self._run_rag_sub_query_sync, sub_queries[0], table_name, window_size, max_retries
             )
-            if event_callback:
-                event_callback("single_query_result", result)
-            return result
 
-        # --- Parallel Sub-Query Execution ---
-        compose_from_sub_answers = query_decomp_config.get("compose_from_sub_answers", True)
-        if compose_sub_answers is not None:
-            compose_from_sub_answers = compose_sub_answers
-
-        print(f"\n--- Processing {len(sub_queries)} sub-queries in parallel ---")
-        start_time_inner = time.time()
-
-        sub_answers = []
-        all_source_docs = []
-        citations_seen = set()
-
-        def make_cb(idx: int):
-            def _cb(ev_type: str, payload):
-                if event_callback:
-                    if ev_type == "token":
-                        event_callback("sub_query_token", {"index": idx, "text": payload.get("text", ""), "question": sub_queries[idx]})
-                    else:
-                        event_callback(ev_type, payload)
-            return _cb
-
-        # This must run in a thread pool because the underlying pipeline run is sync
+        log.info(f"Processing {len(sub_queries)} sub-queries in parallel...")
+        loop = asyncio.get_running_loop()
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(3, len(sub_queries))) as executor:
-            window_size = 0 if context_expand is False else None
-            future_to_query = {
-                executor.submit(
-                    self.retrieval_pipeline.run,
-                    sub_query,
-                    table_name,
-                    window_size,
-                    make_cb(i),
-                ): (i, sub_query)
-                for i, sub_query in enumerate(sub_queries)
-            }
-
-            for future in concurrent.futures.as_completed(future_to_query):
-                i, sub_query = future_to_query[future]
-                try:
-                    sub_result = future.result()
-                    print(f"✅ Sub-Query {i+1} completed: '{sub_query}'")
-                    if event_callback:
-                        event_callback("sub_query_result", {"index": i, "query": sub_query, "answer": sub_result.get("answer", ""), "source_documents": sub_result.get("source_documents", [])})
-                    
-                    sub_answers.append({"question": sub_query, "answer": sub_result.get("answer", "")})
-                    for doc in sub_result.get("source_documents", [])[:5]:
-                        if doc['chunk_id'] not in citations_seen:
-                            all_source_docs.append(doc)
-                            citations_seen.add(doc['chunk_id'])
-                except Exception as e:
-                    print(f"❌ Sub-Query {i+1} failed: '{sub_query}' - {e}")
+            futures = [
+                loop.run_in_executor(executor, self._run_rag_sub_query_sync, sq, table_name, window_size, max_retries) 
+                for sq in sub_queries
+            ]
+            sub_results = await asyncio.gather(*futures, return_exceptions=True)
         
-        parallel_time = time.time() - start_time_inner
-        print(f"🚀 Parallel processing completed in {parallel_time:.2f}s")
-        
-        # --- Final Answer Composition ---
-        print("\n--- Composing final answer from sub-answers ---")
-        compose_prompt = f"""
-You are an expert answer composer. Your task is to synthesize a single, cohesive answer from a set of question-answer pairs generated by a previous step.
-- Use ONLY the information from the provided sub-answers.
-- If the original question involves a comparison, clearly state the outcome.
-- If a sub-answer is not relevant, ignore it.
-- If the sub-answers are insufficient, state that the information could not be found.
+        sub_answers, all_source_docs, citations_seen = [], [], set()
+        for i, res in enumerate(sub_results):
+            sub_query = sub_queries[i]
+            if isinstance(res, Exception):
+                log.error(f"Sub-Query {i+1} ('{sub_query}') execution failed: {res}", exc_info=True)
+                sub_answers.append({"question": sub_query, "answer": f"Error Processing Sub-Query."})
+            else:
+                log.info(f"Sub-Query {i+1} completed: '{sub_query}'")
+                sub_answers.append({"question": sub_query, "answer": res.get("answer", "")})
+                for doc in res.get("source_documents", []):
+                    doc_id = doc.get('chunk_id')
+                    if doc_id and doc_id not in citations_seen:
+                        all_source_docs.append(doc); citations_seen.add(doc_id)
+                if event_callback: event_callback("sub_query_result", {"index": i, "query": sub_query, "answer": res.get("answer", ""), "source_documents": res.get("source_documents", [])})
 
-Original Question: "{query}"
-Sub-Answers:
-{json.dumps(sub_answers, indent=2)}
-
-Final Answer:
-"""
-        final_answer_parts = []
-        for tok in self.llm_client.stream_completion(model=self.ollama_config["generation_model"], prompt=compose_prompt):
-            final_answer_parts.append(tok)
-            if event_callback:
-                event_callback("token", {"text": tok})
+        log.info("Composing final answer from sub-answers...")
+        compose_prompt = f"""You are an expert answer composer. Synthesize a single, cohesive answer from sub-answers. Use ONLY information from them.
+Original Question: "{raw_query}"
+Sub-Answers: {json.dumps(sub_answers, indent=2)}
+Final Answer:"""
+        final_answer_resp = await asyncio.to_thread(
+             self.llm_client.generate_completion, model=self.gen_model, prompt=compose_prompt, enable_thinking=None
+        )
+        final_answer = final_answer_resp.get("response", "Unable to generate a final answer.")
         
-        final_answer = "".join(final_answer_parts) or "Unable to generate a final answer."
         result = {"answer": final_answer, "source_documents": all_source_docs}
-        if event_callback:
-            event_callback("final_answer", result)
-            
+        if event_callback: event_callback("final_answer", result)
         return result
 
-    def _route_via_overviews(self, query: str) -> str | None:
-        """
-        Simplified overview-based router for binary triage system.
-        Returns either "needs_rag" or "direct_answer".
-        """
-        if not self.doc_overviews: return None # Should not happen if called correctly
-
-        # Present the overviews to the LLM
-        overview_text = "\n\n".join(f"--- Overview {i+1} ---\n{o}" for i, o in enumerate(self.doc_overviews))
-
-        prompt = f"""
-You are an expert routing agent. Analyze the user's query and the document overviews to decide how to respond.
-
-Choose **exactly one** of these options:
-
-1. "needs_rag" – The query requires retrieving specific information from the full documents. Use this when:
-   - Query asks for specific details, quotes, or data not fully present in overviews
-   - Query mentions "the document", "the paper", "the invoice", etc.
-   - Overviews contain relevant info but not the complete answer
-   - When in doubt, choose this option
-
-2. "direct_answer" – The overviews ALREADY contain a complete and sufficient answer. Use this when:
-   - The answer is clearly and fully present in the overviews
-   - No additional document retrieval is needed
-   - Simple factual questions where the summary is enough
-
-If the query is completely unrelated to the documents, choose "needs_rag" (it will be handled by the general triage system).
-
-Document Overviews:
-{overview_text}
-
-User Query: "{query}"
-
-Respond with JSON: {{"action": "<needs_rag|direct_answer>", "reasoning": "<brief explanation>"}}
-"""
-
-        # Call the LLM
-        resp = self.llm_client.generate_completion(
-            model=self.ollama_config["generation_model"],
-            prompt=prompt,
-            format="json",
-            enable_thinking=False  # Disable thinking for faster routing
-        )
-        
+    def run(self, query: str, table_name: str = None, session_id: str = None, compose_sub_answers: Optional[bool] = None, query_decompose: Optional[bool] = None, ai_rerank: Optional[bool] = None, context_expand: Optional[bool] = None, max_retries: int = 1, event_callback: Optional[callable] = None) -> Dict[str, Any]:
+        """Synchronous entry point. Runs the main async logic."""
+        log.info(f"Agent Run Start (Sync Wrapper): Q='{query[:50]}...' SID={session_id}")
         try:
-            choice_data = _json.loads(resp.get("response", "{}"))
-            action = choice_data.get("action")
-            reasoning = choice_data.get("reasoning", "No reasoning provided.")
-            print(f"Overview Router Decision: '{action}'. Reason: {reasoning}")
+            return asyncio.run(self._run_async(query, table_name, session_id, compose_sub_answers, query_decompose, ai_rerank, context_expand, max_retries, event_callback))
+        except RuntimeError as e:
+             if "Cannot run the event loop while another loop is running" in str(e):
+                 log.error("ASYNC ERROR: Cannot use Agent.run() if an asyncio loop is already running. Call Agent._run_async() directly with `await`.")
+                 return {"answer": "System Error: Event loop conflict.", "source_documents": []}
+             else:
+                 log.critical(f"Agent.run encountered critical error: {e}", exc_info=True)
+                 return {"answer": f"A system error occurred: {e}", "source_documents": []}
+        except Exception as e:
+            log.critical(f"Agent.run encountered critical error: {e}", exc_info=True)
+            return {"answer": f"A system error occurred: {e}", "source_documents": []}
 
-            if action == "needs_rag":
-                return "needs_rag"
-            elif action == "direct_answer":
-                # Return "direct_answer" - the main logic will handle generating the response
-                return "direct_answer"
+    async def _run_async(self, query: str, table_name: Optional[str], session_id: Optional[str], compose_sub_answers: Optional[bool], query_decompose: Optional[bool], ai_rerank: Optional[bool], context_expand: Optional[bool], max_retries: int, event_callback: Optional[Callable]) -> Dict[str, Any]:
+        start_time = time.time()
+        raw_query = query.strip()
+        query_embedding = None
+        final_result = {"answer": "An error occurred during processing.", "source_documents": []}
+        cached_result = None # Track if we hit cache
+
+        if not raw_query: return {"answer": "Please provide a query.", "source_documents": []}
+        if event_callback: event_callback("analyze", {"query": raw_query})
+        
+        history = self.chat_histories.get(session_id, []) if session_id else []
+        route_decision = await self._triage_query_async(raw_query)
+        contextual_query = self._format_query_with_history(raw_query, history)
+        is_rag_flow = (route_decision == "USE_RAG")
+        cache_key = self._get_cache_key(raw_query)
+        
+        if is_rag_flow:
+            if hasattr(self.retrieval_pipeline, '_get_text_embedder'):
+                text_embedder = self.retrieval_pipeline._get_text_embedder()
+                if text_embedder:
+                    try:
+                        embeddings = await asyncio.to_thread(text_embedder.create_embeddings, [raw_query])
+                        if embeddings is not None and len(embeddings) > 0:
+                            query_embedding = np.array(embeddings[0])
+                        else:
+                            query_embedding = None
+                    except Exception as e: 
+                        log.error(f"Embedding failed: {e}", exc_info=True)
+                        query_embedding = None
+            
+            cached_result = self._find_in_semantic_cache(query_embedding, session_id)
+            if cached_result:
+                final_result = cached_result # Use cached result
             else:
-                # Fallback to RAG if unexpected response
-                return "needs_rag"
-        except Exception:
-            # If JSON parsing fails, default to the safest option
-            return "needs_rag"
+                 # RAG logic, only if NOT cached
+                 if ai_rerank is not None and hasattr(self.retrieval_pipeline, 'config'):
+                     log.info(f"Applying AI Rerank Override: {ai_rerank}")
+                     rr_cfg = self.retrieval_pipeline.config.setdefault("reranker", {})
+                     rr_cfg["enabled"] = bool(ai_rerank)
 
-        return "needs_rag" # Fallback
+                 final_result = await self._run_rag_pipeline_async(
+                    raw_query, contextual_query, table_name, query_decompose, 
+                    context_expand, max_retries, event_callback
+                 )
+        else: # DIRECT_LLM Flow
+            final_answer = await self._answer_direct_llm_async(contextual_query)
+            final_result = {"answer": final_answer, "source_documents": []}
 
-    def _answer_from_overviews(self, query: str, overview_text: str) -> str:
-        """
-        If the router decides the answer is in the overviews, this function
-        generates that answer using the smaller, faster model.
-        """
-        prompt = f"""
-You are a precise information extractor. Extract the exact factual answer from the document summaries below.
+        # Verification (Only for RAG results NOT from cache)
+        verify_enabled = self.pipeline_configs.get("verification", {}).get("enabled", True)
+        if is_rag_flow and final_result.get("source_documents") and verify_enabled and not cached_result:
+            context_str = "\n".join([doc.get('text', '') for doc in final_result['source_documents']]).strip()
+            if context_str:
+                log.info("Verifying final answer against sources...")
+                try:
+                    verification = await self.verifier.verify_async(raw_query, context_str, final_result['answer'])
+                    score = verification.confidence_score
+                    final_result['answer'] += f" [Confidence: {score:.1f}%]"
+                    if not verification.is_grounded or score < 50: final_result['answer'] += " [Groundedness: Low]"
+                    log.info(f"Verification complete. Grounded: {verification.is_grounded}, Score: {score:.1f}%")
+                except Exception as e:
+                    log.error(f"Verification call failed: {e}", exc_info=True)
+                    final_result['answer'] += " [Verification Failed]"
+            else: log.warning("Skipping verification because RAG context text is empty.")
 
-CRITICAL INSTRUCTIONS:
-- Provide ONLY the direct factual answer
-- Do NOT include thinking, reasoning, or explanations
-- Do NOT use <think> tags or show your work
-- If asking for an address, provide just the address
-- If asking for a number, provide just the number
-- Be concise and factual
+        # Cache only if RAG, has embedding, and wasn't a cache hit.
+        if is_rag_flow and query_embedding is not None and not cached_result:
+            self._cache_result(cache_key, final_result, query_embedding, session_id)
+            
+        # Update History
+        if session_id:
+            history_list = self.chat_histories.setdefault(session_id, [])
+            history_list.append({"query": raw_query, "answer": final_result.get("answer", "")})
+            self.chat_histories[session_id] = history_list
 
-Document Summaries:
-{overview_text}
+        end_time = time.time()
+        log.info(f"Agent loop finished in {end_time - start_time:.2f}s. Answer: '{final_result.get('answer', '')[:50]}...'")
+        return final_result
 
-User Query: {query}
-
-Direct Answer (factual information only):
-"""
-        resp = self.llm_client.generate_completion(
-            model=self.ollama_config["enrichment_model"],  # Use qwen3:0.6b for speed
-            prompt=prompt,
-            enable_thinking=False  # Explicitly disable chain-of-thought
-        )
-        return resp.get("response", "I am sorry, I could not formulate an answer.")
-
-    def _answer_general_chat(self, query: str) -> str:
-        """
-        Generates a free-form answer using general knowledge (no document constraints)
-        Uses the smaller, faster qwen3:0.6b model with think=False for optimal performance
-        """
-        prompt = f"""
-You are a helpful AI assistant. Provide a direct, concise answer to the user's query.
-
-CRITICAL INSTRUCTIONS:
-- Provide ONLY the direct answer
-- Do NOT include thinking, reasoning, or explanations
-- Do NOT use <think> tags or show your work
-- Be natural, friendly, and concise
-- For greetings, respond warmly and offer help
-
-User Query: "{query}"
-
-Direct Answer:
-"""
-        resp = self.llm_client.generate_completion(
-            model=self.ollama_config["enrichment_model"],  # Use qwen3:0.6b for speed
-            prompt=prompt,
-            enable_thinking=False  # Explicitly disable chain-of-thought
-        )
-        return resp.get("response", "I am sorry, I could not formulate an answer.")
-
+    # Kept for signature, but streaming is not supported.
     def stream_agent_response(self, query: str, session_id: str):
-        """High-level streaming entry point."""
-        # ... existing code ...
+        log.warning("Agent.stream_agent_response is NOT supported in this version.")
+        raise NotImplementedError("Live token streaming requires native async components.")
+
+    async def stream_agent_response_async(self, query: str, table_name: str = None, session_id: str = None, compose_sub_answers: Optional[bool] = None, query_decompose: Optional[bool] = None, ai_rerank: Optional[bool] = None, context_expand: Optional[bool] = None, max_retries: int = 1, event_callback: Optional[Callable] = None):
+        """
+        Streaming version of the agent response that preserves all existing logic.
+        Yields events for sub-queries, final answer tokens, and completion.
+        """
+        start_time = time.time()
+        raw_query = query.strip()
+        query_embedding = None
+        final_result = {"answer": "An error occurred during processing.", "source_documents": []}
+        cached_result = None
+
+        if not raw_query:
+            if event_callback: event_callback("error", {"message": "Please provide a query."})
+            return {"answer": "Please provide a query.", "source_documents": []}
+        
+        if event_callback: event_callback("analyze", {"query": raw_query})
+        
+        history = self.chat_histories.get(session_id, []) if session_id else []
+        route_decision = await self._triage_query_async(raw_query)
+        contextual_query = self._format_query_with_history(raw_query, history)
+        is_rag_flow = (route_decision == "USE_RAG")
+        cache_key = self._get_cache_key(raw_query)
+        
+        if is_rag_flow:
+            if hasattr(self.retrieval_pipeline, '_get_text_embedder'):
+                text_embedder = self.retrieval_pipeline._get_text_embedder()
+                if text_embedder:
+                    try:
+                        embeddings = await asyncio.to_thread(text_embedder.create_embeddings, [raw_query])
+                        if embeddings is not None and len(embeddings) > 0:
+                            query_embedding = np.array(embeddings[0])
+                        else:
+                            query_embedding = None
+                    except Exception as e: 
+                        log.error(f"Embedding failed: {e}", exc_info=True)
+                        query_embedding = None
+            
+            cached_result = self._find_in_semantic_cache(query_embedding, session_id)
+            if cached_result:
+                final_result = cached_result
+                if event_callback: event_callback("cache_hit", {"result": final_result})
+            else:
+                # RAG logic with streaming support
+                if ai_rerank is not None and hasattr(self.retrieval_pipeline, 'config'):
+                    log.info(f"Applying AI Rerank Override: {ai_rerank}")
+                    rr_cfg = self.retrieval_pipeline.config.setdefault("reranker", {})
+                    rr_cfg["enabled"] = bool(ai_rerank)
+
+                final_result = await self._run_rag_pipeline_streaming_async(
+                   raw_query, contextual_query, table_name, query_decompose, 
+                   context_expand, max_retries, event_callback
+                )
+        else: # DIRECT_LLM Flow with streaming
+            if event_callback: event_callback("direct_llm_start", {"query": contextual_query})
+            final_answer = await self._answer_direct_llm_streaming_async(contextual_query, event_callback)
+            final_result = {"answer": final_answer, "source_documents": []}
+
+        # Verification (Only for RAG results NOT from cache)
+        verify_enabled = self.pipeline_configs.get("verification", {}).get("enabled", True)
+        if is_rag_flow and final_result.get("source_documents") and verify_enabled and not cached_result:
+            context_str = "\n".join([doc.get('text', '') for doc in final_result['source_documents']]).strip()
+            if context_str:
+                log.info("Verifying final answer against sources...")
+                if event_callback: event_callback("verification_start", {})
+                try:
+                    verification = await self.verifier.verify_async(raw_query, context_str, final_result['answer'])
+                    score = verification.confidence_score
+                    final_result['answer'] += f" [Confidence: {score:.1f}%]"
+                    if not verification.is_grounded or score < 50: final_result['answer'] += " [Groundedness: Low]"
+                    log.info(f"Verification complete. Grounded: {verification.is_grounded}, Score: {score:.1f}%")
+                    if event_callback: event_callback("verification_done", {"score": score, "grounded": verification.is_grounded})
+                except Exception as e:
+                    log.error(f"Verification call failed: {e}", exc_info=True)
+                    final_result['answer'] += " [Verification Failed]"
+                    if event_callback: event_callback("verification_error", {"error": str(e)})
+            else: 
+                log.warning("Skipping verification because RAG context text is empty.")
+
+        # Cache only if RAG, has embedding, and wasn't a cache hit.
+        if is_rag_flow and query_embedding is not None and not cached_result:
+            self._cache_result(cache_key, final_result, query_embedding, session_id)
+            
+        # Update History
+        if session_id:
+            history_list = self.chat_histories.setdefault(session_id, [])
+            history_list.append({"query": raw_query, "answer": final_result.get("answer", "")})
+            self.chat_histories[session_id] = history_list
+
+        end_time = time.time()
+        log.info(f"Agent loop finished in {end_time - start_time:.2f}s. Answer: '{final_result.get('answer', '')[:50]}...'")
+        
+        if event_callback: event_callback("complete", final_result)
+        return final_result
+
+    async def _answer_direct_llm_streaming_async(self, query_with_history: str, event_callback: Optional[Callable] = None) -> str:
+        """Generates a direct answer using LLM with streaming support."""
+        prompt = f"You are a helpful AI Assistant. Provide a direct, concise answer to the latest user query, using history for context: {query_with_history}"
+        try:
+            # Use fast operation thinking setting for streaming direct answers
+            thinking_enabled = get_thinking_setting(self.fast_model, "fast")
+            answer_parts = []
+            async for token in self.llm_client.stream_completion_async(
+                model=self.fast_model, 
+                prompt=prompt,
+                enable_thinking=thinking_enabled
+            ):
+                answer_parts.append(token)
+                if event_callback: event_callback("token", {"text": token})
+            
+            return "".join(answer_parts)
+        except Exception as e:
+            log.error(f"Direct LLM streaming call failed: {e}", exc_info=True)
+            return "I encountered an issue while generating an answer."
+
+    async def _run_rag_pipeline_streaming_async(self, raw_query: str, contextual_query: str, table_name: Optional[str], query_decompose_override: Optional[bool], context_expand: Optional[bool], max_retries: int, event_callback: Optional[Callable]) -> Dict[str, Any]:
+        """Streaming version of RAG pipeline that preserves all existing logic."""
+        query_decomp_config = self.pipeline_configs.get("query_decomposition", {})
+        decomp_enabled = query_decomp_config.get("enabled", False)
+        if query_decompose_override is not None:
+            decomp_enabled = query_decompose_override
+            
+        window_size = 0 if context_expand is False else None
+        
+        # Use contextual query if not decomposing, otherwise raw query for sub-queries
+        query_to_run = contextual_query if not decomp_enabled else raw_query
+
+        if not decomp_enabled:
+            if event_callback: event_callback("single_query_start", {"query": query_to_run})
+            return await self._run_rag_sub_query_streaming_async(query_to_run, table_name, window_size, max_retries, event_callback)
+
+        log.info("RAG: Query Decomposition Enabled.")
+        if event_callback: event_callback("decomposition_start", {"query": raw_query})
+        
+        sub_queries = await asyncio.to_thread(self.query_decomposer.decompose, raw_query)
+        if not sub_queries: sub_queries = [raw_query]
+        if event_callback: event_callback("decomposition", {"sub_queries": sub_queries})
+        log.info(f"Decomposed into {len(sub_queries)} queries: {sub_queries}")
+
+        if len(sub_queries) == 1:
+            log.info("Only one sub-query; using direct RAG path.")
+            if event_callback: event_callback("single_subquery", {"query": sub_queries[0]})
+            return await self._run_rag_sub_query_streaming_async(sub_queries[0], table_name, window_size, max_retries, event_callback)
+
+        log.info(f"Processing {len(sub_queries)} sub-queries in parallel...")
+        if event_callback: event_callback("parallel_start", {"count": len(sub_queries)})
+        
+        # Process sub-queries in parallel but collect streaming events
+        loop = asyncio.get_running_loop()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(3, len(sub_queries))) as executor:
+            futures = [
+                loop.run_in_executor(executor, self._run_rag_sub_query_sync, sq, table_name, window_size, max_retries) 
+                for sq in sub_queries
+            ]
+            sub_results = await asyncio.gather(*futures, return_exceptions=True)
+        
+        sub_answers, all_source_docs, citations_seen = [], [], set()
+        for i, res in enumerate(sub_results):
+            sub_query = sub_queries[i]
+            if isinstance(res, Exception):
+                log.error(f"Sub-Query {i+1} ('{sub_query}') execution failed: {res}", exc_info=True)
+                sub_answers.append({"question": sub_query, "answer": f"Error Processing Sub-Query."})
+                if event_callback: event_callback("sub_query_error", {"index": i, "query": sub_query, "error": str(res)})
+            else:
+                log.info(f"Sub-Query {i+1} completed: '{sub_query}'")
+                sub_answers.append({"question": sub_query, "answer": res.get("answer", "")})
+                for doc in res.get("source_documents", []):
+                    doc_id = doc.get('chunk_id')
+                    if doc_id and doc_id not in citations_seen:
+                        all_source_docs.append(doc); citations_seen.add(doc_id)
+                if event_callback: event_callback("sub_query_result", {"index": i, "query": sub_query, "answer": res.get("answer", ""), "source_documents": res.get("source_documents", [])})
+
+        log.info("Composing final answer from sub-answers...")
+        if event_callback: event_callback("composition_start", {"sub_answers": sub_answers})
+        
+        compose_prompt = f"""You are an expert answer composer. Synthesize a single, cohesive answer from sub-answers. Use ONLY information from them.
+Original Question: "{raw_query}"
+Sub-Answers: {json.dumps(sub_answers, indent=2)}
+Final Answer:"""
+        
+        # Stream the final answer composition - use reasoning mode for complex synthesis
+        thinking_enabled = get_thinking_setting(self.gen_model, "reasoning")
+        answer_parts = []
+        async for token in self.llm_client.stream_completion_async(
+            model=self.gen_model, 
+            prompt=compose_prompt,
+            enable_thinking=thinking_enabled
+        ):
+            answer_parts.append(token)
+            if event_callback: event_callback("token", {"text": token})
+        
+        final_answer = "".join(answer_parts)
+        
+        result = {"answer": final_answer, "source_documents": all_source_docs}
+        if event_callback: event_callback("final_answer", result)
+        return result
+
+    async def _run_rag_sub_query_streaming_async(self, sub_query: str, table_name: Optional[str], window_size: Optional[int], max_retries: int, event_callback: Optional[Callable] = None) -> Dict[str, Any]:
+        """Streaming wrapper for individual sub-query processing."""
+        for attempt in range(max_retries):
+            try:
+                # Create a streaming event callback wrapper for the retrieval pipeline
+                def streaming_callback(event_type: str, data: Dict[str, Any]):
+                    if event_callback:
+                        event_callback(event_type, data)
+                
+                # Use the existing retrieval pipeline but with streaming callback
+                return await asyncio.to_thread(
+                    self.retrieval_pipeline.run, 
+                    sub_query, 
+                    table_name, 
+                    window_size, 
+                    streaming_callback
+                )
+            except Exception as e:
+                log.warning(f"Sub-query '{sub_query}' attempt {attempt+1}/{max_retries} failed: {e}")
+                if attempt + 1 >= max_retries:
+                    log.error(f"Sub-query '{sub_query}' FAILED after {max_retries} attempts.")
+                    return {"answer": f"Failed to process: '{sub_query}'.", "source_documents": []}
+                time.sleep(0.5)
+        return {"answer": "Error: Max retries loop finished unexpectedly.", "source_documents": []}
