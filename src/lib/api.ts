@@ -183,7 +183,20 @@ class ChatAPI {
   async sendSessionMessage(
     sessionId: string,
     message: string,
-    opts: { model?: string; composeSubAnswers?: boolean; decompose?: boolean; aiRerank?: boolean; contextExpand?: boolean; verify?: boolean } = {}
+    opts: { 
+      model?: string; 
+      composeSubAnswers?: boolean; 
+      decompose?: boolean; 
+      aiRerank?: boolean; 
+      contextExpand?: boolean; 
+      verify?: boolean;
+      // ✨ NEW RETRIEVAL PARAMETERS
+      retrievalK?: number;
+      contextWindowSize?: number;
+      rerankerTopK?: number;
+      searchType?: string;
+      denseWeight?: number;
+    } = {}
   ): Promise<SessionChatResponse & { source_documents: any[] }> {
     try {
       const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/messages`, {
@@ -199,6 +212,12 @@ class ChatAPI {
           ...(typeof opts.aiRerank === 'boolean' && { ai_rerank: opts.aiRerank }),
           ...(typeof opts.contextExpand === 'boolean' && { context_expand: opts.contextExpand }),
           ...(typeof opts.verify === 'boolean' && { verify: opts.verify }),
+          // ✨ ADD NEW RETRIEVAL PARAMETERS
+          ...(typeof opts.retrievalK === 'number' && { retrieval_k: opts.retrievalK }),
+          ...(typeof opts.contextWindowSize === 'number' && { context_window_size: opts.contextWindowSize }),
+          ...(typeof opts.rerankerTopK === 'number' && { reranker_top_k: opts.rerankerTopK }),
+          ...(typeof opts.searchType === 'string' && { search_type: opts.searchType }),
+          ...(typeof opts.denseWeight === 'number' && { dense_weight: opts.denseWeight }),
         }),
       });
 
@@ -416,7 +435,19 @@ class ChatAPI {
     return resp.json();
   }
 
-  async buildIndex(indexId: string, opts: { latechunk?: boolean; doclingChunk?: boolean } = {}): Promise<{ message: string }> {
+  async buildIndex(indexId: string, opts: { 
+    latechunk?: boolean; 
+    doclingChunk?: boolean;
+    chunkSize?: number;
+    chunkOverlap?: number;
+    retrievalMode?: string;
+    windowSize?: number;
+    enableEnrich?: boolean;
+    embeddingModel?: string;
+    enrichModel?: string;
+    batchSizeEmbed?: number;
+    batchSizeEnrich?: number;
+  } = {}): Promise<{ message: string }> {
     try {
       const response = await fetch(`${API_BASE_URL}/indexes/${indexId}/build`, {
         method: 'POST',
@@ -426,6 +457,15 @@ class ChatAPI {
         body: JSON.stringify({ 
           latechunk: opts.latechunk ?? false,
           doclingChunk: opts.doclingChunk ?? false,
+          chunkSize: opts.chunkSize ?? 512,
+          chunkOverlap: opts.chunkOverlap ?? 64,
+          retrievalMode: opts.retrievalMode ?? 'hybrid',
+          windowSize: opts.windowSize ?? 2,
+          enableEnrich: opts.enableEnrich ?? true,
+          embeddingModel: opts.embeddingModel,
+          enrichModel: opts.enrichModel,
+          batchSizeEmbed: opts.batchSizeEmbed ?? 50,
+          batchSizeEnrich: opts.batchSizeEnrich ?? 25,
         }),
       });
 
@@ -486,10 +526,16 @@ class ChatAPI {
       aiRerank?: boolean;
       contextExpand?: boolean;
       verify?: boolean;
+      // ✨ NEW RETRIEVAL PARAMETERS
+      retrievalK?: number;
+      contextWindowSize?: number;
+      rerankerTopK?: number;
+      searchType?: string;
+      denseWeight?: number;
     },
     onEvent: (event: { type: string; data: any }) => void,
   ): Promise<void> {
-    const { query, session_id, table_name, composeSubAnswers, decompose, aiRerank, contextExpand, verify } = params;
+    const { query, session_id, table_name, composeSubAnswers, decompose, aiRerank, contextExpand, verify, retrievalK, contextWindowSize, rerankerTopK, searchType, denseWeight } = params;
 
     const payload: Record<string, unknown> = { query };
     if (session_id) payload.session_id = session_id;
@@ -499,6 +545,12 @@ class ChatAPI {
     if (typeof aiRerank === 'boolean') payload.ai_rerank = aiRerank;
     if (typeof contextExpand === 'boolean') payload.context_expand = contextExpand;
     if (typeof verify === 'boolean') payload.verify = verify;
+    // ✨ ADD NEW RETRIEVAL PARAMETERS TO PAYLOAD
+    if (typeof retrievalK === 'number') payload.retrieval_k = retrievalK;
+    if (typeof contextWindowSize === 'number') payload.context_window_size = contextWindowSize;
+    if (typeof rerankerTopK === 'number') payload.reranker_top_k = rerankerTopK;
+    if (typeof searchType === 'string') payload.search_type = searchType;
+    if (typeof denseWeight === 'number') payload.dense_weight = denseWeight;
 
     const resp = await fetch('http://localhost:8001/chat/stream', {
       method: 'POST',

@@ -43,6 +43,13 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
   const [enableContextExpand, setEnableContextExpand] = useState<boolean>(true)
   const [enableStream, setEnableStream] = useState<boolean>(true)
   const [enableVerify, setEnableVerify] = useState<boolean>(true)
+  
+  // ✨ NEW RETRIEVAL PARAMETERS
+  const [retrievalK, setRetrievalK] = useState<number>(20)
+  const [contextWindowSize, setContextWindowSize] = useState<number>(1)
+  const [rerankerTopK, setRerankerTopK] = useState<number>(10)
+  const [searchType, setSearchType] = useState<string>('hybrid')
+  const [denseWeight, setDenseWeight] = useState<number>(0.7)
   const [currentIndexId, setCurrentIndexId] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [showIndexForm, setShowIndexForm] = useState(false)
@@ -207,6 +214,12 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             aiRerank: enableAiRerank,
             contextExpand: enableContextExpand,
             verify: enableVerify,
+            // ✨ NEW RETRIEVAL PARAMETERS
+            retrievalK,
+            contextWindowSize,
+            rerankerTopK,
+            searchType,
+            denseWeight,
           },
           (evt) => {
             console.log('STREAM EVENT:', evt.type, evt.data); // Debug log for SSE events
@@ -382,7 +395,19 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
           }
         )
       } else {
-        const response = await apiService.sendSessionMessage(activeSessionId, content, { composeSubAnswers, decompose: enableDecompose, aiRerank: enableAiRerank, contextExpand: enableContextExpand, verify: enableVerify })
+        const response = await apiService.sendSessionMessage(activeSessionId, content, { 
+          composeSubAnswers, 
+          decompose: enableDecompose, 
+          aiRerank: enableAiRerank, 
+          contextExpand: enableContextExpand, 
+          verify: enableVerify,
+          // ✨ NEW RETRIEVAL PARAMETERS
+          retrievalK,
+          contextWindowSize,
+          rerankerTopK,
+          searchType,
+          denseWeight,
+        })
       
       const aiMessage: ChatMessage = {
         id: response.ai_message_id || generateUUID(),
@@ -528,12 +553,26 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
         <ChatSettingsModal
           onClose={()=>setShowSettings(false)}
           options={[
-            {label:'Query decomposition', checked: enableDecompose, setter: setEnableDecompose},
-            {label:'AI reranker', checked: enableAiRerank, setter: setEnableAiRerank},
-            {label:'Compose sub-answers', checked: composeSubAnswers, setter: setComposeSubAnswers},
-            {label:'Expand context window', checked: enableContextExpand, setter: setEnableContextExpand},
-            {label:'Verify answer', checked: enableVerify, setter: setEnableVerify},
-            {label:'Stream phases', checked: enableStream, setter: setEnableStream},
+            // General Settings
+            {type: 'toggle', label:'Query decomposition', checked: enableDecompose, setter: setEnableDecompose},
+            {type: 'toggle', label:'Compose sub-answers', checked: composeSubAnswers, setter: setComposeSubAnswers},
+            {type: 'toggle', label:'Verify answer', checked: enableVerify, setter: setEnableVerify},
+            {type: 'toggle', label:'Stream phases', checked: enableStream, setter: setEnableStream},
+            
+            // Retrieval Settings
+            {type: 'dropdown', label:'Search type', value: searchType, setter: setSearchType, options: [
+              {value: 'hybrid', label: 'Hybrid (Vector + BM25)'},
+              {value: 'vector_only', label: 'Vector Only'},
+              {value: 'bm25_only', label: 'BM25 Only'}
+            ]},
+            {type: 'slider', label:'Retrieval chunks', value: retrievalK, setter: setRetrievalK, min: 5, max: 50, unit: ' chunks'},
+            {type: 'slider', label:'Dense search weight', value: denseWeight, setter: setDenseWeight, min: 0.1, max: 0.9, step: 0.1},
+            
+            // Reranking & Context
+            {type: 'toggle', label:'AI reranker', checked: enableAiRerank, setter: setEnableAiRerank},
+            {type: 'slider', label:'Reranker top chunks', value: rerankerTopK, setter: setRerankerTopK, min: 3, max: 20, unit: ' chunks'},
+            {type: 'toggle', label:'Expand context window', checked: enableContextExpand, setter: setEnableContextExpand},
+            {type: 'slider', label:'Context window size', value: contextWindowSize, setter: setContextWindowSize, min: 0, max: 5, unit: ' chunks'},
           ]}
         />
       )}

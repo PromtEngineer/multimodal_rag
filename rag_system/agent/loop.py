@@ -195,16 +195,16 @@ User query: "{query}"
         }
 
     # ---------------- Public sync API (kept for backwards compatibility) --------------
-    def run(self, query: str, table_name: str = None, session_id: str = None, compose_sub_answers: Optional[bool] = None, query_decompose: Optional[bool] = None, ai_rerank: Optional[bool] = None, context_expand: Optional[bool] = None, max_retries: int = 1, event_callback: Optional[callable] = None) -> Dict[str, Any]:
+    def run(self, query: str, table_name: str = None, session_id: str = None, compose_sub_answers: Optional[bool] = None, query_decompose: Optional[bool] = None, ai_rerank: Optional[bool] = None, context_expand: Optional[bool] = None, verify: Optional[bool] = None, retrieval_k: Optional[int] = None, context_window_size: Optional[int] = None, reranker_top_k: Optional[int] = None, search_type: Optional[str] = None, dense_weight: Optional[float] = None, max_retries: int = 1, event_callback: Optional[callable] = None) -> Dict[str, Any]:
         """Synchronous helper. If *event_callback* is supplied, important
         milestones will be forwarded to that callable as
 
             event_callback(phase:str, payload:Any)
         """
-        return asyncio.run(self._run_async(query, table_name, session_id, compose_sub_answers, query_decompose, ai_rerank, context_expand, max_retries, event_callback))
+        return asyncio.run(self._run_async(query, table_name, session_id, compose_sub_answers, query_decompose, ai_rerank, context_expand, verify, retrieval_k, context_window_size, reranker_top_k, search_type, dense_weight, max_retries, event_callback))
 
     # ---------------- Main async implementation --------------------------------------
-    async def _run_async(self, query: str, table_name: str = None, session_id: str = None, compose_sub_answers: Optional[bool] = None, query_decompose: Optional[bool] = None, ai_rerank: Optional[bool] = None, context_expand: Optional[bool] = None, max_retries: int = 1, event_callback: Optional[callable] = None) -> Dict[str, Any]:
+    async def _run_async(self, query: str, table_name: str = None, session_id: str = None, compose_sub_answers: Optional[bool] = None, query_decompose: Optional[bool] = None, ai_rerank: Optional[bool] = None, context_expand: Optional[bool] = None, verify: Optional[bool] = None, retrieval_k: Optional[int] = None, context_window_size: Optional[int] = None, reranker_top_k: Optional[int] = None, search_type: Optional[str] = None, dense_weight: Optional[float] = None, max_retries: int = 1, event_callback: Optional[callable] = None) -> Dict[str, Any]:
         start_time = time.time()
         
         # Emit analyze event at the start
@@ -234,6 +234,30 @@ User query: "{query}"
                     # Falls back to ColBERT-small if the caller did not supply one
                     self.ollama_config.get("rerank_model", "answerai-colbert-small-v1"),
                 )
+
+        # --- Apply runtime retrieval configuration overrides ---
+        if retrieval_k is not None:
+            self.retrieval_pipeline.config["retrieval_k"] = retrieval_k
+            print(f"🔍 Retrieval K set to: {retrieval_k}")
+            
+        if context_window_size is not None:
+            self.retrieval_pipeline.config["context_window_size"] = context_window_size
+            print(f"🔍 Context window size set to: {context_window_size}")
+            
+        if reranker_top_k is not None:
+            rr_cfg = self.retrieval_pipeline.config.setdefault("reranker", {})
+            rr_cfg["top_k"] = reranker_top_k
+            print(f"🔍 Reranker top K set to: {reranker_top_k}")
+            
+        if search_type is not None:
+            retrieval_cfg = self.retrieval_pipeline.config.setdefault("retrieval", {})
+            retrieval_cfg["search_type"] = search_type
+            print(f"🔍 Search type set to: {search_type}")
+            
+        if dense_weight is not None:
+            dense_cfg = self.retrieval_pipeline.config.setdefault("retrieval", {}).setdefault("dense", {})
+            dense_cfg["weight"] = dense_weight
+            print(f"🔍 Dense search weight set to: {dense_weight}")
 
         query_embedding = None
         # 🚀 OPTIMIZED: Semantic Cache Check
@@ -499,7 +523,11 @@ FINAL ANSWER:
                     print(f"ReRank[{i}] id={d.get('chunk_id')} score={d.get('rerank_score','')} {snippet}")
         
         # Verification step (simplified for now) - Skip in fast mode
-        if self.pipeline_configs.get("verification", {}).get("enabled", True) and result.get("source_documents"):
+        verification_enabled = self.pipeline_configs.get("verification", {}).get("enabled", True)
+        if verify is not None:
+            verification_enabled = verify
+            
+        if verification_enabled and result.get("source_documents"):
             context_str = "\n".join([doc['text'] for doc in result['source_documents']])
             verification = await self.verifier.verify_async(contextual_query, context_str, result['answer'])
             

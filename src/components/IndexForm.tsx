@@ -37,8 +37,20 @@ export function IndexForm({ onClose, onIndexed }: Props) {
       // 2. upload files to index
       await chatAPI.uploadFilesToIndex(index_id, Array.from(files));
 
-      // 3. build index (run pipeline)
-      await chatAPI.buildIndex(index_id, { latechunk: enableLateChunk, doclingChunk: enableDoclingChunk });
+      // 3. build index (run pipeline) with ALL OPTIONS
+      await chatAPI.buildIndex(index_id, { 
+        latechunk: enableLateChunk, 
+        doclingChunk: enableDoclingChunk,
+        chunkSize: chunkSize,
+        chunkOverlap: chunkOverlap,
+        retrievalMode: retrievalMode,
+        windowSize: windowSize,
+        enableEnrich: enableEnrich,
+        embeddingModel: embeddingModel,
+        enrichModel: enrichModel,
+        batchSizeEmbed: batchSizeEmbed,
+        batchSizeEnrich: batchSizeEnrich
+      });
 
       // 4. create chat session and link index
       const session = await chatAPI.createSession(indexName);
@@ -137,7 +149,12 @@ export function IndexForm({ onClose, onIndexed }: Props) {
 
         <div>
           <label className="block text-xs mb-1 text-gray-400">Embedding model</label>
-          <GlassInput value="Qwen/Qwen3-Embedding-0.6B" disabled />
+          <ModelSelect 
+            value={embeddingModel} 
+            onChange={setEmbeddingModel}
+            type="embedding"
+            placeholder="Select embedding model"
+          />
         </div>
       </div>
 

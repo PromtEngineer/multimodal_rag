@@ -43,6 +43,8 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
             self.handle_get_sessions()
         elif parsed_path.path == '/sessions/cleanup':
             self.handle_cleanup_sessions()
+        elif parsed_path.path == '/models':
+            self.handle_get_models()
         elif parsed_path.path == '/indexes':
             self.handle_get_indexes()
         elif parsed_path.path.startswith('/indexes/') and parsed_path.path.count('/') == 2:
@@ -293,6 +295,14 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
                 decomp_flag = data.get("query_decompose")
                 ai_rerank_flag = data.get("ai_rerank")
                 ctx_expand_flag = data.get("context_expand")
+                verify_flag = data.get("verify")
+                # ✨ NEW RETRIEVAL PARAMETERS
+                retrieval_k = data.get("retrieval_k")
+                context_window_size = data.get("context_window_size")
+                reranker_top_k = data.get("reranker_top_k")
+                search_type = data.get("search_type")
+                dense_weight = data.get("dense_weight")
+                
                 if compose_flag is not None:
                     payload["compose_sub_answers"] = bool(compose_flag)
                 if decomp_flag is not None:
@@ -301,6 +311,19 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
                     payload["ai_rerank"] = bool(ai_rerank_flag)
                 if ctx_expand_flag is not None:
                     payload["context_expand"] = bool(ctx_expand_flag)
+                if verify_flag is not None:
+                    payload["verify"] = bool(verify_flag)
+                # ✨ ADD NEW RETRIEVAL PARAMETERS TO PAYLOAD
+                if retrieval_k is not None:
+                    payload["retrieval_k"] = int(retrieval_k)
+                if context_window_size is not None:
+                    payload["context_window_size"] = int(context_window_size)
+                if reranker_top_k is not None:
+                    payload["reranker_top_k"] = int(reranker_top_k)
+                if search_type is not None:
+                    payload["search_type"] = str(search_type)
+                if dense_weight is not None:
+                    payload["dense_weight"] = float(dense_weight)
                 rag_response = requests.post(rag_api_url, json=payload)
                 
                 if rag_response.status_code == 200:
@@ -428,6 +451,44 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
             "message": "No action taken."
         }, status_code=410) # 410 Gone
 
+    def handle_get_models(self):
+        """Get available models from both Ollama and HuggingFace, grouped by capability"""
+        try:
+            generation_models = []
+            embedding_models = []
+            
+            # Get Ollama models if available
+            if self.ollama_client.is_ollama_running():
+                all_ollama_models = self.ollama_client.list_models()
+                
+                # Very naive classification - same logic as RAG API server
+                ollama_embedding_models = [m for m in all_ollama_models if any(k in m for k in ['embed','bge','embedding','text'])]
+                ollama_generation_models = [m for m in all_ollama_models if m not in ollama_embedding_models]
+                
+                generation_models.extend(ollama_generation_models)
+                embedding_models.extend(ollama_embedding_models)
+            
+            # Add supported HuggingFace embedding models
+            huggingface_embedding_models = [
+                "Qwen/Qwen3-Embedding-0.6B",
+                "Qwen/Qwen3-Embedding-4B", 
+                "Qwen/Qwen3-Embedding-8B"
+            ]
+            embedding_models.extend(huggingface_embedding_models)
+            
+            # Sort models for consistent ordering
+            generation_models.sort()
+            embedding_models.sort()
+            
+            self.send_json_response({
+                "generation_models": generation_models,
+                "embedding_models": embedding_models
+            })
+        except Exception as e:
+            self.send_json_response({
+                "error": f"Could not list models: {str(e)}"
+            }, status_code=500)
+
     def handle_get_indexes(self):
         try:
             data = db.list_indexes()
@@ -491,34 +552,79 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
             if not file_paths:
                 self.send_json_response({'error':'No documents to index'}, status_code=400); return
 
-            # Parse request body for optional flags
+            # Parse request body for optional flags and configuration
             latechunk = False
             docling_chunk = False
+            chunk_size = 512
+            chunk_overlap = 64
+            retrieval_mode = 'hybrid'
+            window_size = 2
+            enable_enrich = True
+            embedding_model = None
+            enrich_model = None
+            batch_size_embed = 50
+            batch_size_enrich = 25
+            
             if 'Content-Length' in self.headers and int(self.headers['Content-Length']) > 0:
                 try:
                     length = int(self.headers['Content-Length'])
                     body = self.rfile.read(length)
                     opts = json.loads(body.decode('utf-8'))
-                    latechunk = bool(opts.get('latechunk'))
-                    docling_chunk = bool(opts.get('doclingChunk'))
+                    latechunk = bool(opts.get('latechunk', False))
+                    docling_chunk = bool(opts.get('doclingChunk', False))
+                    chunk_size = int(opts.get('chunkSize', 512))
+                    chunk_overlap = int(opts.get('chunkOverlap', 64))
+                    retrieval_mode = str(opts.get('retrievalMode', 'hybrid'))
+                    window_size = int(opts.get('windowSize', 2))
+                    enable_enrich = bool(opts.get('enableEnrich', True))
+                    embedding_model = opts.get('embeddingModel')
+                    enrich_model = opts.get('enrichModel')
+                    batch_size_embed = int(opts.get('batchSizeEmbed', 50))
+                    batch_size_enrich = int(opts.get('batchSizeEnrich', 25))
                 except Exception:
-                    latechunk = False
-                    docling_chunk = False
+                    # Keep defaults on parse error
+                    pass
 
             # Delegate to advanced RAG API same as session indexing
             rag_api_url = "http://localhost:8001/index"
             import requests, json as _json
-            payload = {"file_paths": file_paths, "session_id": index_id}
+            payload = {
+                "file_paths": file_paths, 
+                "session_id": index_id,
+                "chunk_size": chunk_size,
+                "chunk_overlap": chunk_overlap,
+                "retrieval_mode": retrieval_mode,
+                "window_size": window_size,
+                "enable_enrich": enable_enrich,
+                "batch_size_embed": batch_size_embed,
+                "batch_size_enrich": batch_size_enrich
+            }
             if latechunk:
                 payload["enable_latechunk"] = True
             if docling_chunk:
                 payload["enable_docling_chunk"] = True
+            if embedding_model:
+                payload["embedding_model"] = embedding_model
+            if enrich_model:
+                payload["enrich_model"] = enrich_model
+                
             rag_resp = requests.post(rag_api_url, json=payload)
             if rag_resp.status_code==200:
                 self.send_json_response({
                     "response": rag_resp.json(),
                     "latechunk": latechunk,
-                    "docling_chunk": docling_chunk
+                    "docling_chunk": docling_chunk,
+                    "indexing_config": {
+                        "chunk_size": chunk_size,
+                        "chunk_overlap": chunk_overlap,
+                        "retrieval_mode": retrieval_mode,
+                        "window_size": window_size,
+                        "enable_enrich": enable_enrich,
+                        "embedding_model": embedding_model,
+                        "enrich_model": enrich_model,
+                        "batch_size_embed": batch_size_embed,
+                        "batch_size_enrich": batch_size_enrich
+                    }
                 })
             else:
                 self.send_json_response({"error":f"RAG indexing failed: {rag_resp.text}"}, status_code=500)

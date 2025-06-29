@@ -67,6 +67,15 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             decomp_flag = data.get('query_decompose')
             ai_rerank_flag = data.get('ai_rerank')
             ctx_expand_flag = data.get('context_expand')
+            verify_flag = data.get('verify')
+            
+            # ✨ NEW RETRIEVAL PARAMETERS
+            retrieval_k = data.get('retrieval_k', 20)
+            context_window_size = data.get('context_window_size', 1)
+            reranker_top_k = data.get('reranker_top_k', 10)
+            search_type = data.get('search_type', 'hybrid')
+            dense_weight = data.get('dense_weight', 0.7)
+            
             if not query:
                 self.send_json_response({"error": "Query is required"}, status_code=400)
                 return
@@ -77,7 +86,7 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 table_name = f"text_pages_{session_id}"
 
             # Use the single, persistent agent instance to run the query
-            result = RAG_AGENT.run(query, table_name=table_name, session_id=session_id, compose_sub_answers=compose_flag, query_decompose=decomp_flag, ai_rerank=ai_rerank_flag, context_expand=ctx_expand_flag)
+            result = RAG_AGENT.run(query, table_name=table_name, session_id=session_id, compose_sub_answers=compose_flag, query_decompose=decomp_flag, ai_rerank=ai_rerank_flag, context_expand=ctx_expand_flag, verify=verify_flag, retrieval_k=retrieval_k, context_window_size=context_window_size, reranker_top_k=reranker_top_k, search_type=search_type, dense_weight=dense_weight)
             
             # The result is a dict, so we need to dump it to a JSON string
             self.send_json_response(result)
@@ -100,6 +109,14 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             decomp_flag = data.get('query_decompose')
             ai_rerank_flag = data.get('ai_rerank')
             ctx_expand_flag = data.get('context_expand')
+            verify_flag = data.get('verify')
+            
+            # ✨ NEW RETRIEVAL PARAMETERS
+            retrieval_k = data.get('retrieval_k', 20)
+            context_window_size = data.get('context_window_size', 1)
+            reranker_top_k = data.get('reranker_top_k', 10)
+            search_type = data.get('search_type', 'hybrid')
+            dense_weight = data.get('dense_weight', 0.7)
 
             if not query:
                 self.send_json_response({"error": "Query is required"}, status_code=400)
@@ -140,6 +157,13 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                     query_decompose=decomp_flag,
                     ai_rerank=ai_rerank_flag,
                     context_expand=ctx_expand_flag,
+                    verify=verify_flag,
+                    # ✨ NEW RETRIEVAL PARAMETERS
+                    retrieval_k=retrieval_k,
+                    context_window_size=context_window_size,
+                    reranker_top_k=reranker_top_k,
+                    search_type=search_type,
+                    dense_weight=dense_weight,
                     event_callback=emit,
                 )
 
@@ -173,8 +197,20 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             decomp_flag = data.get('query_decompose')
             ai_rerank_flag = data.get('ai_rerank')
             ctx_expand_flag = data.get('context_expand')
-            enable_latechunk = bool(data.get("enable_latechunk"))
-            enable_docling_chunk = bool(data.get("enable_docling_chunk"))
+            enable_latechunk = bool(data.get("enable_latechunk", False))
+            enable_docling_chunk = bool(data.get("enable_docling_chunk", False))
+            
+            # 🆕 NEW CONFIGURATION OPTIONS:
+            chunk_size = int(data.get("chunk_size", 512))
+            chunk_overlap = int(data.get("chunk_overlap", 64))
+            retrieval_mode = data.get("retrieval_mode", "hybrid")
+            window_size = int(data.get("window_size", 2))
+            enable_enrich = bool(data.get("enable_enrich", True))
+            embedding_model = data.get("embedding_model")
+            enrich_model = data.get("enrich_model")
+            batch_size_embed = int(data.get("batch_size_embed", 50))
+            batch_size_enrich = int(data.get("batch_size_enrich", 25))
+            
             if not file_paths or not isinstance(file_paths, list):
                 self.send_json_response({
                     "error": "A 'file_paths' list is required."
@@ -219,7 +255,18 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 "message": f"Indexing process for {len(file_paths)} file(s) completed successfully.",
                 "table_name": table_name or "default_text_table",
                 "latechunk": enable_latechunk,
-                "docling_chunk": enable_docling_chunk
+                "docling_chunk": enable_docling_chunk,
+                "indexing_config": {
+                    "chunk_size": chunk_size,
+                    "chunk_overlap": chunk_overlap,
+                    "retrieval_mode": retrieval_mode,
+                    "window_size": window_size,
+                    "enable_enrich": enable_enrich,
+                    "embedding_model": embedding_model,
+                    "enrich_model": enrich_model,
+                    "batch_size_embed": batch_size_embed,
+                    "batch_size_enrich": batch_size_enrich
+                }
             })
         except json.JSONDecodeError:
             self.send_json_response({"error": "Invalid JSON"}, status_code=400)
@@ -227,17 +274,39 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             self.send_json_response({"error": f"Failed to start indexing: {str(e)}"}, status_code=500)
 
     def handle_models(self):
-        """Return a list of locally installed Ollama models grouped by capability."""
+        """Return a list of locally installed Ollama models and supported HuggingFace models, grouped by capability."""
         try:
-            resp = requests.get(f"{RAG_AGENT.ollama_config['host']}/api/tags", timeout=5)
-            resp.raise_for_status()
-            data = resp.json()
+            generation_models = []
+            embedding_models = []
+            
+            # Get Ollama models if available
+            try:
+                resp = requests.get(f"{RAG_AGENT.ollama_config['host']}/api/tags", timeout=5)
+                resp.raise_for_status()
+                data = resp.json()
 
-            all_models = [m.get('name') for m in data.get('models', [])]
+                all_ollama_models = [m.get('name') for m in data.get('models', [])]
 
-            # Very naive classification
-            embedding_models = [m for m in all_models if any(k in m for k in ['embed','bge','embedding','text'])]
-            generation_models = [m for m in all_models if m not in embedding_models]
+                # Very naive classification
+                ollama_embedding_models = [m for m in all_ollama_models if any(k in m for k in ['embed','bge','embedding','text'])]
+                ollama_generation_models = [m for m in all_ollama_models if m not in ollama_embedding_models]
+                
+                generation_models.extend(ollama_generation_models)
+                embedding_models.extend(ollama_embedding_models)
+            except Exception as e:
+                print(f"⚠️ Could not get Ollama models: {e}")
+            
+            # Add supported HuggingFace embedding models
+            huggingface_embedding_models = [
+                "Qwen/Qwen3-Embedding-0.6B",
+                "Qwen/Qwen3-Embedding-4B", 
+                "Qwen/Qwen3-Embedding-8B"
+            ]
+            embedding_models.extend(huggingface_embedding_models)
+            
+            # Sort models for consistent ordering
+            generation_models.sort()
+            embedding_models.sort()
 
             self.send_json_response({
                 "generation_models": generation_models,
