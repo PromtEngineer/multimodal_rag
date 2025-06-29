@@ -20,127 +20,59 @@ from rag_system.pipelines.indexing_pipeline import IndexingPipeline
 from rag_system.pipelines.retrieval_pipeline import RetrievalPipeline
 from rag_system.utils.ollama_client import OllamaClient
 from rag_system.factory import get_agent
-from rag_system.config import PIPELINE_CONFIGS
+# Configuration is now defined in this file - no import needed
 
-# Define pipeline configurations
+# Advanced RAG System Configuration
+# ==================================
+# This file contains the MASTER configuration for all models used in the RAG system.
+# All components should reference these configurations to ensure consistency.
+
+# ============================================================================
+# 🎯 MASTER MODEL CONFIGURATION
+# ============================================================================
+# All model configurations are centralized here to prevent conflicts
+
+# Ollama Models Configuration (for inference via Ollama)
+OLLAMA_CONFIG = {
+    "host": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
+    "generation_model": "qwen3:8b",  # Main text generation model
+    "enrichment_model": "qwen3:0.6b",  # Lightweight model for routing/enrichment
+}
+
+# External Model Configuration (HuggingFace models used directly)
+EXTERNAL_MODELS = {
+    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",  # HuggingFace embedding model
+    "reranker_model": "answerdotai/answerai-colbert-small-v1",  # ColBERT reranker
+    "vision_model": "Qwen/Qwen-VL-Chat",  # Vision model for multimodal
+    "fallback_reranker": "BAAI/bge-reranker-base",  # Backup reranker
+}
+
+# ============================================================================
+# 🔧 PIPELINE CONFIGURATIONS
+# ============================================================================
+
 PIPELINE_CONFIGS = {
-    "indexing": {
-        "storage": {
-            "lancedb_uri": "./index_store/lancedb",
-            "doc_path": "rag_system/documents",
-            "text_table_name": "local_text_pages_v3",
-            "image_table_name": None,
-            "bm25_path": "./index_store/bm25"
-        },
-        "retrievers": {
-            "dense": { 
-                "enabled": True,
-                "lancedb_table_name": "local_text_pages_v3"
-            },
-            "bm25": { 
-                "enabled": True,
-                "index_name": "rag_bm25_index"
-            },
-            "graph": { 
-                "enabled": False,
-                "graph_path": "./index_store/graph/knowledge_graph.gml"
-            },
-            "latechunk": {
-                "enabled": False,
-                "lancedb_table_name": "text_pages_lc_v3",
-                "top_k": 20
-            }
-        },
-        "contextual_enricher": {
-            "enabled": True,
-            "window_size": 1
-        },
-        "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
-        "vision_model_name": None
-    },
-    "retrieval": {
-        "storage": {
-            "lancedb_uri": "./index_store/lancedb",
-            "doc_path": "rag_system/documents", # Add path to docs for image retrieval
-            "text_table_name": "local_text_pages_v3",
-            "image_table_name": None,
-        },
-        "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
-        "vision_model_name": None,
-        "graph_rag": {
-            "enabled": False,
-            "graph_path": "./index_store/graph/knowledge_graph.gml"
-        },
-        "reranker": {
-            "enabled": True, 
-            "model_name": "answerdotai/answerai-colbert-small-v1",
-            "top_k": 3
-        },
-        "latechunk": {
-            "enabled": False,
-            "lancedb_table_name": "text_pages_lc_v3",
-            "top_k": 20
-        },
-        "retrieval_k": 20
-    },
-    "fast": {
-        "storage": {
-            "lancedb_uri": "./index_store/lancedb",
-            "bm25_path": "./index_store/bm25",
-            "text_table_name": "local_text_pages_v3",
-            "image_table_name": None,
-            "graph_path": "./index_store/graph/knowledge_graph.gml"
-        },
-        "retrievers": {
-            "dense": { 
-                "enabled": True,
-                "lancedb_table_name": "local_text_pages_v3"
-            },
-            "bm25": { 
-                "enabled": False,
-                "index_name": "rag_bm25_index"
-            },
-            "graph": { 
-                "enabled": False,
-                "graph_path": "./index_store/graph/knowledge_graph.gml"
-            }
-        },
-        "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
-        "vision_model_name": "Qwen/Qwen-VL-Chat",
-        "reranker": {
-            "enabled": False, 
-            "model_name": "BAAI/bge-reranker-base",
-            "top_k": 5
-        },
-        "query_decomposition": {
-            "enabled": False,
-            "max_sub_queries": 1
-        },
-        "retrieval_k": 20,
-        "context_window_size": 0,
-        "verification": {
-            "enabled": False
-        },
-        "fusion": {
-            "method": "linear",
-            "bm25_weight": 0.5,
-            "vec_weight": 0.5
-        }
-    },
     "default": {
+        "description": "Production-ready pipeline with hybrid search, AI reranking, and verification",
         "storage": {
-            "lancedb_uri": "./index_store/lancedb",
+            "db_path": "./index_store/lancedb",
+            "text_table_name": "text_pages_v3",
+            "image_table_name": "image_pages_v3",
             "bm25_path": "./index_store/bm25",
-            "text_table_name": "local_text_pages_v3",
-            "image_table_name": None,
             "graph_path": "./index_store/graph/knowledge_graph.gml"
         },
-        "retrievers": {
-            "dense": { 
+        "retrieval": {
+            "retriever": "multivector",
+            "search_type": "hybrid",
+            "late_chunking": {
                 "enabled": True,
-                "lancedb_table_name": "local_text_pages_v3"
+                "table_suffix": "_lc_v3"
             },
-            "bm25": { 
+            "dense": {
+                "enabled": True,
+                "weight": 0.7
+            },
+            "bm25": {
                 "enabled": True,
                 "index_name": "rag_bm25_index"
             },
@@ -149,12 +81,16 @@ PIPELINE_CONFIGS = {
                 "graph_path": "./index_store/graph/knowledge_graph.gml"
             }
         },
-        "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
-        "vision_model_name": "Qwen/Qwen-VL-Chat",
+        # 🎯 EMBEDDING MODEL: Uses HuggingFace Qwen model directly
+        "embedding_model_name": EXTERNAL_MODELS["embedding_model"],
+        # 🎯 VISION MODEL: For multimodal capabilities  
+        "vision_model_name": EXTERNAL_MODELS["vision_model"],
+        # 🎯 RERANKER: AI-powered reranking with ColBERT
         "reranker": {
             "enabled": True, 
             "type": "ai",
-            "model_name": "BAAI/bge-reranker-base",
+            "strategy": "rerankers-lib",
+            "model_name": EXTERNAL_MODELS["reranker_model"],
             "top_k": 10
         },
         "query_decomposition": {
@@ -162,7 +98,31 @@ PIPELINE_CONFIGS = {
             "max_sub_queries": 3,
             "compose_from_sub_answers": True
         },
+        "verification": {"enabled": True},
         "retrieval_k": 20,
+        "context_window_size": 0,
+        "semantic_cache_threshold": 0.98,
+        "cache_scope": "global"
+    },
+    "fast": {
+        "description": "Speed-optimized pipeline with minimal overhead",
+        "storage": {
+            "db_path": "./index_store/lancedb",
+            "text_table_name": "text_pages_v3",
+            "image_table_name": "image_pages_v3",
+            "bm25_path": "./index_store/bm25"
+        },
+        "retrieval": {
+            "retriever": "multivector",
+            "search_type": "vector_only",
+            "late_chunking": {"enabled": False},
+            "dense": {"enabled": True}
+        },
+        "embedding_model_name": EXTERNAL_MODELS["embedding_model"],
+        "reranker": {"enabled": False},
+        "query_decomposition": {"enabled": False},
+        "verification": {"enabled": False},
+        "retrieval_k": 10,
         "context_window_size": 0
     },
     "bm25": {
@@ -187,17 +147,19 @@ PIPELINE_CONFIGS = {
     }
 }
 
-OLLAMA_CONFIG = {
-    "host": os.getenv("OLLAMA_HOST", "http://localhost:11434"),
-    "embedding_model": "nomic-embed-text",
-    "generation_model": "qwen:7b",
-    "rerank_model": "qwen:7b",
-    "qwen_vl_model": "qwen-vl-chat"
-}
+# ============================================================================
+# 🏭 FACTORY FUNCTIONS
+# ============================================================================
 
 def get_agent(mode: str = "default") -> Agent | ReActAgent:
     """
     Factory function to get an instance of the RAG agent based on the specified mode.
+    
+    Args:
+        mode: Configuration mode ("default", "fast", "react")
+        
+    Returns:
+        Configured Agent or ReActAgent instance
     """
     load_dotenv()
     
@@ -220,9 +182,41 @@ def get_agent(mode: str = "default") -> Agent | ReActAgent:
     )
     return agent
 
+def validate_model_config():
+    """
+    Validates the model configuration for consistency and availability.
+    
+    Raises:
+        ValueError: If configuration conflicts are detected
+    """
+    print("🔍 Validating model configuration...")
+    
+    # Check for embedding model consistency
+    default_embedding = PIPELINE_CONFIGS["default"]["embedding_model_name"]
+    external_embedding = EXTERNAL_MODELS["embedding_model"]
+    
+    if default_embedding != external_embedding:
+        raise ValueError(f"Embedding model mismatch: {default_embedding} != {external_embedding}")
+    
+    # Check reranker configuration
+    default_reranker = PIPELINE_CONFIGS["default"]["reranker"]["model_name"]
+    external_reranker = EXTERNAL_MODELS["reranker_model"]
+    
+    if default_reranker != external_reranker:
+        raise ValueError(f"Reranker model mismatch: {default_reranker} != {external_reranker}")
+    
+    print("✅ Model configuration validation passed!")
+    
+    return True
+
+# ============================================================================
+# 🚀 UTILITY FUNCTIONS  
+# ============================================================================
+
 def run_indexing(docs_path: str, config_mode: str = "default"):
     """Runs the indexing pipeline for the specified documents."""
     print(f"📚 Starting indexing for documents in: {docs_path}")
+    validate_model_config()
     
     # Get the appropriate indexing pipeline from the factory
     indexing_pipeline = IndexingPipeline(PIPELINE_CONFIGS[config_mode])
@@ -244,10 +238,14 @@ def run_chat(query: str):
     Returns the result as a JSON string.
     """
     try:
+        validate_model_config()
         ollama_client = OllamaClient(OLLAMA_CONFIG["host"])
     except ConnectionError as e:
         print(e)
         return json.dumps({"error": str(e)}, indent=2)
+    except ValueError as e:
+        print(f"Configuration Error: {e}")
+        return json.dumps({"error": f"Configuration Error: {e}"}, indent=2)
 
     agent = Agent(PIPELINE_CONFIGS['default'], ollama_client, OLLAMA_CONFIG)
     result = agent.run(query)

@@ -630,7 +630,7 @@ FINAL ANSWER:
         Respond ONLY with a valid JSON object: {{"category": "<Your Choice Here>"}}"""
         
         resp = self.llm_client.generate_completion(
-            model=self.ollama_config["generation_model"], prompt=router_prompt, format="json"
+            model=self.ollama_config["enrichment_model"], prompt=router_prompt, format="json"
         )
         try:
             data = json.loads(resp.get("response", "{}"))

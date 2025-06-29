@@ -9,7 +9,7 @@ def get_agent(mode: str = "default"):
     from rag_system.agent.loop import Agent
     from rag_system.agent.react_agent import ReActAgent
     from rag_system.utils.ollama_client import OllamaClient
-    from rag_system.config import PIPELINE_CONFIGS, OLLAMA_CONFIG
+    from rag_system.main import PIPELINE_CONFIGS, OLLAMA_CONFIG
 
     load_dotenv()
     
@@ -40,7 +40,7 @@ def get_indexing_pipeline(mode: str = "default"):
     Factory function to get an instance of the Indexing Pipeline.
     """
     from rag_system.pipelines.indexing_pipeline import IndexingPipeline
-    from rag_system.config import PIPELINE_CONFIGS, OLLAMA_CONFIG
+    from rag_system.main import PIPELINE_CONFIGS, OLLAMA_CONFIG
     from rag_system.utils.ollama_client import OllamaClient
 
     load_dotenv()
