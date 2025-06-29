@@ -41,7 +41,7 @@ OLLAMA_CONFIG = {
 
 # External Model Configuration (HuggingFace models used directly)
 EXTERNAL_MODELS = {
-    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",  # HuggingFace embedding model
+    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",  # HuggingFace embedding model (1024 dims - fresh start)
     "reranker_model": "answerdotai/answerai-colbert-small-v1",  # ColBERT reranker
     "vision_model": "Qwen/Qwen-VL-Chat",  # Vision model for multimodal
     "fallback_reranker": "BAAI/bge-reranker-base",  # Backup reranker
