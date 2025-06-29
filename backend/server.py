@@ -10,6 +10,8 @@ from ollama_client import OllamaClient
 from database import db, generate_session_title
 import simple_pdf_processor as pdf_module
 from simple_pdf_processor import initialize_simple_pdf_processor
+from typing import List
+import re
 
 # 🆕 Reusable TCPServer with address reuse enabled
 class ReusableTCPServer(socketserver.TCPServer):
@@ -251,7 +253,7 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
     def handle_session_chat(self, session_id: str):
         """
         Handle chat within a specific session.
-        This now delegates RAG queries to the advanced RAG API server.
+        Intelligently routes between direct LLM (fast) and RAG pipeline (document-aware).
         """
         try:
             session = db.get_session(session_id)
@@ -275,91 +277,223 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
                 title = generate_session_title(message)
                 db.update_session_title(session_id, title)
             
-            # 🆕 --- Delegate to Advanced RAG API ---
-            print(f"🤖 Delegating query to Advanced RAG API: '{message}'")
-            response_text = ""
-            source_docs = []
-            try:
-                # The advanced RAG server runs on port 8001
-                rag_api_url = "http://localhost:8001/chat"
-                conversation_history = db.get_conversation_history(session_id)
-                # Determine vector table: prefer last linked index if exists
-                idx_ids = db.get_indexes_for_session(session_id)
-                table_name = None
-                if idx_ids:
-                    table_name = f"text_pages_{idx_ids[-1]}"
-                payload={"query": message, "session_id": session_id}
-                if table_name:
-                    payload["table_name"] = table_name
-                compose_flag = data.get("compose_sub_answers")
-                decomp_flag = data.get("query_decompose")
-                ai_rerank_flag = data.get("ai_rerank")
-                ctx_expand_flag = data.get("context_expand")
-                verify_flag = data.get("verify")
-                # ✨ NEW RETRIEVAL PARAMETERS
-                retrieval_k = data.get("retrieval_k")
-                context_window_size = data.get("context_window_size")
-                reranker_top_k = data.get("reranker_top_k")
-                search_type = data.get("search_type")
-                dense_weight = data.get("dense_weight")
-                
-                if compose_flag is not None:
-                    payload["compose_sub_answers"] = bool(compose_flag)
-                if decomp_flag is not None:
-                    payload["query_decompose"] = bool(decomp_flag)
-                if ai_rerank_flag is not None:
-                    payload["ai_rerank"] = bool(ai_rerank_flag)
-                if ctx_expand_flag is not None:
-                    payload["context_expand"] = bool(ctx_expand_flag)
-                if verify_flag is not None:
-                    payload["verify"] = bool(verify_flag)
-                # ✨ ADD NEW RETRIEVAL PARAMETERS TO PAYLOAD
-                if retrieval_k is not None:
-                    payload["retrieval_k"] = int(retrieval_k)
-                if context_window_size is not None:
-                    payload["context_window_size"] = int(context_window_size)
-                if reranker_top_k is not None:
-                    payload["reranker_top_k"] = int(reranker_top_k)
-                if search_type is not None:
-                    payload["search_type"] = str(search_type)
-                if dense_weight is not None:
-                    payload["dense_weight"] = float(dense_weight)
-                rag_response = requests.post(rag_api_url, json=payload)
-                
-                if rag_response.status_code == 200:
-                    rag_data = rag_response.json()
-                    # Extract the final answer from the agent's response
-                    response_text = rag_data.get("answer", "No answer found in RAG response.")
-                    source_docs = rag_data.get("source_documents", [])
-                    print(f"✅ Received response from Advanced RAG API with {len(source_docs)} source docs.")
-                else:
-                    error_info = rag_response.text
-                    response_text = f"Error from Advanced RAG API: {error_info}"
-                    source_docs = []
-                    print(f"❌ Error from Advanced RAG API ({rag_response.status_code}): {error_info}")
-
-            except requests.exceptions.ConnectionError:
-                response_text = "Could not connect to the Advanced RAG API server. Please ensure it is running."
-                print("❌ Connection to Advanced RAG API failed. Is the server running on port 8001?")
-            # 🆕 --- End Delegation ---
+            # 🎯 SMART ROUTING: Decide between direct LLM vs RAG
+            idx_ids = db.get_indexes_for_session(session_id)
+            use_rag = self._should_use_rag(message, idx_ids)
+            
+            if use_rag:
+                # 🔍 --- Use RAG Pipeline for Document-Related Queries ---
+                print(f"🔍 Using RAG pipeline for document query: '{message[:50]}...'")
+                response_text, source_docs = self._handle_rag_query(session_id, message, data, idx_ids)
+            else:
+                # ⚡ --- Use Direct LLM for General Queries (FAST) ---
+                print(f"⚡ Using direct LLM for general query: '{message[:50]}...'")
+                response_text, source_docs = self._handle_direct_llm_query(session_id, message, session)
 
             # Add AI response to database
             ai_message_id = db.add_message(session_id, response_text, "assistant")
             
             updated_session = db.get_session(session_id)
             
+            # Send response with proper error handling
             self.send_json_response({
                 "response": response_text,
                 "session": updated_session,
-                "user_message_id": user_message_id,
-                "ai_message_id": ai_message_id,
-                "source_documents": source_docs
+                "source_documents": source_docs,
+                "used_rag": use_rag
             })
             
+        except BrokenPipeError:
+            # Client disconnected - this is normal for long queries, just log it
+            print(f"⚠️  Client disconnected during RAG processing for query: '{message[:30]}...'")
         except json.JSONDecodeError:
-            self.send_json_response({"error": "Invalid JSON"}, status_code=400)
+            self.send_json_response({
+                "error": "Invalid JSON"
+            }, status_code=400)
         except Exception as e:
-            self.send_json_response({"error": f"Server error: {str(e)}"}, status_code=500)
+            print(f"❌ Server error in session chat: {str(e)}")
+            try:
+                self.send_json_response({
+                    "error": f"Server error: {str(e)}"
+                }, status_code=500)
+            except BrokenPipeError:
+                print(f"⚠️  Client disconnected during error response")
+    
+    def _should_use_rag(self, message: str, idx_ids: List[str]) -> bool:
+        """
+        Determine if a query should use RAG pipeline or direct LLM.
+        
+        Args:
+            message: The user's query
+            idx_ids: List of index IDs associated with the session
+            
+        Returns:
+            bool: True if should use RAG, False for direct LLM
+        """
+        # No indexes = definitely no RAG needed
+        if not idx_ids:
+            return False
+        
+        message_lower = message.lower()
+        
+        # Always use Direct LLM for greetings and casual conversation
+        greeting_patterns = [
+            'hello', 'hi', 'hey', 'greetings', 'good morning', 'good afternoon', 'good evening',
+            'how are you', 'how do you do', 'nice to meet', 'pleasure to meet',
+            'thanks', 'thank you', 'bye', 'goodbye', 'see you', 'talk to you later',
+            'test', 'testing', 'check', 'ping', 'just saying', 'nevermind',
+            'ok', 'okay', 'alright', 'got it', 'understood', 'i see'
+        ]
+        
+        # Check for greeting patterns
+        for pattern in greeting_patterns:
+            if pattern in message_lower:
+                return False  # Use Direct LLM for greetings
+        
+        # Keywords that strongly suggest document-related queries
+        rag_indicators = [
+            'document', 'doc', 'file', 'pdf', 'text', 'content', 'page',
+            'according to', 'based on', 'mentioned', 'states', 'says',
+            'what does', 'summarize', 'summary', 'analyze', 'analysis',
+            'quote', 'citation', 'reference', 'source', 'evidence',
+            'explain from', 'extract', 'find in', 'search for'
+        ]
+        
+        # Check for strong RAG indicators
+        for indicator in rag_indicators:
+            if indicator in message_lower:
+                return True
+        
+        # Question words + substantial length might benefit from RAG
+        question_words = ['what', 'how', 'when', 'where', 'why', 'who', 'which']
+        starts_with_question = any(message_lower.startswith(word) for word in question_words)
+        
+        if starts_with_question and len(message) > 40:
+            return True
+        
+        # Very short messages - use direct LLM
+        if len(message.strip()) < 20:
+            return False
+        
+        # Default to Direct LLM unless there's clear indication of document query
+        return False
+    
+    def _handle_direct_llm_query(self, session_id: str, message: str, session: dict):
+        """
+        Handle query using direct Ollama client with thinking disabled for speed.
+        
+        Returns:
+            tuple: (response_text, empty_source_docs)
+        """
+        try:
+            # Get conversation history for context
+            conversation_history = db.get_conversation_history(session_id)
+            
+            # Use the session's model or default
+            model = session.get('model', 'qwen3:8b')  # Default to fast model
+            
+            # Direct Ollama call with thinking disabled for speed
+            response_text = self.ollama_client.chat(
+                message=message,
+                model=model,
+                conversation_history=conversation_history,
+                enable_thinking=False  # ⚡ DISABLE THINKING FOR SPEED
+            )
+            
+            return response_text, []  # No source docs for direct LLM
+            
+        except Exception as e:
+            print(f"❌ Direct LLM error: {e}")
+            return f"Error processing query: {str(e)}", []
+    
+    def _handle_rag_query(self, session_id: str, message: str, data: dict, idx_ids: List[str]):
+        """
+        Handle query using the full RAG pipeline.
+        
+        Returns:
+            tuple: (response_text, source_documents)
+        """
+        response_text = ""
+        source_docs = []
+        
+        try:
+            # The advanced RAG server runs on port 8001
+            rag_api_url = "http://localhost:8001/chat"
+            
+            # Determine vector table: prefer last linked index if exists
+            table_name = None
+            if idx_ids:
+                table_name = f"text_pages_{idx_ids[-1]}"
+                
+            payload = {"query": message, "session_id": session_id}
+            if table_name:
+                payload["table_name"] = table_name
+                
+            # Extract RAG configuration parameters
+            compose_flag = data.get("compose_sub_answers")
+            decomp_flag = data.get("query_decompose")
+            ai_rerank_flag = data.get("ai_rerank")
+            ctx_expand_flag = data.get("context_expand")
+            verify_flag = data.get("verify")
+            
+            # ✨ NEW RETRIEVAL PARAMETERS
+            retrieval_k = data.get("retrieval_k")
+            context_window_size = data.get("context_window_size")
+            reranker_top_k = data.get("reranker_top_k")
+            search_type = data.get("search_type")
+            dense_weight = data.get("dense_weight")
+            
+            # Add parameters to payload
+            if compose_flag is not None:
+                payload["compose_sub_answers"] = bool(compose_flag)
+            if decomp_flag is not None:
+                payload["query_decompose"] = bool(decomp_flag)
+            if ai_rerank_flag is not None:
+                payload["ai_rerank"] = bool(ai_rerank_flag)
+            if ctx_expand_flag is not None:
+                payload["context_expand"] = bool(ctx_expand_flag)
+            if verify_flag is not None:
+                payload["verify"] = bool(verify_flag)
+            
+            # ✨ ADD NEW RETRIEVAL PARAMETERS TO PAYLOAD
+            if retrieval_k is not None:
+                payload["retrieval_k"] = int(retrieval_k)
+            if context_window_size is not None:
+                payload["context_window_size"] = int(context_window_size)
+            if reranker_top_k is not None:
+                payload["reranker_top_k"] = int(reranker_top_k)
+            if search_type is not None:
+                payload["search_type"] = str(search_type)
+            if dense_weight is not None:
+                payload["dense_weight"] = float(dense_weight)
+                
+            rag_response = requests.post(rag_api_url, json=payload)
+            
+            if rag_response.status_code == 200:
+                rag_data = rag_response.json()
+                response_text = rag_data.get("answer", "No answer found in RAG response.")
+                source_docs = rag_data.get("source_documents", [])
+                
+                # 🧹 Clean up thinking tokens from RAG responses too
+                response_text = re.sub(r'<think>.*?</think>', '', response_text, flags=re.DOTALL | re.IGNORECASE)
+                response_text = re.sub(r'<thinking>.*?</thinking>', '', response_text, flags=re.DOTALL | re.IGNORECASE)
+                response_text = response_text.strip()
+                
+                print(f"✅ Received RAG response with {len(source_docs)} source docs.")
+            else:
+                error_info = rag_response.text
+                response_text = f"Error from RAG API: {error_info}"
+                source_docs = []
+                print(f"❌ RAG API error ({rag_response.status_code}): {error_info}")
+
+        except requests.exceptions.ConnectionError:
+            response_text = "Could not connect to the RAG API server. Please ensure it is running."
+            print("❌ Connection to RAG API failed. Is the server running on port 8001?")
+        except Exception as e:
+            response_text = f"Error processing RAG query: {str(e)}"
+            print(f"❌ RAG processing error: {e}")
+            
+        return response_text, source_docs
 
     def handle_delete_session(self, session_id: str):
         """Delete a session and its messages"""
@@ -658,15 +792,22 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
             self.send_json_response({'error': str(e)}, status_code=500)
 
     def send_json_response(self, data, status_code=200):
-        """Send JSON response with CORS headers"""
-        self.send_response(status_code)
-        self.send_header('Content-Type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
-        self.end_headers()
-        
-        response = json.dumps(data, indent=2)
-        self.wfile.write(response.encode('utf-8'))
+        """Send a JSON response with proper error handling"""
+        try:
+            self.send_response(status_code)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+            self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+            self.end_headers()
+            
+            response = json.dumps(data, indent=2)
+            self.wfile.write(response.encode('utf-8'))
+        except BrokenPipeError:
+            # Client disconnected - log but don't crash
+            print(f"⚠️  Client disconnected during response (this is normal for long RAG queries)")
+        except Exception as e:
+            print(f"❌ Error sending response: {e}")
     
     def log_message(self, format, *args):
         """Custom log format"""

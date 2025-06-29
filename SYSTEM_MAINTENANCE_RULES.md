@@ -103,6 +103,9 @@ print('✅ Query execution successful')
 - [ ] **Verify source document retrieval**
 - [ ] **Check response quality** and relevance
 - [ ] **Test error handling** for edge cases
+- [ ] **Test UI option propagation** - verify all 16 options reach backend
+- [ ] **Test dynamic model selection** from UI dropdowns
+- [ ] **Test configuration override** in real-time
 
 ### **5. Error Recovery**
 
