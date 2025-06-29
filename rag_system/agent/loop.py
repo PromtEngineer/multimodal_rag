@@ -543,54 +543,92 @@ FINAL ANSWER:
         overviews_snip = self.doc_overviews[:40]
         overviews_block = "\n".join(f"[{i+1}] {ov}" for i, ov in enumerate(overviews_snip))
 
-        router_prompt = f"""
-You are an AI router that decides whether a user question should be answered via:
-  • "rag_query"    – search the user's private documents (summarised below)
-  • "graph_query"  – query a public knowledge-graph for a crisp factual triple
-  • "direct_answer" – reply from your own general knowledge (chit-chat, public facts)
+#         router_prompt = f"""
+# You are an AI router that decides whether a user question should be answered via:
+#   • "rag_query"    – search the user's private documents (summarised below)
+#   • "graph_query"  – query a public knowledge-graph for a crisp factual triple
+#   • "direct_answer" – reply from your own general knowledge (chit-chat, public facts)
 
-RULES
- 1. If ANY overview clearly relates to the question (entities, numbers, addresses, dates, etc.) → rag_query.
- 2. If the question is a simple factual triple about well-known public entities → graph_query.
- 3. Otherwise → direct_answer.
- 4. Output must be exactly: {{"category": "rag_query"}} or {{"category": "graph_query"}} or {{"category": "direct_answer"}}.
+# RULES
+#  1. If ANY overview clearly relates to the question (entities, numbers, addresses, dates, etc.) → rag_query.
+#  2. If the question is a simple factual triple about well-known public entities → graph_query.
+#  3. Otherwise → direct_answer.
+#  4. Output must be exactly: {{"category": "rag_query"}} or {{"category": "graph_query"}} or {{"category": "direct_answer"}}.
 
 
-Example B
-  Overviews:
-    • Marketing slide deck titled "Q2 Growth Strategy" … outlines campaign budgets and KPIs …
-  Question: "List two key KPIs mentioned in the growth strategy deck."
-  Assistant: {{"category": "rag_query"}}
+# Example B
+#   Overviews:
+#     • Marketing slide deck titled "Q2 Growth Strategy" … outlines campaign budgets and KPIs …
+#   Question: "List two key KPIs mentioned in the growth strategy deck."
+#   Assistant: {{"category": "rag_query"}}
 
-Example C
-  Overviews:
-    • Medical lab report … Patient ID 778-Q … Cholesterol 210 mg/dL …
-  Question: "What is the patient's cholesterol level?"
-  Assistant: {{"category": "rag_query"}}
+# Example C
+#   Overviews:
+#     • Medical lab report … Patient ID 778-Q … Cholesterol 210 mg/dL …
+#   Question: "What is the patient's cholesterol level?"
+#   Assistant: {{"category": "rag_query"}}
 
-Example D
-  Overviews:
-    • Resume of Jane Doe, Senior Data Scientist …
-  Question: "Who is the CEO of Apple?"
-  Assistant: {{"category": "direct_answer"}}
+# Example D
+#   Overviews:
+#     • Resume of Jane Doe, Senior Data Scientist …
+#   Question: "Who is the CEO of Apple?"
+#   Assistant: {{"category": "direct_answer"}}
 
-Example E
-  Overviews:
-    • Research paper: "Quantum Entanglement in Photonic Systems" …
-  Question: "Which company acquired DeepMind?"
-  Assistant: {{"category": "graph_query"}}
+# Example E
+#   Overviews:
+#     • Research paper: "Quantum Entanglement in Photonic Systems" …
+#   Question: "Which company acquired DeepMind?"
+#   Assistant: {{"category": "graph_query"}}
 
-DOCUMENT OVERVIEWS
-+-------------------
-+{overviews_block}
+# DOCUMENT OVERVIEWS
+# +-------------------
+# +{overviews_block}
 
-USER QUESTION
-+--------------
-+"{query}"
+# USER QUESTION
+# +--------------
+# +"{query}"
 
-Return only the JSON object.
-"""
+# Return only the JSON object.
+# """
 
+        router_prompt = f"""Your task is to decide if a query should use our Knowledge Base (KB) or answer directly.
+
+        CRITICAL PRINCIPLE: **When documents exist in the KB, strongly prefer rag_query unless the query is purely conversational or completely unrelated to any possible document content.**
+
+        You MUST choose ONE decision:
+        1.  **"USE_RAG"**: Choose this for ANY query that could potentially be answered by document content, including:
+            - Questions about documents, invoices, reports, data, amounts, dates, names, companies
+            - Requests to summarize, explain, or analyze anything
+            - Questions about "the document", "this file", or any specific information
+            - Any factual question that might relate to document content
+            - When in doubt, choose this option
+
+        2.  **"direct_answer"**: ONLY use this for:
+            - Simple greetings: "Hi", "Hello", "Thanks"
+            - Basic math: "What is 2+2?"
+            - General world knowledge clearly unrelated to documents: "Who is the president of France?"
+            - Weather, current events, or topics obviously not in documents
+
+        --- Knowledge Base (KB) Content ---
+        Our KB contains these types of documents:
+        {overviews_block}
+
+        --- Decision Examples ---
+        *   Query: "What is the total amount?" -> {{"decision": "rag_query"}} (document-specific)
+        *   Query: "Can you summarize?" -> {{"decision": "rag_query"}} (document operation)
+        *   Query: "What are the key features?" -> {{"decision": "rag_query"}} (could be about documents)
+        *   Query: "Who is mentioned in the invoice?" -> {{"decision": "rag_query"}} (document content)
+        *   Query: "What is the date?" -> {{"decision": "rag_query"}} (likely document date)
+        *   Query: "Hi there" -> {{"decision": "direct_answer"}} (greeting only)
+        *   Query: "What is 2+2?" -> {{"decision": "direct_answer"}} (pure math)
+        *   Query: "Who is the US president?" -> {{"decision": "direct_answer"}} (world knowledge)
+
+        **Remember: If ANY document might contain relevant information, use rag_query. Only use direct_answer for clearly unrelated queries.**
+
+        User Query: "{query}"
+
+        Respond ONLY with a valid JSON object: {{"category": "<Your Choice Here>"}}"""
+        
         resp = self.llm_client.generate_completion(
             model=self.ollama_config["generation_model"], prompt=router_prompt, format="json"
         )
