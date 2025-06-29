@@ -55,8 +55,8 @@ PIPELINE_CONFIGS = {
     "default": {
         "description": "Production-ready pipeline with hybrid search, AI reranking, and verification",
         "storage": {
-            "db_path": "./index_store/lancedb",
-            "text_table_name": "text_pages_v3",
+            "lancedb_uri": "./lancedb",
+            "text_table_name": "text_pages_v3", 
             "image_table_name": "image_pages_v3",
             "bm25_path": "./index_store/bm25",
             "graph_path": "./index_store/graph/knowledge_graph.gml"
@@ -107,9 +107,9 @@ PIPELINE_CONFIGS = {
     "fast": {
         "description": "Speed-optimized pipeline with minimal overhead",
         "storage": {
-            "db_path": "./index_store/lancedb",
+            "lancedb_uri": "./lancedb",
             "text_table_name": "text_pages_v3",
-            "image_table_name": "image_pages_v3",
+            "image_table_name": "image_pages_v3", 
             "bm25_path": "./index_store/bm25"
         },
         "retrieval": {
