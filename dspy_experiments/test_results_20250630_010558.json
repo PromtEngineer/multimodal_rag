@@ -1,0 +1,693 @@
+{
+  "test_batch": "20250630_010558",
+  "timestamp": "2025-06-30T01:07:04.541865",
+  "total_tests": 54,
+  "test_questions": [
+    "What is artificial intelligence?",
+    "What are the key features of machine learning?",
+    "How does deep learning work?",
+    "What are the differences between supervised and unsupervised learning, and when should each be used?",
+    "How has artificial intelligence evolved from the 1950s to today, and what are the major milestones?",
+    "What are the ethical implications of AI in healthcare and how do they compare to traditional medical ethics?",
+    "How do neural networks relate to biological neurons and what are the key differences?",
+    "What specific invoices are mentioned in the documents?",
+    "What are the key findings in the research papers?"
+  ],
+  "results": [
+    {
+      "test_name": "current_system",
+      "system": "current",
+      "duration": 6.269199848175049,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "system_type": "current_rag"
+      }
+    },
+    {
+      "test_name": "dspy_basic",
+      "system": "dspy",
+      "duration": 0.27583980560302734,
+      "success": true,
+      "answer_length": 306,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "reasoning_available": true
+      }
+    },
+    {
+      "test_name": "dspy_advanced",
+      "system": "dspy",
+      "duration": 0.2501659393310547,
+      "success": true,
+      "answer_length": 306,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "has_verification": true,
+        "has_reasoning": true,
+        "verification_status": "none"
+      }
+    },
+    {
+      "test_name": "dspy_multihop",
+      "system": "dspy",
+      "duration": 0.44332218170166016,
+      "success": true,
+      "answer_length": 306,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "hops_used": 3,
+        "has_reasoning": true
+      }
+    },
+    {
+      "test_name": "lancedb_retrieval",
+      "system": "dspy",
+      "duration": 0.10203886032104492,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "lancedb"
+      }
+    },
+    {
+      "test_name": "hybrid_retrieval",
+      "system": "dspy",
+      "duration": 0.10518789291381836,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "hybrid"
+      }
+    },
+    {
+      "test_name": "current_system",
+      "system": "current",
+      "duration": 4.908573865890503,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "system_type": "current_rag"
+      }
+    },
+    {
+      "test_name": "dspy_basic",
+      "system": "dspy",
+      "duration": 0.3217620849609375,
+      "success": true,
+      "answer_length": 480,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "reasoning_available": true
+      }
+    },
+    {
+      "test_name": "dspy_advanced",
+      "system": "dspy",
+      "duration": 0.6866738796234131,
+      "success": true,
+      "answer_length": 480,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "has_verification": true,
+        "has_reasoning": true,
+        "verification_status": "none"
+      }
+    },
+    {
+      "test_name": "dspy_multihop",
+      "system": "dspy",
+      "duration": 0.5081436634063721,
+      "success": true,
+      "answer_length": 480,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "hops_used": 3,
+        "has_reasoning": true
+      }
+    },
+    {
+      "test_name": "lancedb_retrieval",
+      "system": "dspy",
+      "duration": 0.11992716789245605,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "lancedb"
+      }
+    },
+    {
+      "test_name": "hybrid_retrieval",
+      "system": "dspy",
+      "duration": 0.10701394081115723,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "hybrid"
+      }
+    },
+    {
+      "test_name": "current_system",
+      "system": "current",
+      "duration": 4.99200701713562,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "system_type": "current_rag"
+      }
+    },
+    {
+      "test_name": "dspy_basic",
+      "system": "dspy",
+      "duration": 0.16715216636657715,
+      "success": true,
+      "answer_length": 445,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "reasoning_available": true
+      }
+    },
+    {
+      "test_name": "dspy_advanced",
+      "system": "dspy",
+      "duration": 0.8741328716278076,
+      "success": true,
+      "answer_length": 445,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "has_verification": true,
+        "has_reasoning": true,
+        "verification_status": "none"
+      }
+    },
+    {
+      "test_name": "dspy_multihop",
+      "system": "dspy",
+      "duration": 0.6055450439453125,
+      "success": true,
+      "answer_length": 445,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "hops_used": 3,
+        "has_reasoning": true
+      }
+    },
+    {
+      "test_name": "lancedb_retrieval",
+      "system": "dspy",
+      "duration": 0.10667705535888672,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "lancedb"
+      }
+    },
+    {
+      "test_name": "hybrid_retrieval",
+      "system": "dspy",
+      "duration": 0.10460329055786133,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "hybrid"
+      }
+    },
+    {
+      "test_name": "current_system",
+      "system": "current",
+      "duration": 6.239812135696411,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "system_type": "current_rag"
+      }
+    },
+    {
+      "test_name": "dspy_basic",
+      "system": "dspy",
+      "duration": 0.4055478572845459,
+      "success": true,
+      "answer_length": 798,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "reasoning_available": true
+      }
+    },
+    {
+      "test_name": "dspy_advanced",
+      "system": "dspy",
+      "duration": 0.13713407516479492,
+      "success": true,
+      "answer_length": 798,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "has_verification": true,
+        "has_reasoning": true,
+        "verification_status": "none"
+      }
+    },
+    {
+      "test_name": "dspy_multihop",
+      "system": "dspy",
+      "duration": 0.5794150829315186,
+      "success": true,
+      "answer_length": 798,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "hops_used": 3,
+        "has_reasoning": true
+      }
+    },
+    {
+      "test_name": "lancedb_retrieval",
+      "system": "dspy",
+      "duration": 0.11257219314575195,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "lancedb"
+      }
+    },
+    {
+      "test_name": "hybrid_retrieval",
+      "system": "dspy",
+      "duration": 0.1137549877166748,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "hybrid"
+      }
+    },
+    {
+      "test_name": "current_system",
+      "system": "current",
+      "duration": 7.979370832443237,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "system_type": "current_rag"
+      }
+    },
+    {
+      "test_name": "dspy_basic",
+      "system": "dspy",
+      "duration": 0.1809699535369873,
+      "success": true,
+      "answer_length": 904,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "reasoning_available": true
+      }
+    },
+    {
+      "test_name": "dspy_advanced",
+      "system": "dspy",
+      "duration": 0.709266185760498,
+      "success": true,
+      "answer_length": 904,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "has_verification": true,
+        "has_reasoning": true,
+        "verification_status": "none"
+      }
+    },
+    {
+      "test_name": "dspy_multihop",
+      "system": "dspy",
+      "duration": 0.6018860340118408,
+      "success": true,
+      "answer_length": 904,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "hops_used": 3,
+        "has_reasoning": true
+      }
+    },
+    {
+      "test_name": "lancedb_retrieval",
+      "system": "dspy",
+      "duration": 0.13144803047180176,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "lancedb"
+      }
+    },
+    {
+      "test_name": "hybrid_retrieval",
+      "system": "dspy",
+      "duration": 0.11205887794494629,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "hybrid"
+      }
+    },
+    {
+      "test_name": "current_system",
+      "system": "current",
+      "duration": 7.5798492431640625,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "system_type": "current_rag"
+      }
+    },
+    {
+      "test_name": "dspy_basic",
+      "system": "dspy",
+      "duration": 0.17122483253479004,
+      "success": true,
+      "answer_length": 551,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "reasoning_available": true
+      }
+    },
+    {
+      "test_name": "dspy_advanced",
+      "system": "dspy",
+      "duration": 0.8244941234588623,
+      "success": true,
+      "answer_length": 551,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "has_verification": true,
+        "has_reasoning": true,
+        "verification_status": "none"
+      }
+    },
+    {
+      "test_name": "dspy_multihop",
+      "system": "dspy",
+      "duration": 0.6029410362243652,
+      "success": true,
+      "answer_length": 551,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "hops_used": 3,
+        "has_reasoning": true
+      }
+    },
+    {
+      "test_name": "lancedb_retrieval",
+      "system": "dspy",
+      "duration": 0.10983133316040039,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "lancedb"
+      }
+    },
+    {
+      "test_name": "hybrid_retrieval",
+      "system": "dspy",
+      "duration": 0.10982918739318848,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "hybrid"
+      }
+    },
+    {
+      "test_name": "current_system",
+      "system": "current",
+      "duration": 4.988282918930054,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "system_type": "current_rag"
+      }
+    },
+    {
+      "test_name": "dspy_basic",
+      "system": "dspy",
+      "duration": 0.3771493434906006,
+      "success": true,
+      "answer_length": 906,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "reasoning_available": true
+      }
+    },
+    {
+      "test_name": "dspy_advanced",
+      "system": "dspy",
+      "duration": 0.4573209285736084,
+      "success": true,
+      "answer_length": 906,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "has_verification": true,
+        "has_reasoning": true,
+        "verification_status": "none"
+      }
+    },
+    {
+      "test_name": "dspy_multihop",
+      "system": "dspy",
+      "duration": 0.37622976303100586,
+      "success": true,
+      "answer_length": 906,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "hops_used": 3,
+        "has_reasoning": true
+      }
+    },
+    {
+      "test_name": "lancedb_retrieval",
+      "system": "dspy",
+      "duration": 0.13425183296203613,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "lancedb"
+      }
+    },
+    {
+      "test_name": "hybrid_retrieval",
+      "system": "dspy",
+      "duration": 0.11333012580871582,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "hybrid"
+      }
+    },
+    {
+      "test_name": "current_system",
+      "system": "current",
+      "duration": 4.571337938308716,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "system_type": "current_rag"
+      }
+    },
+    {
+      "test_name": "dspy_basic",
+      "system": "dspy",
+      "duration": 0.15960407257080078,
+      "success": true,
+      "answer_length": 81,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "reasoning_available": true
+      }
+    },
+    {
+      "test_name": "dspy_advanced",
+      "system": "dspy",
+      "duration": 0.5616939067840576,
+      "success": true,
+      "answer_length": 81,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "has_verification": true,
+        "has_reasoning": true,
+        "verification_status": "none"
+      }
+    },
+    {
+      "test_name": "dspy_multihop",
+      "system": "dspy",
+      "duration": 0.3916902542114258,
+      "success": true,
+      "answer_length": 81,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "hops_used": 3,
+        "has_reasoning": true
+      }
+    },
+    {
+      "test_name": "lancedb_retrieval",
+      "system": "dspy",
+      "duration": 0.10912394523620605,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "lancedb"
+      }
+    },
+    {
+      "test_name": "hybrid_retrieval",
+      "system": "dspy",
+      "duration": 0.10887503623962402,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "hybrid"
+      }
+    },
+    {
+      "test_name": "current_system",
+      "system": "current",
+      "duration": 4.594701051712036,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "system_type": "current_rag"
+      }
+    },
+    {
+      "test_name": "dspy_basic",
+      "system": "dspy",
+      "duration": 0.14424443244934082,
+      "success": true,
+      "answer_length": 134,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "reasoning_available": true
+      }
+    },
+    {
+      "test_name": "dspy_advanced",
+      "system": "dspy",
+      "duration": 0.4691200256347656,
+      "success": true,
+      "answer_length": 134,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "has_verification": true,
+        "has_reasoning": true,
+        "verification_status": "none"
+      }
+    },
+    {
+      "test_name": "dspy_multihop",
+      "system": "dspy",
+      "duration": 0.40358400344848633,
+      "success": true,
+      "answer_length": 134,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "hops_used": 3,
+        "has_reasoning": true
+      }
+    },
+    {
+      "test_name": "lancedb_retrieval",
+      "system": "dspy",
+      "duration": 0.11231493949890137,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "lancedb"
+      }
+    },
+    {
+      "test_name": "hybrid_retrieval",
+      "system": "dspy",
+      "duration": 0.1129767894744873,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "hybrid"
+      }
+    }
+  ]
+}

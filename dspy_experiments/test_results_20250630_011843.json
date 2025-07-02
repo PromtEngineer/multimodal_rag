@@ -1,0 +1,693 @@
+{
+  "test_batch": "20250630_011843",
+  "timestamp": "2025-06-30T01:56:42.906576",
+  "total_tests": 54,
+  "test_questions": [
+    "What is artificial intelligence?",
+    "What are the key features of machine learning?",
+    "How does deep learning work?",
+    "What are the differences between supervised and unsupervised learning, and when should each be used?",
+    "How has artificial intelligence evolved from the 1950s to today, and what are the major milestones?",
+    "What are the ethical implications of AI in healthcare and how do they compare to traditional medical ethics?",
+    "How do neural networks relate to biological neurons and what are the key differences?",
+    "What specific invoices are mentioned in the documents?",
+    "What are the key findings in the research papers?"
+  ],
+  "results": [
+    {
+      "test_name": "current_system",
+      "system": "current",
+      "duration": 4.870309114456177,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "system_type": "current_rag"
+      }
+    },
+    {
+      "test_name": "dspy_basic",
+      "system": "dspy",
+      "duration": 12.461414098739624,
+      "success": true,
+      "answer_length": 364,
+      "context_count": 5,
+      "error": null,
+      "metadata": {
+        "reasoning_available": true
+      }
+    },
+    {
+      "test_name": "dspy_advanced",
+      "system": "dspy",
+      "duration": 76.0907871723175,
+      "success": true,
+      "answer_length": 506,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "has_verification": true,
+        "has_reasoning": true,
+        "verification_status": "1. **Math Benchmarks**: DeepSeek-V3 outperforms Qwen2.5-72B by ~10% on AIME, MATH-500, and CNMO2024, indicating strong mathematical reasoning.  \n2. **Distillation Impact**: The distillation technique from DeepSeek-R1 is highlighted as critical for non-o1-like models, improving performance on MMLU-Pro and MATH-500.  \n3. **Chinese Benchmarks**: DeepSeek-V3 matches Qwen2.5-72B in Chinese educational tasks (C-Eval, CLUEWSC) despite a smaller training corpus (14.8T vs. 18T tokens).  \n4. **Parameter Efficiency**: DeepSeek-V3 (671B params, MoE architecture) achieves competitive results compared to denser models like LLaMA-3.1 (405B params) and GPT-4o."
+      }
+    },
+    {
+      "test_name": "dspy_multihop",
+      "system": "dspy",
+      "duration": 145.79309391975403,
+      "success": true,
+      "answer_length": 505,
+      "context_count": 15,
+      "error": null,
+      "metadata": {
+        "hops_used": 3,
+        "has_reasoning": true
+      }
+    },
+    {
+      "test_name": "lancedb_retrieval",
+      "system": "dspy",
+      "duration": 0.16623902320861816,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "lancedb"
+      }
+    },
+    {
+      "test_name": "hybrid_retrieval",
+      "system": "dspy",
+      "duration": 0.12676310539245605,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "hybrid"
+      }
+    },
+    {
+      "test_name": "current_system",
+      "system": "current",
+      "duration": 9.14325499534607,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "system_type": "current_rag"
+      }
+    },
+    {
+      "test_name": "dspy_basic",
+      "system": "dspy",
+      "duration": 22.37901520729065,
+      "success": true,
+      "answer_length": 229,
+      "context_count": 5,
+      "error": null,
+      "metadata": {
+        "reasoning_available": true
+      }
+    },
+    {
+      "test_name": "dspy_advanced",
+      "system": "dspy",
+      "duration": 83.40106391906738,
+      "success": true,
+      "answer_length": 629,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "has_verification": true,
+        "has_reasoning": true,
+        "verification_status": "- **Training Costs**: Source 8 confirms 180K H800 GPU hours for 1T tokens, aligning with Source 10's emphasis on economical training.  \n- **Benchmark Comparisons**: Source 10 explicitly states DeepSeek-V3-Base is the strongest open-source base model in code/math, corroborated by Source 7's mention of high performance.  \n- **Ablation Studies**: Source 8 validates the MTP strategy's effectiveness across scales (15.7B to 228.7B parameters).  \n- **Context Length**: Source 10's two-stage extension (32K \u2192 128K) is consistent with Source 7's focus on long-context capabilities."
+      }
+    },
+    {
+      "test_name": "dspy_multihop",
+      "system": "dspy",
+      "duration": 176.1341278553009,
+      "success": true,
+      "answer_length": 319,
+      "context_count": 15,
+      "error": null,
+      "metadata": {
+        "hops_used": 3,
+        "has_reasoning": true
+      }
+    },
+    {
+      "test_name": "lancedb_retrieval",
+      "system": "dspy",
+      "duration": 0.14786195755004883,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "lancedb"
+      }
+    },
+    {
+      "test_name": "hybrid_retrieval",
+      "system": "dspy",
+      "duration": 0.11048078536987305,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "hybrid"
+      }
+    },
+    {
+      "test_name": "current_system",
+      "system": "current",
+      "duration": 6.357278823852539,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "system_type": "current_rag"
+      }
+    },
+    {
+      "test_name": "dspy_basic",
+      "system": "dspy",
+      "duration": 16.926653146743774,
+      "success": true,
+      "answer_length": 236,
+      "context_count": 5,
+      "error": null,
+      "metadata": {
+        "reasoning_available": true
+      }
+    },
+    {
+      "test_name": "dspy_advanced",
+      "system": "dspy",
+      "duration": 76.68437314033508,
+      "success": true,
+      "answer_length": 678,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "has_verification": true,
+        "has_reasoning": true,
+        "verification_status": "- **Hyperparameters**: Source 10 confirms 61 Transformer layers, 7168 hidden dimensions, and 671B total parameters.  \n- **Training Efficiency**: Source 4\u2019s DualPipe reduces pipeline bubbles, and Source 9\u2019s low-precision optimizations (FP8, BF16) align with the 14.8T token pre-training scale.  \n- **Evaluation**: Source 6 shows distillation (DeepSeek-V2.5 +R1) improves LiveCodeBench-CoT (31.1 \u2192 37.4) and MATH-500 (74.6 \u2192 83.2).  \n- **Tokenizer**: Source 5\u2019s Byte-level BPE (128K tokens) and FIM strategy (0.1 rate) are consistent with multilingual compression goals."
+      }
+    },
+    {
+      "test_name": "dspy_multihop",
+      "system": "dspy",
+      "duration": 152.1622350215912,
+      "success": true,
+      "answer_length": 650,
+      "context_count": 15,
+      "error": null,
+      "metadata": {
+        "hops_used": 3,
+        "has_reasoning": true
+      }
+    },
+    {
+      "test_name": "lancedb_retrieval",
+      "system": "dspy",
+      "duration": 0.14484691619873047,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "lancedb"
+      }
+    },
+    {
+      "test_name": "hybrid_retrieval",
+      "system": "dspy",
+      "duration": 0.1096799373626709,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "hybrid"
+      }
+    },
+    {
+      "test_name": "current_system",
+      "system": "current",
+      "duration": 7.06943678855896,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "system_type": "current_rag"
+      }
+    },
+    {
+      "test_name": "dspy_basic",
+      "system": "dspy",
+      "duration": 19.404622077941895,
+      "success": true,
+      "answer_length": 492,
+      "context_count": 5,
+      "error": null,
+      "metadata": {
+        "reasoning_available": true
+      }
+    },
+    {
+      "test_name": "dspy_advanced",
+      "system": "dspy",
+      "duration": 72.98706793785095,
+      "success": true,
+      "answer_length": 601,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "has_verification": true,
+        "has_reasoning": true,
+        "verification_status": "- **MTP & Speculative Decoding**: Confirmed in Source 4 (85\u201390% acceptance rate for second token).  \n- **Distillation Impact**: Validated in Source 5 (specific score improvements).  \n- **FP8/FP16 Usage**: Detailed in Source 9 (activation quantization, communication bandwidth optimization).  \n- **Benchmark Comparisons**: Source 10 explicitly states 10% score lead over Qwen2.5-72B.  \n- **Constitutional AI**: Cited in Source 4 (Bai et al., 2022)."
+      }
+    },
+    {
+      "test_name": "dspy_multihop",
+      "system": "dspy",
+      "duration": 138.54280519485474,
+      "success": true,
+      "answer_length": 791,
+      "context_count": 15,
+      "error": null,
+      "metadata": {
+        "hops_used": 3,
+        "has_reasoning": true
+      }
+    },
+    {
+      "test_name": "lancedb_retrieval",
+      "system": "dspy",
+      "duration": 0.1573197841644287,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "lancedb"
+      }
+    },
+    {
+      "test_name": "hybrid_retrieval",
+      "system": "dspy",
+      "duration": 0.1139822006225586,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "hybrid"
+      }
+    },
+    {
+      "test_name": "current_system",
+      "system": "current",
+      "duration": 8.732245922088623,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "system_type": "current_rag"
+      }
+    },
+    {
+      "test_name": "dspy_basic",
+      "system": "dspy",
+      "duration": 17.017856121063232,
+      "success": true,
+      "answer_length": 254,
+      "context_count": 5,
+      "error": null,
+      "metadata": {
+        "reasoning_available": true
+      }
+    },
+    {
+      "test_name": "dspy_advanced",
+      "system": "dspy",
+      "duration": 70.92621326446533,
+      "success": true,
+      "answer_length": 1356,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "has_verification": true,
+        "has_reasoning": true,
+        "verification_status": "- **Training Costs**: Confirmed by Source 8 and 9, which state 180K H800 GPU hours for 14.8T tokens.  \n- **DualPipe**: Validated in Source 10, which details its role in reducing pipeline bubbles and overlapping computation-communication.  \n- **Benchmark Performance**: Supported by Source 9, which highlights DeepSeek-V3\u2019s dominance in code/math benchmarks.  \n- **Context Length**: Verified in Source 9, mentioning two-stage extension to 128K tokens."
+      }
+    },
+    {
+      "test_name": "dspy_multihop",
+      "system": "dspy",
+      "duration": 141.17798280715942,
+      "success": true,
+      "answer_length": 966,
+      "context_count": 15,
+      "error": null,
+      "metadata": {
+        "hops_used": 3,
+        "has_reasoning": true
+      }
+    },
+    {
+      "test_name": "lancedb_retrieval",
+      "system": "dspy",
+      "duration": 0.16015625,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "lancedb"
+      }
+    },
+    {
+      "test_name": "hybrid_retrieval",
+      "system": "dspy",
+      "duration": 0.11795926094055176,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "hybrid"
+      }
+    },
+    {
+      "test_name": "current_system",
+      "system": "current",
+      "duration": 8.319360971450806,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "system_type": "current_rag"
+      }
+    },
+    {
+      "test_name": "dspy_basic",
+      "system": "dspy",
+      "duration": 16.16467809677124,
+      "success": true,
+      "answer_length": 338,
+      "context_count": 5,
+      "error": null,
+      "metadata": {
+        "reasoning_available": true
+      }
+    },
+    {
+      "test_name": "dspy_advanced",
+      "system": "dspy",
+      "duration": 72.92906880378723,
+      "success": true,
+      "answer_length": 503,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "has_verification": true,
+        "has_reasoning": true,
+        "verification_status": "- **Training Efficiency**: Confirmed by Source 9's claim of 180K H800 GPU hours for DeepSeekV3.  \n- **MTP Strategy**: Validated by Source 9's ablation study showing consistent performance gains.  \n- **Benchmark Comparisons**: Supported by Source 10's list of evaluated models and datasets.  \n- **Evaluation Protocols**: Aligned with Source 10's detailed configurations (e.g., Zero-Eval for MMLU-Redux)."
+      }
+    },
+    {
+      "test_name": "dspy_multihop",
+      "system": "dspy",
+      "duration": 139.96345400810242,
+      "success": true,
+      "answer_length": 593,
+      "context_count": 15,
+      "error": null,
+      "metadata": {
+        "hops_used": 3,
+        "has_reasoning": true
+      }
+    },
+    {
+      "test_name": "lancedb_retrieval",
+      "system": "dspy",
+      "duration": 0.15094518661499023,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "lancedb"
+      }
+    },
+    {
+      "test_name": "hybrid_retrieval",
+      "system": "dspy",
+      "duration": 0.11248993873596191,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "hybrid"
+      }
+    },
+    {
+      "test_name": "current_system",
+      "system": "current",
+      "duration": 4.634944915771484,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "system_type": "current_rag"
+      }
+    },
+    {
+      "test_name": "dspy_basic",
+      "system": "dspy",
+      "duration": 19.85588026046753,
+      "success": true,
+      "answer_length": 127,
+      "context_count": 5,
+      "error": null,
+      "metadata": {
+        "reasoning_available": true
+      }
+    },
+    {
+      "test_name": "dspy_advanced",
+      "system": "dspy",
+      "duration": 75.96498894691467,
+      "success": true,
+      "answer_length": 892,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "has_verification": true,
+        "has_reasoning": true,
+        "verification_status": "The sources are consistent in emphasizing low-precision optimization for training efficiency, such as using BF16 for optimizer states and FP8 for activations and gradients. The MTP (Multi-Token Prediction) and auxiliary-loss-free strategies are validated across different model scales (15.7B to 228.7B parameters). The focus on FP8 formats aligns with prior work (e.g., FP8 for deep learning, Ascend HiFloat8). These claims are supported by ablation studies and training cost comparisons."
+      }
+    },
+    {
+      "test_name": "dspy_multihop",
+      "system": "dspy",
+      "duration": 156.09792375564575,
+      "success": true,
+      "answer_length": 1421,
+      "context_count": 15,
+      "error": null,
+      "metadata": {
+        "hops_used": 3,
+        "has_reasoning": true
+      }
+    },
+    {
+      "test_name": "lancedb_retrieval",
+      "system": "dspy",
+      "duration": 0.1583249568939209,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "lancedb"
+      }
+    },
+    {
+      "test_name": "hybrid_retrieval",
+      "system": "dspy",
+      "duration": 0.11608004570007324,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "hybrid"
+      }
+    },
+    {
+      "test_name": "current_system",
+      "system": "current",
+      "duration": 5.078755855560303,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "system_type": "current_rag"
+      }
+    },
+    {
+      "test_name": "dspy_basic",
+      "system": "dspy",
+      "duration": 10.351593971252441,
+      "success": true,
+      "answer_length": 61,
+      "context_count": 5,
+      "error": null,
+      "metadata": {
+        "reasoning_available": true
+      }
+    },
+    {
+      "test_name": "dspy_advanced",
+      "system": "dspy",
+      "duration": 59.14786410331726,
+      "success": true,
+      "answer_length": 143,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "has_verification": true,
+        "has_reasoning": true,
+        "verification_status": "The sources are verified as credible, including:  \n- **Academic papers** (e.g., FP8 formats, zero bubble pipeline parallelism) from reputable institutions (e.g., NVIDIA, OpenAI).  \n- **Technical reports** (e.g., Qwen technical reports, Mistral\u2019s documentation).  \n- **Benchmark datasets** (e.g., MMMLU, GPQA) hosted on platforms like Hugging Face and OpenAI.  \n- **Hardware specifications** (e.g., NVIDIA Blackwell architecture) from official NVIDIA pages."
+      }
+    },
+    {
+      "test_name": "dspy_multihop",
+      "system": "dspy",
+      "duration": 96.40839791297913,
+      "success": true,
+      "answer_length": 52,
+      "context_count": 15,
+      "error": null,
+      "metadata": {
+        "hops_used": 3,
+        "has_reasoning": true
+      }
+    },
+    {
+      "test_name": "lancedb_retrieval",
+      "system": "dspy",
+      "duration": 0.14409494400024414,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "lancedb"
+      }
+    },
+    {
+      "test_name": "hybrid_retrieval",
+      "system": "dspy",
+      "duration": 0.10762310028076172,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "hybrid"
+      }
+    },
+    {
+      "test_name": "current_system",
+      "system": "current",
+      "duration": 5.243391036987305,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 0,
+      "error": null,
+      "metadata": {
+        "system_type": "current_rag"
+      }
+    },
+    {
+      "test_name": "dspy_basic",
+      "system": "dspy",
+      "duration": 21.175518035888672,
+      "success": true,
+      "answer_length": 452,
+      "context_count": 5,
+      "error": null,
+      "metadata": {
+        "reasoning_available": true
+      }
+    },
+    {
+      "test_name": "dspy_advanced",
+      "system": "dspy",
+      "duration": 69.52016401290894,
+      "success": true,
+      "answer_length": 588,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "has_verification": true,
+        "has_reasoning": true,
+        "verification_status": "The claims are supported by the sources:  \n1. **Math benchmarks**: Source 9 explicitly states DeepSeek-V3 surpasses Qwen2.5 72B by ~10% on AIME, MATH-500, and CNMO 2024.  \n2. **Distillation technique**: Source 10 confirms post-training distillation from DeepSeek-R1 series.  \n3. **Chinese benchmarks**: Source 9 notes DeepSeek-V3 outperforms Qwen2.5-72B on Chinese SimpleQA by 16.4 points.  \n4. **Training details**: Source 10 details 14.8T tokens, context length extension, and post-training methods."
+      }
+    },
+    {
+      "test_name": "dspy_multihop",
+      "system": "dspy",
+      "duration": 257.6274220943451,
+      "success": true,
+      "answer_length": 438,
+      "context_count": 15,
+      "error": null,
+      "metadata": {
+        "hops_used": 3,
+        "has_reasoning": true
+      }
+    },
+    {
+      "test_name": "lancedb_retrieval",
+      "system": "dspy",
+      "duration": 0.17864012718200684,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "lancedb"
+      }
+    },
+    {
+      "test_name": "hybrid_retrieval",
+      "system": "dspy",
+      "duration": 0.11661291122436523,
+      "success": true,
+      "answer_length": 0,
+      "context_count": 10,
+      "error": null,
+      "metadata": {
+        "retrieval_type": "hybrid"
+      }
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "retrieve": {
+    "k": 3
+  },
+  "generate_answer.predict": {
+    "traces": [],
+    "train": [],
+    "demos": [
+      {
+        "question": "What is the total amount due?",
+        "answer": "The total amount due is $9,000.00 as mentioned in invoice 1039."
+      },
+      {
+        "question": "What company issued the invoices?",
+        "answer": "PromptX AI LLC issued the invoices."
+      }
+    ],
+    "signature": {
+      "instructions": "Answer questions using provided context documents.",
+      "fields": [
+        {
+          "prefix": "Context:",
+          "description": "relevant text passages that may contain the answer"
+        },
+        {
+          "prefix": "Question:",
+          "description": "the user's question"
+        },
+        {
+          "prefix": "Reasoning: Let's think step by step in order to",
+          "description": "${reasoning}"
+        },
+        {
+          "prefix": "Answer:",
+          "description": "answer based on the provided context"
+        }
+      ]
+    },
+    "lm": null
+  },
+  "metadata": {
+    "dependency_versions": {
+      "python": "3.11",
+      "dspy": "2.6.27",
+      "cloudpickle": "3.0"
+    }
+  }
+}
