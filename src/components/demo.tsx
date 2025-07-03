@@ -92,7 +92,7 @@ export function Demo() {
             {/* Main content row */}
             <div className="flex flex-1 flex-row min-h-0">
                 {/* Session Sidebar */}
-                {sidebarOpen && showConversation && homeMode !== 'QUICK_CHAT' && (
+                {sidebarOpen && showConversation && (homeMode === 'CHAT_EXISTING' || homeMode === 'QUICK_CHAT') && (
                     <SessionSidebar
                         currentSessionId={currentSessionId}
                         onSessionSelect={handleSessionSelect}
