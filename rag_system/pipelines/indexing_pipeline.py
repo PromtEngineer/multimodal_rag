@@ -18,20 +18,34 @@ class IndexingPipeline:
         self.pdf_converter = PDFConverter()
         # Chunker selection: legacy or docling
         chunker_mode = config.get("chunker_mode", "legacy")
+        
+        # 🔧 Get chunking configuration from frontend parameters
+        chunking_config = config.get("chunking", {})
+        chunk_size = chunking_config.get("chunk_size", config.get("chunk_size", 1500))
+        chunk_overlap = chunking_config.get("chunk_overlap", config.get("chunk_overlap", 200))
+        
+        print(f"🔧 CHUNKING CONFIG: Size: {chunk_size}, Overlap: {chunk_overlap}, Mode: {chunker_mode}")
+        
         if chunker_mode == "docling":
             try:
                 from rag_system.ingestion.docling_chunker import DoclingChunker
                 self.chunker = DoclingChunker(
-                    max_tokens=config.get("max_tokens", 512),
+                    max_tokens=config.get("max_tokens", chunk_size),
                     overlap=config.get("overlap_sentences", 1),
                     tokenizer_model=config.get("embedding_model_name", "qwen3-embedding-0.6b"),
                 )
                 print("🪄 Using DoclingChunker for high-recall sentence packing.")
             except Exception as e:
                 print(f"⚠️  Failed to initialise DoclingChunker: {e}. Falling back to legacy chunker.")
-                self.chunker = MarkdownRecursiveChunker()
+                self.chunker = MarkdownRecursiveChunker(
+                    max_chunk_size=chunk_size,
+                    min_chunk_size=min(chunk_overlap, chunk_size // 4)  # Sensible minimum
+                )
         else:
-            self.chunker = MarkdownRecursiveChunker()
+            self.chunker = MarkdownRecursiveChunker(
+                max_chunk_size=chunk_size,
+                min_chunk_size=min(chunk_overlap, chunk_size // 4)  # Sensible minimum
+            )
 
         retriever_configs = self.config.get("retrievers") or self.config.get("retrieval", {})
         storage_config = self.config["storage"]
@@ -74,7 +88,15 @@ class IndexingPipeline:
             )
 
         if self.config.get("contextual_enricher", {}).get("enabled"):
-            enrichment_model = self.ollama_config.get("enrichment_model", self.ollama_config["generation_model"])
+            # 🔧 Use frontend enrich_model parameter if provided
+            enrichment_model = (
+                self.config.get("enrich_model") or  # Frontend parameter
+                self.config.get("enrichment_model_name") or  # Alternative config key
+                self.ollama_config.get("enrichment_model") or  # Default from ollama config
+                self.ollama_config["generation_model"]  # Final fallback
+            )
+            print(f"🔧 ENRICHMENT MODEL: Using '{enrichment_model}' for contextual enrichment")
+            
             self.contextual_enricher = ContextualEnricher(
                 llm_client=self.llm_client,
                 llm_model=enrichment_model,
@@ -180,15 +202,41 @@ class IndexingPipeline:
             retriever_configs = self.config.get("retrievers") or self.config.get("retrieval", {})
 
             # Step 3: Optional Contextual Enrichment (before indexing for consistency)
-            if hasattr(self, 'contextual_enricher'):
+            enricher_config = self.config.get("contextual_enricher", {})
+            enricher_enabled = enricher_config.get("enabled", False)
+            
+            print(f"\n🔍 CONTEXTUAL ENRICHMENT DEBUG:")
+            print(f"   Config present: {bool(enricher_config)}")
+            print(f"   Enabled: {enricher_enabled}")
+            print(f"   Has enricher object: {hasattr(self, 'contextual_enricher')}")
+            
+            if hasattr(self, 'contextual_enricher') and enricher_enabled:
                 with timer("Contextual Enrichment"):
-                    enricher_config = self.config.get("contextual_enricher", {})
                     window_size = enricher_config.get("window_size", 1)
-                    print(f"\n--- Starting contextual enrichment (window_size={window_size}) ---")
+                    print(f"\n🚀 CONTEXTUAL ENRICHMENT ACTIVE!")
+                    print(f"   Window size: {window_size}")
+                    print(f"   Model: {self.contextual_enricher.llm_model}")
+                    print(f"   Batch size: {self.contextual_enricher.batch_size}")
+                    print(f"   Processing {len(all_chunks)} chunks...")
+                    
+                    # Show before/after example
+                    if all_chunks:
+                        print(f"   Example BEFORE: '{all_chunks[0]['text'][:100]}...'")
                     
                     # This modifies the 'text' field in each chunk dictionary
                     all_chunks = self.contextual_enricher.enrich_chunks(all_chunks, window_size=window_size)
+                    
+                    if all_chunks:
+                        print(f"   Example AFTER: '{all_chunks[0]['text'][:100]}...'")
+                    
                     print(f"✅ Enriched {len(all_chunks)} chunks with context for indexing.")
+            else:
+                print(f"⚠️  CONTEXTUAL ENRICHMENT SKIPPED:")
+                if not hasattr(self, 'contextual_enricher'):
+                    print(f"   Reason: No enricher object (config enabled={enricher_enabled})")
+                elif not enricher_enabled:
+                    print(f"   Reason: Disabled in config")
+                print(f"   Chunks will be indexed without contextual enrichment.")
 
             # Step 4: Create BM25 Index from enriched chunks (for consistency with vector index)
             if hasattr(self, 'vector_indexer') and hasattr(self, 'embedding_generator'):

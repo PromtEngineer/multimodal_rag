@@ -134,35 +134,52 @@ Latest User Query: "{query}"
     # ---------------- Asynchronous triage using Ollama ----------------
     async def _triage_query_async(self, query: str, history: list) -> str:
         
+        print(f"🔍 ROUTING DEBUG: Starting triage for query: '{query[:100]}...'")
+        
         # 1️⃣ Fast routing using precomputed overviews (if available)
+        print(f"📖 ROUTING DEBUG: Attempting overview-based routing...")
         routed = self._route_via_overviews(query)
         if routed:
+            print(f"✅ ROUTING DEBUG: Overview routing decided: '{routed}'")
             return routed
+        else:
+            print(f"❌ ROUTING DEBUG: Overview routing returned None, falling back to LLM triage")
 
         if history:
             # If there's history, the query is likely a follow-up, so we default to RAG.
             # A more advanced implementation could use an LLM to see if the new query
             # changes the topic entirely.
+            print(f"📜 ROUTING DEBUG: History exists, defaulting to 'rag_query'")
             return "rag_query"
 
+        print(f"🤖 ROUTING DEBUG: No history, using LLM fallback triage...")
         prompt = f"""
-You are a query routing expert. Analyse the user's question and decide which backend should handle it. Choose **exactly one** of the following categories:
+You are a query routing expert. Analyze the user's question and decide which backend should handle it.
 
-1. "graph_query" – The user asks for a specific factual relation best served by a knowledge-graph lookup (e.g. "Who is the CEO of Apple?", "Which company acquired DeepMind?").
-2. "rag_query" – The answer is most likely inside the user's uploaded documents (reports, PDFs, slide decks, invoices, research papers, etc.). Examples: "What is the total on invoice 1041?", "Summarise the Q3 earnings report".
-3. "direct_answer" – General chit-chat or open-domain knowledge that does **not** rely on the user's private documents or the knowledge graph (e.g. "Hello", "What is the capital of France?", "Explain quantum entanglement").
+Choose **exactly one** category:
 
-Respond with JSON of the form: {{"category": "<your_choice>"}}
+1. "rag_query" – Questions about the user's uploaded documents or specific document content that should be searched. Examples: "What is the invoice amount?", "Summarize the research paper", "What companies are mentioned?"
+
+2. "direct_answer" – General knowledge questions, greetings, or queries unrelated to uploaded documents. Examples: "Who are the CEOs of Tesla and Amazon?", "What is the capital of France?", "Hello", "Explain quantum physics"
+
+3. "graph_query" – Specific factual relations for knowledge-graph lookup (currently limited use)
+
+IMPORTANT: For general world knowledge about well-known companies, people, or facts NOT related to uploaded documents, choose "direct_answer".
 
 User query: "{query}"
+
+Respond with JSON: {{"category": "<your_choice>"}}
 """
         resp = self.llm_client.generate_completion(
             model=self.ollama_config["generation_model"], prompt=prompt, format="json"
         )
         try:
             data = json.loads(resp.get("response", "{}"))
-            return data.get("category", "rag_query")
+            decision = data.get("category", "rag_query")
+            print(f"🤖 ROUTING DEBUG: LLM fallback triage decided: '{decision}'")
+            return decision
         except json.JSONDecodeError:
+            print(f"❌ ROUTING DEBUG: LLM fallback triage JSON parsing failed, defaulting to 'rag_query'")
             return "rag_query"
 
     def _run_graph_query(self, query: str, history: list) -> Dict[str, Any]:
@@ -215,6 +232,7 @@ User query: "{query}"
         history = self.chat_histories.get(session_id, []) if session_id else []
         
         query_type = await self._triage_query_async(query, history)
+        print(f"🎯 ROUTING DEBUG: Final triage decision: '{query_type}'")
         print(f"Agent Triage Decision: '{query_type}'")
         
         # Create a contextual query that includes history for most operations
@@ -282,6 +300,7 @@ User query: "{query}"
                     return cached_result
 
         if query_type == "direct_answer":
+            print(f"✅ ROUTING DEBUG: Executing DIRECT_ANSWER path")
             if event_callback:
                 event_callback("direct_answer", {})
 
@@ -311,10 +330,12 @@ User query: "{query}"
             result = {"answer": final_answer, "source_documents": []}
         
         elif query_type == "graph_query" and hasattr(self, 'graph_retriever'):
+            print(f"✅ ROUTING DEBUG: Executing GRAPH_QUERY path")
             result = self._run_graph_query(query, history)
 
         # --- RAG Query Processing with Optional Query Decomposition ---
         else: # Default to rag_query
+            print(f"✅ ROUTING DEBUG: Executing RAG_QUERY path (query_type='{query_type}')")
             query_decomp_config = self.pipeline_configs.get("query_decomposition", {})
             decomp_enabled = query_decomp_config.get("enabled", False)
             if query_decompose is not None:
@@ -565,7 +586,10 @@ FINAL ANSWER:
         """Use document overviews and a small model to decide routing.
         Returns 'rag_query', 'direct_answer', or None if unsure/disabled."""
         if not self.doc_overviews:
+            print(f"📖 ROUTING DEBUG: No document overviews available, returning None")
             return None
+        
+        print(f"📖 ROUTING DEBUG: Found {len(self.doc_overviews)} document overviews, using LLM routing...")
 
         # Keep prompt concise: if more than 40 overviews, take first 40
         overviews_snip = self.doc_overviews[:40]
@@ -619,51 +643,34 @@ FINAL ANSWER:
 # Return only the JSON object.
 # """
 
-        router_prompt = f"""Your task is to decide if a query should use our Knowledge Base (KB) or answer directly.
+        router_prompt = f"""Task: Route query to correct system.
 
-        CRITICAL PRINCIPLE: **When documents exist in the KB, strongly prefer rag_query unless the query is purely conversational or completely unrelated to any possible document content.**
+Documents available: Invoices, DeepSeek-V3 research papers
 
-        You MUST choose ONE decision:
-        1.  **"USE_RAG"**: Choose this for ANY query that could potentially be answered by document content, including:
-            - Questions about documents, invoices, reports, data, amounts, dates, names, companies
-            - Requests to summarize, explain, or analyze anything
-            - Questions about "the document", "this file", or any specific information
-            - Any factual question that might relate to document content
-            - When in doubt, choose this option
+Query: "{query}"
 
-        2.  **"direct_answer"**: ONLY use this for:
-            - Simple greetings: "Hi", "Hello", "Thanks"
-            - Basic math: "What is 2+2?"
-            - General world knowledge clearly unrelated to documents: "Who is the president of France?"
-            - Weather, current events, or topics obviously not in documents
+Is this query asking about:
+A) Greetings/social: "Hi", "Hello", "Thanks", "What's up", "How are you"
+B) General knowledge: "CEO of Tesla", "capital of France", "what is 2+2"  
+C) Document content: invoice amounts, DeepSeek-V3 details, companies mentioned
 
-        --- Knowledge Base (KB) Content ---
-        Our KB contains these types of documents:
-        {overviews_block}
+If A or B → {{"category": "direct_answer"}}
+If C → {{"category": "rag_query"}}
 
-        --- Decision Examples ---
-        *   Query: "What is the total amount?" -> {{"decision": "rag_query"}} (document-specific)
-        *   Query: "Can you summarize?" -> {{"decision": "rag_query"}} (document operation)
-        *   Query: "What are the key features?" -> {{"decision": "rag_query"}} (could be about documents)
-        *   Query: "Who is mentioned in the invoice?" -> {{"decision": "rag_query"}} (document content)
-        *   Query: "What is the date?" -> {{"decision": "rag_query"}} (likely document date)
-        *   Query: "Hi there" -> {{"decision": "direct_answer"}} (greeting only)
-        *   Query: "What is 2+2?" -> {{"decision": "direct_answer"}} (pure math)
-        *   Query: "Who is the US president?" -> {{"decision": "direct_answer"}} (world knowledge)
-
-        **Remember: If ANY document might contain relevant information, use rag_query. Only use direct_answer for clearly unrelated queries.**
-
-        User Query: "{query}"
-
-        Respond ONLY with a valid JSON object: {{"category": "<Your Choice Here>"}}"""
+Response:"""
         
         resp = self.llm_client.generate_completion(
-            model=self.ollama_config["enrichment_model"], prompt=router_prompt, format="json"
+            model=self.ollama_config["generation_model"], prompt=router_prompt, format="json"
         )
         try:
-            data = json.loads(resp.get("response", "{}"))
-            return data.get("category", "rag_query")
-        except json.JSONDecodeError:
+            raw_response = resp.get("response", "{}")
+            print(f"📖 ROUTING DEBUG: Overview LLM raw response: '{raw_response[:200]}...'")
+            data = json.loads(raw_response)
+            decision = data.get("category", "rag_query")
+            print(f"📖 ROUTING DEBUG: Overview routing final decision: '{decision}'")
+            return decision
+        except json.JSONDecodeError as e:
+            print(f"❌ ROUTING DEBUG: Overview routing JSON parsing failed: {e}, defaulting to 'rag_query'")
             return "rag_query"
 
 

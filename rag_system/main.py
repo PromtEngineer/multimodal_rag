@@ -102,7 +102,18 @@ PIPELINE_CONFIGS = {
         "retrieval_k": 20,
         "context_window_size": 0,
         "semantic_cache_threshold": 0.98,
-        "cache_scope": "global"
+        "cache_scope": "global",
+        # 🔧 Contextual enrichment configuration
+        "contextual_enricher": {
+            "enabled": True,
+            "window_size": 1
+        },
+        # 🔧 Indexing configuration
+        "indexing": {
+            "embedding_batch_size": 50,
+            "enrichment_batch_size": 10,
+            "enable_progress_tracking": True
+        }
     },
     "fast": {
         "description": "Speed-optimized pipeline with minimal overhead",
@@ -123,7 +134,18 @@ PIPELINE_CONFIGS = {
         "query_decomposition": {"enabled": False},
         "verification": {"enabled": False},
         "retrieval_k": 10,
-        "context_window_size": 0
+        "context_window_size": 0,
+        # 🔧 Contextual enrichment (disabled for speed)
+        "contextual_enricher": {
+            "enabled": False,
+            "window_size": 1
+        },
+        # 🔧 Indexing configuration
+        "indexing": {
+            "embedding_batch_size": 100,
+            "enrichment_batch_size": 50,
+            "enable_progress_tracking": False
+        }
     },
     "bm25": {
         "enabled": True,

@@ -321,7 +321,7 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
     
     def _should_use_rag(self, message: str, idx_ids: List[str]) -> bool:
         """
-        Determine if a query should use RAG pipeline or direct LLM.
+        🧠 ENHANCED: Determine if a query should use RAG pipeline using document overviews.
         
         Args:
             message: The user's query
@@ -333,7 +333,131 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
         # No indexes = definitely no RAG needed
         if not idx_ids:
             return False
+
+        # Load document overviews for intelligent routing
+        try:
+            doc_overviews = self._load_document_overviews()
+            if doc_overviews:
+                return self._route_using_overviews(message, doc_overviews)
+        except Exception as e:
+            print(f"⚠️ Overview-based routing failed, falling back to simple routing: {e}")
         
+        # Fallback to simple pattern matching if overviews unavailable
+        return self._simple_pattern_routing(message, idx_ids)
+
+    def _load_document_overviews(self) -> List[str]:
+        """Load document overviews from the index store."""
+        import json
+        import os
+        
+        # Fix path: backend server runs from backend/ directory, so we need to go up one level
+        overviews_path = "../index_store/overviews/overviews.jsonl"
+        if not os.path.exists(overviews_path):
+            # Try alternative paths
+            alt_paths = [
+                "index_store/overviews/overviews.jsonl",  # If running from project root
+                "./index_store/overviews/overviews.jsonl",
+                "../index_store/overviews/overviews.jsonl"
+            ]
+            
+            for path in alt_paths:
+                if os.path.exists(path):
+                    overviews_path = path
+                    break
+            else:
+                print(f"⚠️ Could not find overviews.jsonl in any of: {alt_paths}")
+                return []
+        
+        print(f"📖 Loading overviews from: {overviews_path}")
+        
+        overviews = []
+        try:
+            with open(overviews_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.strip():
+                        data = json.loads(line)
+                        overview = data.get('overview', '').strip()
+                        if overview:
+                            overviews.append(overview)
+            
+            print(f"✅ Loaded {len(overviews)} document overviews")
+            
+        except Exception as e:
+            print(f"⚠️ Error loading overviews: {e}")
+            return []
+        
+        return overviews[:40]  # Limit to first 40 for performance
+
+    def _route_using_overviews(self, query: str, overviews: List[str]) -> bool:
+        """
+        🎯 Use document overviews and LLM to make intelligent routing decisions.
+        
+        Returns True if RAG should be used, False for direct LLM.
+        """
+        if not overviews:
+            return False
+        
+        # Format overviews for the routing prompt
+        overviews_block = "\n".join(f"[{i+1}] {ov}" for i, ov in enumerate(overviews))
+        
+        router_prompt = f"""You are an AI router deciding whether a user question should be answered via:
+• "USE_RAG" – search the user's private documents (described below)  
+• "DIRECT_LLM" – reply from general knowledge (greetings, public facts, unrelated topics)
+
+CRITICAL PRINCIPLE: When documents exist in the KB, strongly prefer USE_RAG unless the query is purely conversational or completely unrelated to any possible document content.
+
+RULES:
+1. If ANY overview clearly relates to the question (entities, numbers, addresses, dates, amounts, companies, technical terms) → USE_RAG
+2. For document operations (summarize, analyze, explain, extract, find) → USE_RAG  
+3. For greetings only ("Hi", "Hello", "Thanks") → DIRECT_LLM
+4. For pure math/world knowledge clearly unrelated to documents → DIRECT_LLM
+5. When in doubt → USE_RAG
+
+DOCUMENT OVERVIEWS:
+{overviews_block}
+
+DECISION EXAMPLES:
+• "What invoice amounts are mentioned?" → USE_RAG (document-specific)
+• "Who is PromptX AI LLC?" → USE_RAG (entity in documents)  
+• "What is the DeepSeek model?" → USE_RAG (mentioned in documents)
+• "Summarize the research paper" → USE_RAG (document operation)
+• "What is 2+2?" → DIRECT_LLM (pure math)
+• "Hi there" → DIRECT_LLM (greeting only)
+
+USER QUERY: "{query}"
+
+Respond with exactly one word: USE_RAG or DIRECT_LLM"""
+
+        try:
+            # Use Ollama to make the routing decision
+            response = self.ollama_client.chat(
+                message=router_prompt,
+                model="qwen3:0.6b",  # Fast model for routing
+                enable_thinking=False  # Fast routing
+            )
+            
+            # The response is directly the text, not a dict
+            decision = response.strip().upper()
+            
+            # Parse decision
+            if "USE_RAG" in decision:
+                print(f"🎯 Overview-based routing: USE_RAG for query: '{query[:50]}...'")
+                return True
+            elif "DIRECT_LLM" in decision:
+                print(f"⚡ Overview-based routing: DIRECT_LLM for query: '{query[:50]}...'")
+                return False
+            else:
+                print(f"⚠️ Unclear routing decision '{decision}', defaulting to RAG")
+                return True  # Default to RAG when uncertain
+                
+        except Exception as e:
+            print(f"❌ LLM routing failed: {e}, falling back to pattern matching")
+            return self._simple_pattern_routing(query, [])
+
+    def _simple_pattern_routing(self, message: str, idx_ids: List[str]) -> bool:
+        """
+        📝 FALLBACK: Simple pattern-based routing (original logic).
+        """
         message_lower = message.lower()
         
         # Always use Direct LLM for greetings and casual conversation

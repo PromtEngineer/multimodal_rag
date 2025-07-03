@@ -229,13 +229,45 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 config_override = copy.deepcopy(INDEXING_PIPELINE.config)
                 config_override["storage"]["text_table_name"] = table_name
                 config_override.setdefault("retrievers", {}).setdefault("dense", {})["lancedb_table_name"] = table_name
+                
+                # 🔧 Configure late chunking
                 if enable_latechunk:
                     config_override["retrievers"].setdefault("latechunk", {})["enabled"] = True
                 else:
                     # ensure disabled if not requested
                     config_override["retrievers"].setdefault("latechunk", {})["enabled"] = False
+                
+                # 🔧 Configure docling chunking
                 if enable_docling_chunk:
                     config_override["chunker_mode"] = "docling"
+                
+                # 🔧 Configure contextual enrichment (THIS WAS MISSING!)
+                config_override.setdefault("contextual_enricher", {})
+                config_override["contextual_enricher"]["enabled"] = enable_enrich
+                config_override["contextual_enricher"]["window_size"] = window_size
+                
+                # 🔧 Configure indexing batch sizes
+                config_override.setdefault("indexing", {})
+                config_override["indexing"]["embedding_batch_size"] = batch_size_embed
+                config_override["indexing"]["enrichment_batch_size"] = batch_size_enrich
+                
+                # 🔧 Configure chunking parameters
+                config_override.setdefault("chunking", {})
+                config_override["chunking"]["chunk_size"] = chunk_size
+                config_override["chunking"]["chunk_overlap"] = chunk_overlap
+                
+                # 🔧 Configure embedding model if specified
+                if embedding_model:
+                    config_override["embedding_model_name"] = embedding_model
+                
+                # 🔧 Configure enrichment model if specified
+                if enrich_model:
+                    config_override["enrich_model"] = enrich_model
+                
+                print(f"🔧 INDEXING CONFIG: Contextual Enrichment: {enable_enrich}, Window Size: {window_size}")
+                print(f"🔧 CHUNKING CONFIG: Size: {chunk_size}, Overlap: {chunk_overlap}")
+                print(f"🔧 MODEL CONFIG: Embedding: {embedding_model or 'default'}, Enrichment: {enrich_model or 'default'}")
+                
                 # Create a temporary pipeline instance with the overridden config
                 temp_pipeline = INDEXING_PIPELINE.__class__(
                     config_override, 
@@ -244,12 +276,52 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 )
                 temp_pipeline.run(file_paths)
             else:
-                # Use the default pipeline
+                # Use the default pipeline with overrides
+                import copy
+                config_override = copy.deepcopy(INDEXING_PIPELINE.config)
+                
+                # 🔧 Configure late chunking
                 if enable_latechunk:
-                    INDEXING_PIPELINE.config.setdefault("retrievers", {}).setdefault("latechunk", {})["enabled"] = True
+                    config_override.setdefault("retrievers", {}).setdefault("latechunk", {})["enabled"] = True
+                
+                # 🔧 Configure docling chunking
                 if enable_docling_chunk:
-                    INDEXING_PIPELINE.config["chunker_mode"] = "docling"
-                INDEXING_PIPELINE.run(file_paths)
+                    config_override["chunker_mode"] = "docling"
+                
+                # 🔧 Configure contextual enrichment (THIS WAS MISSING!)
+                config_override.setdefault("contextual_enricher", {})
+                config_override["contextual_enricher"]["enabled"] = enable_enrich
+                config_override["contextual_enricher"]["window_size"] = window_size
+                
+                # 🔧 Configure indexing batch sizes
+                config_override.setdefault("indexing", {})
+                config_override["indexing"]["embedding_batch_size"] = batch_size_embed
+                config_override["indexing"]["enrichment_batch_size"] = batch_size_enrich
+                
+                # 🔧 Configure chunking parameters
+                config_override.setdefault("chunking", {})
+                config_override["chunking"]["chunk_size"] = chunk_size
+                config_override["chunking"]["chunk_overlap"] = chunk_overlap
+                
+                # 🔧 Configure embedding model if specified
+                if embedding_model:
+                    config_override["embedding_model_name"] = embedding_model
+                
+                # 🔧 Configure enrichment model if specified
+                if enrich_model:
+                    config_override["enrich_model"] = enrich_model
+                
+                print(f"🔧 INDEXING CONFIG: Contextual Enrichment: {enable_enrich}, Window Size: {window_size}")
+                print(f"🔧 CHUNKING CONFIG: Size: {chunk_size}, Overlap: {chunk_overlap}")
+                print(f"🔧 MODEL CONFIG: Embedding: {embedding_model or 'default'}, Enrichment: {enrich_model or 'default'}")
+                
+                # Create temporary pipeline with overridden config
+                temp_pipeline = INDEXING_PIPELINE.__class__(
+                    config_override, 
+                    INDEXING_PIPELINE.llm_client, 
+                    INDEXING_PIPELINE.ollama_config
+                )
+                temp_pipeline.run(file_paths)
 
             self.send_json_response({
                 "message": f"Indexing process for {len(file_paths)} file(s) completed successfully.",
