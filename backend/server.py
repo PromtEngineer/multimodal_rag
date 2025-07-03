@@ -10,7 +10,7 @@ from ollama_client import OllamaClient
 from database import db, generate_session_title
 import simple_pdf_processor as pdf_module
 from simple_pdf_processor import initialize_simple_pdf_processor
-from typing import List
+from typing import List, Dict, Any
 import re
 
 # 🆕 Reusable TCPServer with address reuse enabled
@@ -279,7 +279,8 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
             
             # 🎯 SMART ROUTING: Decide between direct LLM vs RAG
             idx_ids = db.get_indexes_for_session(session_id)
-            use_rag = self._should_use_rag(message, idx_ids)
+            force_rag = bool(data.get("force_rag", False))
+            use_rag = True if force_rag else self._should_use_rag(message, idx_ids)
             
             if use_rag:
                 # 🔍 --- Use RAG Pipeline for Document-Related Queries ---
@@ -538,36 +539,36 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
             tuple: (response_text, source_documents)
         """
         response_text = ""
-        source_docs = []
-        
+        source_docs: List[dict] = []
+
         try:
             # The advanced RAG server runs on port 8001
             rag_api_url = "http://localhost:8001/chat"
-            
+
             # Determine vector table: prefer last linked index if exists
             table_name = None
             if idx_ids:
                 table_name = f"text_pages_{idx_ids[-1]}"
-                
-            payload = {"query": message, "session_id": session_id}
+
+            payload: Dict[str, Any] = {"query": message, "session_id": session_id}
             if table_name:
                 payload["table_name"] = table_name
-                
-            # Extract RAG configuration parameters
+
+            # Extract RAG configuration parameters from the incoming data
             compose_flag = data.get("compose_sub_answers")
             decomp_flag = data.get("query_decompose")
             ai_rerank_flag = data.get("ai_rerank")
             ctx_expand_flag = data.get("context_expand")
             verify_flag = data.get("verify")
-            
-            # ✨ NEW RETRIEVAL PARAMETERS
+
+            # ✨ NEW RETRIEVAL PARAMETERS (all optional)
             retrieval_k = data.get("retrieval_k")
             context_window_size = data.get("context_window_size")
             reranker_top_k = data.get("reranker_top_k")
             search_type = data.get("search_type")
             dense_weight = data.get("dense_weight")
-            
-            # Add parameters to payload
+
+            # Add feature flags to payload if provided
             if compose_flag is not None:
                 payload["compose_sub_answers"] = bool(compose_flag)
             if decomp_flag is not None:
@@ -578,8 +579,8 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
                 payload["context_expand"] = bool(ctx_expand_flag)
             if verify_flag is not None:
                 payload["verify"] = bool(verify_flag)
-            
-            # ✨ ADD NEW RETRIEVAL PARAMETERS TO PAYLOAD
+
+            # Add retrieval parameters if provided
             if retrieval_k is not None:
                 payload["retrieval_k"] = int(retrieval_k)
             if context_window_size is not None:
@@ -590,25 +591,25 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
                 payload["search_type"] = str(search_type)
             if dense_weight is not None:
                 payload["dense_weight"] = float(dense_weight)
-                
+
             rag_response = requests.post(rag_api_url, json=payload)
-            
+
             if rag_response.status_code == 200:
                 rag_data = rag_response.json()
                 response_text = rag_data.get("answer", "No answer found in RAG response.")
                 source_docs = rag_data.get("source_documents", [])
-                
-                # 🧹 Clean up thinking tokens from RAG responses too
-                response_text = re.sub(r'<think>.*?</think>', '', response_text, flags=re.DOTALL | re.IGNORECASE)
-                response_text = re.sub(r'<thinking>.*?</thinking>', '', response_text, flags=re.DOTALL | re.IGNORECASE)
-                response_text = response_text.strip()
-                
-                print(f"✅ Received RAG response with {len(source_docs)} source docs.")
             else:
                 error_info = rag_response.text
                 response_text = f"Error from RAG API: {error_info}"
-                source_docs = []
                 print(f"❌ RAG API error ({rag_response.status_code}): {error_info}")
+
+            # 🧹 Clean up any thinking markers that might sneak through
+            response_text = re.sub(r'<think>.*?</think>', '', response_text, flags=re.DOTALL | re.IGNORECASE)
+            response_text = re.sub(r'<thinking>.*?</thinking>', '', response_text, flags=re.DOTALL | re.IGNORECASE)
+            response_text = response_text.strip()
+
+            if rag_response.status_code == 200:
+                print(f"✅ Received RAG response with {len(source_docs)} source docs.")
 
         except requests.exceptions.ConnectionError:
             response_text = "Could not connect to the RAG API server. Please ensure it is running."
@@ -616,7 +617,7 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
         except Exception as e:
             response_text = f"Error processing RAG query: {str(e)}"
             print(f"❌ RAG processing error: {e}")
-            
+
         return response_text, source_docs
 
     def handle_delete_session(self, session_id: str):
@@ -929,7 +930,7 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
             self.wfile.write(response.encode('utf-8'))
         except BrokenPipeError:
             # Client disconnected - log but don't crash
-            print(f"⚠️  Client disconnected during response (this is normal for long RAG queries)")
+            print("⚠️  Client disconnected during response (this is normal for long RAG queries)")
         except Exception as e:
             print(f"❌ Error sending response: {e}")
     

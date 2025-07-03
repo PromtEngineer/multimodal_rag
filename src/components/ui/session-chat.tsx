@@ -43,6 +43,8 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
   const [enableContextExpand, setEnableContextExpand] = useState<boolean>(true)
   const [enableStream, setEnableStream] = useState<boolean>(true)
   const [enableVerify, setEnableVerify] = useState<boolean>(true)
+  // Force RAG toggle
+  const [forceDocs, setForceDocs] = useState<boolean>(false)
   
   // ✨ NEW RETRIEVAL PARAMETERS
   const [retrievalK, setRetrievalK] = useState<number>(20)
@@ -220,6 +222,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             rerankerTopK,
             searchType,
             denseWeight,
+            forceRag: forceDocs,
           },
           (evt) => {
             console.log('STREAM EVENT:', evt.type, evt.data); // Debug log for SSE events
@@ -558,6 +561,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             {type: 'toggle', label:'Compose sub-answers', checked: composeSubAnswers, setter: setComposeSubAnswers},
             {type: 'toggle', label:'Verify answer', checked: enableVerify, setter: setEnableVerify},
             {type: 'toggle', label:'Stream phases', checked: enableStream, setter: setEnableStream},
+            {type: 'toggle', label:'Always search documents', checked: forceDocs, setter: setForceDocs},
             
             // Retrieval Settings
             {type: 'dropdown', label:'Search type', value: searchType, setter: setSearchType, options: [

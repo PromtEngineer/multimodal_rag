@@ -108,7 +108,7 @@ export function ChatSettingsModal({ options, onClose }: Props) {
             <h3 className="text-md font-medium text-gray-200 mb-4">General Settings</h3>
             <div className="space-y-4">
               {options.filter(opt => 
-                ['Query decomposition', 'Compose sub-answers', 'Verify answer', 'Stream phases'].includes(opt.label)
+                ['Query decomposition', 'Compose sub-answers', 'Verify answer', 'Stream phases', 'Always search documents'].includes(opt.label)
               ).map(renderOption)}
             </div>
           </div>

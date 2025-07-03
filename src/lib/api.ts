@@ -196,6 +196,7 @@ class ChatAPI {
       rerankerTopK?: number;
       searchType?: string;
       denseWeight?: number;
+      forceRag?: boolean;
     } = {}
   ): Promise<SessionChatResponse & { source_documents: any[] }> {
     try {
@@ -218,6 +219,7 @@ class ChatAPI {
           ...(typeof opts.rerankerTopK === 'number' && { reranker_top_k: opts.rerankerTopK }),
           ...(typeof opts.searchType === 'string' && { search_type: opts.searchType }),
           ...(typeof opts.denseWeight === 'number' && { dense_weight: opts.denseWeight }),
+          ...(typeof opts.forceRag === 'boolean' && { force_rag: opts.forceRag }),
         }),
       });
 
@@ -532,10 +534,11 @@ class ChatAPI {
       rerankerTopK?: number;
       searchType?: string;
       denseWeight?: number;
+      forceRag?: boolean;
     },
     onEvent: (event: { type: string; data: any }) => void,
   ): Promise<void> {
-    const { query, session_id, table_name, composeSubAnswers, decompose, aiRerank, contextExpand, verify, retrievalK, contextWindowSize, rerankerTopK, searchType, denseWeight } = params;
+    const { query, session_id, table_name, composeSubAnswers, decompose, aiRerank, contextExpand, verify, retrievalK, contextWindowSize, rerankerTopK, searchType, denseWeight, forceRag } = params;
 
     const payload: Record<string, unknown> = { query };
     if (session_id) payload.session_id = session_id;
@@ -551,6 +554,7 @@ class ChatAPI {
     if (typeof rerankerTopK === 'number') payload.reranker_top_k = rerankerTopK;
     if (typeof searchType === 'string') payload.search_type = searchType;
     if (typeof denseWeight === 'number') payload.dense_weight = denseWeight;
+    if (typeof forceRag === 'boolean') payload.force_rag = forceRag;
 
     const resp = await fetch('http://localhost:8001/chat/stream', {
       method: 'POST',

@@ -76,6 +76,9 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             search_type = data.get('search_type', 'hybrid')
             dense_weight = data.get('dense_weight', 0.7)
             
+            # 🚩 NEW: Force RAG override from frontend
+            force_rag = bool(data.get('force_rag', False))
+            
             if not query:
                 self.send_json_response({"error": "Query is required"}, status_code=400)
                 return
@@ -85,8 +88,31 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             if not table_name and session_id:
                 table_name = f"text_pages_{session_id}"
 
-            # Use the single, persistent agent instance to run the query
-            result = RAG_AGENT.run(query, table_name=table_name, session_id=session_id, compose_sub_answers=compose_flag, query_decompose=decomp_flag, ai_rerank=ai_rerank_flag, context_expand=ctx_expand_flag, verify=verify_flag, retrieval_k=retrieval_k, context_window_size=context_window_size, reranker_top_k=reranker_top_k, search_type=search_type, dense_weight=dense_weight)
+            # Decide execution path
+            if force_rag:
+                # Directly invoke retrieval pipeline to bypass triage
+                result = RAG_AGENT.retrieval_pipeline.run(
+                    query,
+                    table_name=table_name,
+                    window_size_override=context_window_size,
+                )
+            else:
+                # Use full agent with smart routing
+                result = RAG_AGENT.run(
+                    query,
+                    table_name=table_name,
+                    session_id=session_id,
+                    compose_sub_answers=compose_flag,
+                    query_decompose=decomp_flag,
+                    ai_rerank=ai_rerank_flag,
+                    context_expand=ctx_expand_flag,
+                    verify=verify_flag,
+                    retrieval_k=retrieval_k,
+                    context_window_size=context_window_size,
+                    reranker_top_k=reranker_top_k,
+                    search_type=search_type,
+                    dense_weight=dense_weight,
+                )
             
             # The result is a dict, so we need to dump it to a JSON string
             self.send_json_response(result)
@@ -117,6 +143,9 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             reranker_top_k = data.get('reranker_top_k', 10)
             search_type = data.get('search_type', 'hybrid')
             dense_weight = data.get('dense_weight', 0.7)
+
+            # 🚩 NEW: Force RAG override from frontend
+            force_rag = bool(data.get('force_rag', False))
 
             if not query:
                 self.send_json_response({"error": "Query is required"}, status_code=400)
@@ -149,23 +178,32 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
 
             # Run the agent synchronously, emitting checkpoints
             try:
-                final_result = RAG_AGENT.run(
-                    query,
-                    table_name=table_name,
-                    session_id=session_id,
-                    compose_sub_answers=compose_flag,
-                    query_decompose=decomp_flag,
-                    ai_rerank=ai_rerank_flag,
-                    context_expand=ctx_expand_flag,
-                    verify=verify_flag,
-                    # ✨ NEW RETRIEVAL PARAMETERS
-                    retrieval_k=retrieval_k,
-                    context_window_size=context_window_size,
-                    reranker_top_k=reranker_top_k,
-                    search_type=search_type,
-                    dense_weight=dense_weight,
-                    event_callback=emit,
-                )
+                if force_rag:
+                    # Straight retrieval pipeline with streaming events
+                    final_result = RAG_AGENT.retrieval_pipeline.run(
+                        query,
+                        table_name=table_name,
+                        window_size_override=context_window_size,
+                        event_callback=emit,
+                    )
+                else:
+                    final_result = RAG_AGENT.run(
+                        query,
+                        table_name=table_name,
+                        session_id=session_id,
+                        compose_sub_answers=compose_flag,
+                        query_decompose=decomp_flag,
+                        ai_rerank=ai_rerank_flag,
+                        context_expand=ctx_expand_flag,
+                        verify=verify_flag,
+                        # ✨ NEW RETRIEVAL PARAMETERS
+                        retrieval_k=retrieval_k,
+                        context_window_size=context_window_size,
+                        reranker_top_k=reranker_top_k,
+                        search_type=search_type,
+                        dense_weight=dense_weight,
+                        event_callback=emit,
+                    )
 
                 # Ensure the final answer is sent (in case callback missed it)
                 emit("complete", final_result)
