@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChatInput } from '@/components/ui/chat-input';
 import { chatAPI, ChatMessage } from '@/lib/api';
 import { ConversationPage } from '@/components/ui/conversation-page';
@@ -16,6 +16,26 @@ export function QuickChat({ sessionId: externalSessionId, onSessionChange, class
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | undefined>(externalSessionId);
   const api = chatAPI;
+
+  // 🔄 Sync prop -> state: when sidebar selects a different session, update local session and reset chat window
+  useEffect(() => {
+    if (externalSessionId && externalSessionId !== sessionId) {
+      setSessionId(externalSessionId);
+      // Fetch existing messages for the selected session
+      (async () => {
+        try {
+          const data = await api.getSession(externalSessionId);
+          // Convert DB messages to ChatMessage format expected by UI helper
+          const msgs: ChatMessage[] = data.messages.map((m: any) => api.convertDbMessage(m));
+          setMessages(msgs);
+        } catch (err) {
+          console.error('Failed to load messages for session', err);
+          setMessages([]);
+        }
+      })();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalSessionId]);
 
   const sendMessage = async (content: string, _files?: any) => {
     if (!content.trim()) return;
