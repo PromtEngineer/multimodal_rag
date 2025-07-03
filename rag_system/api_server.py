@@ -90,6 +90,17 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
 
             # Decide execution path
             if force_rag:
+                # --- Apply runtime overrides manually because we skip Agent.run()
+                rp_cfg = RAG_AGENT.retrieval_pipeline.config
+                if retrieval_k is not None:
+                    rp_cfg["retrieval_k"] = retrieval_k
+                if reranker_top_k is not None:
+                    rp_cfg.setdefault("reranker", {})["top_k"] = reranker_top_k
+                if search_type is not None:
+                    rp_cfg.setdefault("retrieval", {})["search_type"] = search_type
+                if dense_weight is not None:
+                    rp_cfg.setdefault("retrieval", {}).setdefault("dense", {})["weight"] = dense_weight
+
                 # Directly invoke retrieval pipeline to bypass triage
                 result = RAG_AGENT.retrieval_pipeline.run(
                     query,
@@ -179,6 +190,17 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             # Run the agent synchronously, emitting checkpoints
             try:
                 if force_rag:
+                    # Apply overrides same as above since we bypass Agent.run
+                    rp_cfg = RAG_AGENT.retrieval_pipeline.config
+                    if retrieval_k is not None:
+                        rp_cfg["retrieval_k"] = retrieval_k
+                    if reranker_top_k is not None:
+                        rp_cfg.setdefault("reranker", {})["top_k"] = reranker_top_k
+                    if search_type is not None:
+                        rp_cfg.setdefault("retrieval", {})["search_type"] = search_type
+                    if dense_weight is not None:
+                        rp_cfg.setdefault("retrieval", {}).setdefault("dense", {})["weight"] = dense_weight
+
                     # Straight retrieval pipeline with streaming events
                     final_result = RAG_AGENT.retrieval_pipeline.run(
                         query,
