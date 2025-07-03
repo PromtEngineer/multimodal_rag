@@ -289,6 +289,12 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
                   steps[eidx].status = 'done';
                   steps[eidx].details = 'Context expansion complete.';
                 }
+                // Activate answering sub-queries stage to show spinner while we wait
+                const ansIdx = steps.findIndex(s => s.key === 'answer');
+                if (ansIdx !== -1 && steps[ansIdx].status === 'pending') {
+                  steps[ansIdx].status = 'active';
+                  steps[ansIdx].details = 'Answering sub-queries...';
+                }
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'sub_query_result') {
