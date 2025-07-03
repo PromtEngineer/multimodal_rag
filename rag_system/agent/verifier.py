@@ -45,6 +45,9 @@ Answer:
 JSON Output:
 """
         response = self.llm_client.generate_completion(self.llm_model, prompt, format="json")
+        # 🐛 DEBUG: Show raw verifier LLM response for troubleshooting
+        raw_resp = response.get('response', '') if isinstance(response, dict) else ''
+        print(f"🔍 VERIFIER RAW RESPONSE: {raw_resp[:300]}...")
         try:
             data = json.loads(response.get('response', '{}'))
             return VerificationResult(
