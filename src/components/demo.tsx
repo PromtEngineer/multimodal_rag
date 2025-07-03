@@ -45,11 +45,23 @@ export function Demo() {
         setShowConversation(true)
     }
 
-    const handleNewSession = () => {
-        // Don't create session immediately - just show empty state
-        setCurrentSessionId(undefined)
-        setCurrentSession(null)
-        setShowConversation(true)
+    const handleNewSession = async () => {
+        try {
+            const newSess = await chatAPI.createSession('New Chat');
+            setCurrentSessionId(newSess.id);
+            setCurrentSession(newSess);
+            setShowConversation(true);
+            // Refresh sidebar list
+            if (sidebarRef) {
+                await sidebarRef.refreshSessions();
+            }
+        } catch (err) {
+            console.error('Failed to create new session', err);
+            // fallback to empty state if backend offline
+            setCurrentSessionId(undefined);
+            setCurrentSession(null);
+            setShowConversation(true);
+        }
     }
 
     const handleSessionChange = async (session: ChatSession) => {
@@ -115,6 +127,7 @@ export function Demo() {
                                     if(m==='CHAT_EXISTING'){ setShowIndexPicker(true); return; }
                                     if(m==='QUICK_CHAT'){
                                         setHomeMode('QUICK_CHAT');
+                                        setShowConversation(true);
                                         return;
                                     }
                                     setHomeMode('INDEX');
