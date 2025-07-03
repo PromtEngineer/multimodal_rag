@@ -171,21 +171,13 @@ export function ChatInput({
             <div className="flex items-center gap-4">
               <button
                 type="button"
-                onClick={()=>onAddIndex && onAddIndex()}
-                disabled={disabled || isLoading}
-                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Create or attach index"
-              >
-                <Plus className="w-5 h-5" />
-              </button>
-              <button
-                type="button"
                 onClick={()=>onOpenSettings && onOpenSettings()}
                 disabled={disabled || isLoading}
-                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-1 p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Chat settings"
               >
                 <SettingsIcon className="w-5 h-5" />
+                <span className="text-xs hidden sm:inline">Settings</span>
               </button>
             </div>
             <Button
