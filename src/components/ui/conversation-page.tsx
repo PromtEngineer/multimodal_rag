@@ -9,6 +9,7 @@ import { Copy, RefreshCcw, ThumbsUp, ThumbsDown, Volume2, MoreHorizontal, Chevro
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ChatMessage } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import Markdown from "@/components/Markdown"
 
 interface ConversationPageProps {
   messages: ChatMessage[]
@@ -109,7 +110,7 @@ function ThinkingText({ text }: { text: string }) {
         </details>
       )}
       {visibleText.trim() && (
-        <span className="whitespace-pre-wrap">{visibleText}</span>
+        <Markdown text={visibleText} className="whitespace-pre-wrap" />
       )}
     </>
   );
