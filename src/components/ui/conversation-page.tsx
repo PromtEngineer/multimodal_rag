@@ -205,10 +205,13 @@ export function ConversationPage({
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [showScrollButton, setShowScrollButton] = useState(false)
+  const [isUserNearBottom,setIsUserNearBottom]=useState(true)
 
-  // Auto-scroll to bottom when new messages arrive
+  // Track if user is near bottom so we don't interrupt manual scrolling
   useEffect(() => {
-    scrollToBottom()
+    if(isUserNearBottom){
+      scrollToBottom()
+    }
   }, [messages, isLoading])
 
   // Monitor scroll position to show/hide scroll button
@@ -220,6 +223,7 @@ export function ConversationPage({
       const { scrollTop, scrollHeight, clientHeight } = scrollContainer
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 100
       setShowScrollButton(!isNearBottom)
+      setIsUserNearBottom(isNearBottom)
     }
 
     scrollContainer.addEventListener('scroll', handleScroll)
