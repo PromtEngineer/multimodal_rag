@@ -83,6 +83,11 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             provence_prune = data.get('provence_prune')
             provence_threshold = data.get('provence_threshold')
             
+            # User-selected generation model
+            requested_model = data.get('model')
+            if isinstance(requested_model,str) and requested_model:
+                RAG_AGENT.ollama_config['generation_model']=requested_model
+            
             if not query:
                 self.send_json_response({"error": "Query is required"}, status_code=400)
                 return
@@ -178,6 +183,11 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             # 🌿 Provence sentence pruning
             provence_prune = data.get('provence_prune')
             provence_threshold = data.get('provence_threshold')
+
+            # User-selected generation model
+            requested_model = data.get('model')
+            if isinstance(requested_model,str) and requested_model:
+                RAG_AGENT.ollama_config['generation_model']=requested_model
 
             if not query:
                 self.send_json_response({"error": "Query is required"}, status_code=400)
