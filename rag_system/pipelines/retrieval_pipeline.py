@@ -16,6 +16,7 @@ from rag_system.indexing.multimodal import LocalVisionModel
 from rag_system.indexing.representations import QwenEmbedder
 from rag_system.indexing.embedders import LanceDBManager
 from rag_system.rerankers.reranker import QwenReranker
+from rag_system.rerankers.sentence_pruner import SentencePruner
 # from rag_system.indexing.chunk_store import ChunkStore
 
 import os
@@ -35,6 +36,9 @@ _rerank_lock: Lock = Lock()
 #    tensor errors.  We therefore guard the *initialisation* with its own
 #    lock so only one thread carries out the heavy `from_pretrained()` call.
 _ai_reranker_init_lock: Lock = Lock()
+
+# Lock to serialise first-time Provence model load
+_sentence_pruner_lock: Lock = Lock()
 
 class RetrievalPipeline:
     """
@@ -153,6 +157,13 @@ class RetrievalPipeline:
                         # Leave as None so the pipeline can proceed without reranking
                         print(f"❌ Failed to initialize AI reranker: {e}")
         return self.ai_reranker
+
+    def _get_sentence_pruner(self):
+        if getattr(self, "_sentence_pruner", None) is None:
+            with _sentence_pruner_lock:
+                if getattr(self, "_sentence_pruner", None) is None:
+                    self._sentence_pruner = SentencePruner()
+        return self._sentence_pruner
 
     def _get_surrounding_chunks_lancedb(self, chunk: Dict[str, Any], window_size: int) -> List[Dict[str, Any]]:
         """
@@ -398,6 +409,20 @@ ORIGINAL QUESTION: "{query}"
         if any('rerank_score' in d for d in final_docs):
             final_docs = [d for d in final_docs if 'rerank_score' in d]
 
+        # ------------------------------------------------------------------
+        # Sentence-level pruning (Provence)
+        # ------------------------------------------------------------------
+        prov_cfg = self.config.get("provence", {})
+        if prov_cfg.get("enabled"):
+            if event_callback:
+                event_callback("prune_started", {"count": len(final_docs)})
+            thresh = float(prov_cfg.get("threshold", 0.1))
+            print(f"\n--- Provence pruning enabled (threshold={thresh}) ---")
+            pruner = self._get_sentence_pruner()
+            final_docs = pruner.prune_documents(query, final_docs, threshold=thresh)
+            if event_callback:
+                event_callback("prune_done", {"count": len(final_docs)})
+
         print("\n--- Final Documents for Synthesis ---")
         if not final_docs:
             print("No documents to synthesize.")
@@ -493,8 +518,3 @@ ORIGINAL QUESTION: "{query}"
         reaching into private helpers. If the retriever has not yet been
         instantiated, it is created on first access via `_get_dense_retriever`."""
         return self._get_dense_retriever()
-
-    @property
-    def graph_retriever(self):
-        """Lazily exposes the graph retriever (if configured)."""
-        return self._get_graph_retriever()

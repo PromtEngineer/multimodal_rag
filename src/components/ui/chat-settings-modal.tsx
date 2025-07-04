@@ -128,7 +128,7 @@ export function ChatSettingsModal({ options, onClose }: Props) {
             <h3 className="text-md font-medium text-gray-200 mb-4">Reranking & Context</h3>
             <div className="space-y-4">
               {options.filter(opt => 
-                ['AI reranker', 'Reranker top chunks', 'Expand context window', 'Context window size'].includes(opt.label)
+                ['AI reranker', 'Reranker top chunks', 'Expand context window', 'Context window size', 'Prune irrelevant sentences'].includes(opt.label)
               ).map(renderOption)}
             </div>
           </div>

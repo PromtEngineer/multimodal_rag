@@ -567,6 +567,8 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
             reranker_top_k = data.get("reranker_top_k")
             search_type = data.get("search_type")
             dense_weight = data.get("dense_weight")
+            provence_prune = data.get("provence_prune")
+            provence_threshold = data.get("provence_threshold")
 
             # Add feature flags to payload if provided
             if compose_flag is not None:
@@ -591,6 +593,12 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
                 payload["search_type"] = str(search_type)
             if dense_weight is not None:
                 payload["dense_weight"] = float(dense_weight)
+
+            # 🌿 Provence pruning
+            if provence_prune is not None:
+                payload["provence_prune"] = bool(provence_prune)
+            if provence_threshold is not None:
+                payload["provence_threshold"] = float(provence_threshold)
 
             rag_response = requests.post(rag_api_url, json=payload)
 

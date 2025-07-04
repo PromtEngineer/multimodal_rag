@@ -79,6 +79,10 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             # 🚩 NEW: Force RAG override from frontend
             force_rag = bool(data.get('force_rag', False))
             
+            # 🌿 Provence sentence pruning
+            provence_prune = data.get('provence_prune')
+            provence_threshold = data.get('provence_threshold')
+            
             if not query:
                 self.send_json_response({"error": "Query is required"}, status_code=400)
                 return
@@ -101,6 +105,12 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 if dense_weight is not None:
                     rp_cfg.setdefault("retrieval", {}).setdefault("dense", {})["weight"] = dense_weight
 
+                # Provence overrides
+                if provence_prune is not None:
+                    rp_cfg.setdefault("provence", {})["enabled"] = bool(provence_prune)
+                if provence_threshold is not None:
+                    rp_cfg.setdefault("provence", {})["threshold"] = float(provence_threshold)
+
                 # Directly invoke retrieval pipeline to bypass triage
                 result = RAG_AGENT.retrieval_pipeline.run(
                     query,
@@ -109,6 +119,13 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 )
             else:
                 # Use full agent with smart routing
+                # Apply Provence overrides even in agent path
+                rp_cfg = RAG_AGENT.retrieval_pipeline.config
+                if provence_prune is not None:
+                    rp_cfg.setdefault("provence", {})["enabled"] = bool(provence_prune)
+                if provence_threshold is not None:
+                    rp_cfg.setdefault("provence", {})["threshold"] = float(provence_threshold)
+
                 result = RAG_AGENT.run(
                     query,
                     table_name=table_name,
@@ -158,6 +175,10 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             # 🚩 NEW: Force RAG override from frontend
             force_rag = bool(data.get('force_rag', False))
 
+            # 🌿 Provence sentence pruning
+            provence_prune = data.get('provence_prune')
+            provence_threshold = data.get('provence_threshold')
+
             if not query:
                 self.send_json_response({"error": "Query is required"}, status_code=400)
                 return
@@ -201,6 +222,12 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                     if dense_weight is not None:
                         rp_cfg.setdefault("retrieval", {}).setdefault("dense", {})["weight"] = dense_weight
 
+                    # Provence overrides
+                    if provence_prune is not None:
+                        rp_cfg.setdefault("provence", {})["enabled"] = bool(provence_prune)
+                    if provence_threshold is not None:
+                        rp_cfg.setdefault("provence", {})["threshold"] = float(provence_threshold)
+
                     # Straight retrieval pipeline with streaming events
                     final_result = RAG_AGENT.retrieval_pipeline.run(
                         query,
@@ -209,6 +236,13 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                         event_callback=emit,
                     )
                 else:
+                    # Provence overrides
+                    rp_cfg = RAG_AGENT.retrieval_pipeline.config
+                    if provence_prune is not None:
+                        rp_cfg.setdefault("provence", {})["enabled"] = bool(provence_prune)
+                    if provence_threshold is not None:
+                        rp_cfg.setdefault("provence", {})["threshold"] = float(provence_threshold)
+
                     final_result = RAG_AGENT.run(
                         query,
                         table_name=table_name,

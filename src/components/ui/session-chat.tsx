@@ -45,6 +45,8 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
   const [enableVerify, setEnableVerify] = useState<boolean>(true)
   // Force RAG toggle
   const [forceDocs, setForceDocs] = useState<boolean>(false)
+  // Provence pruning toggle
+  const [provencePrune, setProvencePrune] = useState<boolean>(false)
   
   // ✨ NEW RETRIEVAL PARAMETERS
   const [retrievalK, setRetrievalK] = useState<number>(20)
@@ -223,6 +225,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             searchType,
             denseWeight,
             forceRag: forceDocs,
+            provencePrune,
           },
           (evt) => {
             console.log('STREAM EVENT:', evt.type, evt.data); // Debug log for SSE events
@@ -416,6 +419,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
           rerankerTopK,
           searchType,
           denseWeight,
+          provencePrune,
         })
       
       const aiMessage: ChatMessage = {
@@ -567,7 +571,6 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             {type: 'toggle', label:'Compose sub-answers', checked: composeSubAnswers, setter: setComposeSubAnswers},
             {type: 'toggle', label:'Verify answer', checked: enableVerify, setter: setEnableVerify},
             {type: 'toggle', label:'Stream phases', checked: enableStream, setter: setEnableStream},
-            {type: 'toggle', label:'Always search documents', checked: forceDocs, setter: setForceDocs},
             
             // Retrieval Settings
             {type: 'dropdown', label:'Search type', value: searchType, setter: setSearchType, options: [
@@ -583,6 +586,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             {type: 'slider', label:'Reranker top chunks', value: rerankerTopK, setter: setRerankerTopK, min: 3, max: 20, unit: ' chunks'},
             {type: 'toggle', label:'Expand context window', checked: enableContextExpand, setter: setEnableContextExpand},
             {type: 'slider', label:'Context window size', value: contextWindowSize, setter: setContextWindowSize, min: 0, max: 5, unit: ' chunks'},
+            {type: 'toggle', label:'Prune irrelevant sentences', checked: provencePrune, setter: setProvencePrune},
           ]}
         />
       )}
