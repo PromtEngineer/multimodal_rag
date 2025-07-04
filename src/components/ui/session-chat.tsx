@@ -54,6 +54,8 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
   const [rerankerTopK, setRerankerTopK] = useState<number>(10)
   const [searchType, setSearchType] = useState<string>('hybrid')
   const [denseWeight, setDenseWeight] = useState<number>(0.7)
+  const [generationModels,setGenerationModels]=useState<string[]>([])
+  const [selectedModel,setSelectedModel]=useState<string>('')
   const [currentIndexId, setCurrentIndexId] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [showIndexForm, setShowIndexForm] = useState(false)
@@ -76,6 +78,19 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
       setCurrentSession(null)
     }
   }, [sessionId, currentSession]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch available models on mount
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const resp=await apiService.getModels();
+        setGenerationModels(resp.generation_models||[])
+        if(resp.generation_models&&resp.generation_models.length>0){
+          setSelectedModel(resp.generation_models[0])
+        }
+      }catch(e){console.warn('Failed to load models',e)}
+    })()
+  },[])
 
   const loadSession = async (id: string) => {
     try {
@@ -218,6 +233,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             aiRerank: enableAiRerank,
             contextExpand: enableContextExpand,
             verify: enableVerify,
+            model: selectedModel,
             // ✨ NEW RETRIEVAL PARAMETERS
             retrievalK,
             contextWindowSize,
@@ -413,6 +429,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
           aiRerank: enableAiRerank, 
           contextExpand: enableContextExpand, 
           verify: enableVerify,
+          model: selectedModel,
           // ✨ NEW RETRIEVAL PARAMETERS
           retrievalK,
           contextWindowSize,
@@ -573,6 +590,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             {type: 'toggle', label:'Stream phases', checked: enableStream, setter: setEnableStream},
             
             // Retrieval Settings
+            {type: 'dropdown', label:'LLM model', value: selectedModel, setter: setSelectedModel, options: generationModels.map(m=>({value:m,label:m}))},
             {type: 'dropdown', label:'Search type', value: searchType, setter: setSearchType, options: [
               {value: 'hybrid', label: 'Hybrid (Vector + BM25)'},
               {value: 'vector_only', label: 'Vector Only'},
@@ -587,6 +605,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             {type: 'toggle', label:'Expand context window', checked: enableContextExpand, setter: setEnableContextExpand},
             {type: 'slider', label:'Context window size', value: contextWindowSize, setter: setContextWindowSize, min: 0, max: 5, unit: ' chunks'},
             {type: 'toggle', label:'Prune irrelevant sentences', checked: provencePrune, setter: setProvencePrune},
+            {type: 'toggle', label:'Always search documents', checked: forceDocs, setter: setForceDocs},
           ]}
         />
       )}

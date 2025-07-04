@@ -523,6 +523,7 @@ class ChatAPI {
   async streamSessionMessage(
     params: {
       query: string;
+      model?: string;
       session_id?: string;
       table_name?: string;
       composeSubAnswers?: boolean;
@@ -541,9 +542,10 @@ class ChatAPI {
     },
     onEvent: (event: { type: string; data: any }) => void,
   ): Promise<void> {
-    const { query, session_id, table_name, composeSubAnswers, decompose, aiRerank, contextExpand, verify, retrievalK, contextWindowSize, rerankerTopK, searchType, denseWeight, forceRag, provencePrune } = params;
+    const { query, model, session_id, table_name, composeSubAnswers, decompose, aiRerank, contextExpand, verify, retrievalK, contextWindowSize, rerankerTopK, searchType, denseWeight, forceRag, provencePrune } = params;
 
     const payload: Record<string, unknown> = { query };
+    if (model) payload.model = model;
     if (session_id) payload.session_id = session_id;
     if (table_name) payload.table_name = table_name;
     if (typeof composeSubAnswers === 'boolean') payload.compose_sub_answers = composeSubAnswers;
