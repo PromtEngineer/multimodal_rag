@@ -69,23 +69,44 @@ class SentencePruner:
         if SentencePruner._model is None:
             return docs  # model unavailable – no-op
 
-        pruned: List[Dict[str, Any]] = []
-        for doc in docs:
-            text = doc.get("text", "")
-            if not text:
-                pruned.append(doc)
-                continue
+        # Batch texts for efficiency when >1 doc
+        texts = [d.get("text", "") for d in docs]
 
-            try:
-                result = SentencePruner._model.process(question, text, threshold=threshold)
-                # The custom Provence class returns a dict; be defensive.
-                if isinstance(result, dict):
-                    new_text = result.get("pruned_context", text)
-                else:
-                    new_text = str(result)
+        try:
+            if len(texts) == 1:
+                # returns dict
+                outputs = [SentencePruner._model.process(question, texts[0], threshold=threshold)]
+            else:
+                # Batch call expects list[list[str]] with same outer length as questions list (1)
+                batched_out = SentencePruner._model.process(question, [texts], threshold=threshold)
+                # HF returns List[Dict] per question
+                outputs = batched_out[0] if isinstance(batched_out, list) else batched_out
+                if isinstance(outputs, dict):
+                    outputs = [outputs]
+                if len(outputs) != len(texts):
+                    print("⚠️ Provence batch size mismatch; falling back to per-doc loop")
+                    raise ValueError
+
+            pruned: List[Dict[str, Any]] = []
+            for doc, out in zip(docs, outputs):
+                raw = out.get("pruned_context", doc.get("text", "")) if isinstance(out, dict) else doc.get("text", "")
+                new_text = raw if isinstance(raw, str) else " ".join(raw)  # HF model may return a list of sentences
                 pruned.append({**doc, "text": new_text})
-            except Exception as e:
-                print(f"⚠️ Provence pruning failed for chunk {doc.get('chunk_id')}: {e}")
-                pruned.append(doc)  # fall back to original
+        except Exception as e:
+            print(f"⚠️ Provence batch pruning failed ({e}); falling back to individual calls")
+            pruned = []
+            for doc in docs:
+                text = doc.get("text", "")
+                if not text:
+                    pruned.append(doc)
+                    continue
+                try:
+                    res = SentencePruner._model.process(question, text, threshold=threshold)
+                    raw = res.get("pruned_context", text) if isinstance(res, dict) else text
+                    new_text = raw if isinstance(raw, str) else " ".join(raw)
+                    pruned.append({**doc, "text": new_text})
+                except Exception as err:
+                    print(f"⚠️ Provence pruning failed for chunk {doc.get('chunk_id')}: {err}")
+                    pruned.append(doc)
 
         return pruned 

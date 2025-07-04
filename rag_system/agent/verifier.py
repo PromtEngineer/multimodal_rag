@@ -21,28 +21,35 @@ class Verifier:
     def verify(self, query: str, context: str, answer: str) -> VerificationResult:
         print("\nVerifying answer against context with Ollama...")
         prompt = f"""
-You are a verification expert. Your task is to determine if the provided 'Answer' is fully supported by the 'Context'.
-The answer must not contain information that is not present in the context.
+You are an expert fact checker.
 
-Respond with a JSON object containing four keys:
-1. "verdict": A single word, either "SUPPORTED", "NEEDS_CLARIFICATION", or "NOT_SUPPORTED".
-2. "is_grounded": A boolean value (true or false).
-3. "reasoning": A brief explanation for your verdict.
-4. "confidence_score": An integer between 0 and 100, representing your confidence in the answer's groundedness.
+TASK
+  Determine whether the given ANSWER is fully supported by the CONTEXT.
 
-Query: "{query}"
+OUTPUT FORMAT (very strict!)
+  Reply **only** with a single line JSON object, no markdown, no extra keys:
+  {{
+    "verdict": "SUPPORTED" | "NOT_SUPPORTED" | "NEEDS_CLARIFICATION",
+    "is_grounded": true | false,
+    "reasoning": "< concise reasoning >",
+    "confidence_score": <integer 0-100>
+  }}
 
-Context:
----
-{context}
----
+Guidelines
+  • If any part of the answer is not in the context, verdict = "NOT_SUPPORTED".
+  • If answer is partially supported but misses critical info, use "NEEDS_CLARIFICATION".
+  • "is_grounded" mirrors whether verdict is SUPPORTED.
+  • Keep reasoning under 30 words.
 
-Answer:
----
-{answer}
----
-
-JSON Output:
+QUERY: "{query}"
+CONTEXT:
+"""
+        prompt += context[:4000]  # Clamp to avoid huge prompts
+        prompt += """
+ANSWER:
+"""
+        prompt += answer
+        prompt += """
 """
         response = self.llm_client.generate_completion(self.llm_model, prompt, format="json")
         # 🐛 DEBUG: Show raw verifier LLM response for troubleshooting
@@ -63,18 +70,35 @@ JSON Output:
     async def verify_async(self, query: str, context: str, answer: str) -> VerificationResult:
         """Async variant that calls the Ollama client asynchronously."""
         prompt = f"""
-You are a verification expert. Your task is to determine if the provided 'Answer' is fully supported by the 'Context'.
-Respond with JSON {{"verdict":"SUPPORTED|NOT_SUPPORTED|NEEDS_CLARIFICATION","is_grounded":bool,"reasoning":str,"confidence_score":int}}
+You are an expert fact checker.
 
-Query: "{query}"
+TASK
+  Determine whether the given ANSWER is fully supported by the CONTEXT.
 
-Context:
-{context}
+OUTPUT FORMAT (very strict!)
+  Reply **only** with a single line JSON object, no markdown, no extra keys:
+  {{
+    "verdict": "SUPPORTED" | "NOT_SUPPORTED" | "NEEDS_CLARIFICATION",
+    "is_grounded": true | false,
+    "reasoning": "< concise reasoning >",
+    "confidence_score": <integer 0-100>
+  }}
 
-Answer:
-{answer}
+Guidelines
+  • If any part of the answer is not in the context, verdict = "NOT_SUPPORTED".
+  • If answer is partially supported but misses critical info, use "NEEDS_CLARIFICATION".
+  • "is_grounded" mirrors whether verdict is SUPPORTED.
+  • Keep reasoning under 30 words.
 
-JSON Output:
+QUERY: "{query}"
+CONTEXT:
+"""
+        prompt += context[:4000]  # Clamp to avoid huge prompts
+        prompt += """
+ANSWER:
+"""
+        prompt += answer
+        prompt += """
 """
         resp = await self.llm_client.generate_completion_async(self.llm_model, prompt, format="json")
         try:

@@ -16,13 +16,16 @@ interface MarkdownProps {
 
 export default function Markdown({ text, className = '' }: MarkdownProps) {
   return (
-    <ReactMarkdown
-      className={`prose prose-invert max-w-none ${className}`}
-      // @ts-ignore — react-markdown typings don't yet include remarkPlugins array type
-      remarkPlugins={[remarkGfm]}
-      linkTarget="_blank"
-    >
-      {text}
-    </ReactMarkdown>
+    <div className={`prose prose-invert max-w-none ${className}`}>
+      {/* @ts-ignore – react-markdown type doesn't recognise remarkPlugins array */}
+      <ReactMarkdown 
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({node, ...props}) => <a {...props} target="_blank" rel="noopener noreferrer" />
+        }}
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
   )
 } 
