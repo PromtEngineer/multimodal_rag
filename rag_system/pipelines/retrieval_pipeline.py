@@ -420,6 +420,8 @@ ORIGINAL QUESTION: "{query}"
             print(f"\n--- Provence pruning enabled (threshold={thresh}) ---")
             pruner = self._get_sentence_pruner()
             final_docs = pruner.prune_documents(query, final_docs, threshold=thresh)
+            # Remove any chunks that were fully pruned (empty text)
+            final_docs = [d for d in final_docs if d.get('text', '').strip()]
             if event_callback:
                 event_callback("prune_done", {"count": len(final_docs)})
 
@@ -462,6 +464,15 @@ ORIGINAL QUESTION: "{query}"
                     doc[key] = _clean_val(doc[key])
 
         context = "\n\n".join([doc['text'] for doc in final_docs])
+
+        # 👀 DEBUG: Show the exact context passed to the LLM after pruning
+        print("\n=== Context passed to LLM (post-pruning) ===")
+        if len(context) > 2000:
+            print(context[:2000] + "…\n[truncated] (total {} chars)".format(len(context)))
+        else:
+            print(context)
+        print("=== End of context ===\n")
+
         final_answer = self._synthesize_final_answer(query, context, event_callback=event_callback)
         
         return {"answer": final_answer, "source_documents": final_docs}
