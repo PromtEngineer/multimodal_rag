@@ -89,6 +89,27 @@ export function SessionSidebar({
     }
   }
 
+  const handleRenameSession = async (sessionId: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    const current = sessions.find(s => s.id === sessionId);
+    const newTitle = prompt('Enter new title', current?.title || '');
+    if (!newTitle || newTitle.trim() === '' || newTitle === current?.title) {
+      return;
+    }
+    try {
+      const result = await chatAPI.renameSession(sessionId, newTitle.trim());
+      // Update local state with new session data
+      setSessions(prev => prev.map(s => s.id === sessionId ? result.session : s));
+      // If this is the currently open session, notify parent to refresh
+      if (currentSessionId === sessionId && onSessionSelect) {
+        onSessionSelect(sessionId);
+      }
+    } catch (error) {
+      console.error('Failed to rename session:', error);
+      setError('Failed to rename session');
+    }
+  }
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
     const now = new Date()
@@ -180,6 +201,7 @@ export function SessionSidebar({
                     {menuOpenId===session.id && (
                       <div className="absolute right-0 top-full mt-1 bg-black/90 backdrop-blur border border-white/10 rounded shadow-lg py-1 w-32 text-sm z-50">
                         <button onClick={(e)=>{e.stopPropagation(); onSessionSelect(session.id); setMenuOpenId(null);}} className="block w-full text-left px-4 py-2 hover:bg-white/10">Open</button>
+                        <button onClick={(e)=>handleRenameSession(session.id,e)} className="block w-full text-left px-4 py-2 hover:bg-white/10">Rename</button>
                         <button onClick={(e)=>handleDeleteSession(session.id,e)} className="block w-full text-left px-4 py-2 hover:bg-white/10 text-red-400 hover:text-red-500">Delete</button>
                       </div>
                     )}

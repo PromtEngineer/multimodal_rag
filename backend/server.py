@@ -95,6 +95,9 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
         elif parsed_path.path.startswith('/sessions/') and parsed_path.path.endswith('/index'):
             session_id = parsed_path.path.split('/')[-2]
             self.handle_index_documents(session_id)
+        elif parsed_path.path.startswith('/sessions/') and parsed_path.path.endswith('/rename'):
+            session_id = parsed_path.path.split('/')[-2]
+            self.handle_rename_session(session_id)
         else:
             self.send_response(404)
             self.end_headers()
@@ -891,6 +894,40 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
                 self.send_json_response({'error': 'Index not found'}, status_code=404)
         except Exception as e:
             self.send_json_response({'error': str(e)}, status_code=500)
+
+    def handle_rename_session(self, session_id: str):
+        """Rename an existing session title"""
+        try:
+            session = db.get_session(session_id)
+            if not session:
+                self.send_json_response({"error": "Session not found"}, status_code=404)
+                return
+
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                self.send_json_response({"error": "Request body required"}, status_code=400)
+                return
+
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            new_title: str = data.get('title', '').strip()
+
+            if not new_title:
+                self.send_json_response({"error": "Title cannot be empty"}, status_code=400)
+                return
+
+            db.update_session_title(session_id, new_title)
+            updated_session = db.get_session(session_id)
+
+            self.send_json_response({
+                "message": "Session renamed successfully",
+                "session": updated_session
+            })
+
+        except json.JSONDecodeError:
+            self.send_json_response({"error": "Invalid JSON"}, status_code=400)
+        except Exception as e:
+            self.send_json_response({"error": f"Failed to rename session: {str(e)}"}, status_code=500)
 
     def send_json_response(self, data, status_code: int = 200):
         """Send a JSON (UTF-8) response with CORS headers. Safe against client disconnects."""
