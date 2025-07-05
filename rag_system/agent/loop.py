@@ -50,20 +50,57 @@ class Agent:
             print("Agent initialized (GraphRAG disabled).")
 
         # ---- Load document overviews for fast routing ----
-        overview_path = os.path.join("index_store", "overviews", "overviews.jsonl")
+        self._global_overview_path = os.path.join("index_store", "overviews", "overviews.jsonl")
         self.doc_overviews: list[str] = []
-        if os.path.exists(overview_path):
-            try:
-                with open(overview_path, encoding="utf-8") as fh:
-                    for line in fh:
-                        try:
-                            rec = _json.loads(line)
-                            if isinstance(rec, dict) and rec.get("overview"):
-                                self.doc_overviews.append(rec["overview"].strip())
-                        except Exception:
-                            continue
-            except Exception as e:
-                print(f"⚠️  Failed to load document overviews: {e}")
+        self._current_overview_session: str | None = None  # cache key to avoid rereading on every query
+        self._load_overviews(self._global_overview_path)
+
+    def _load_overviews(self, path: str):
+        """Helper to load overviews from a .jsonl file into self.doc_overviews."""
+        import json, os
+        self.doc_overviews.clear()
+        if not os.path.exists(path):
+            return
+        try:
+            with open(path, encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        rec = json.loads(line)
+                        if isinstance(rec, dict) and rec.get("overview"):
+                            self.doc_overviews.append(rec["overview"].strip())
+                    except Exception:
+                        continue
+            print(f"📖 Loaded {len(self.doc_overviews)} overviews from {path}")
+        except Exception as e:
+            print(f"⚠️  Failed to load document overviews from {path}: {e}")
+
+    def load_overviews_for_indexes(self, idx_ids: list[str]):
+        """Aggregate overviews for the given indexes or fall back to global file."""
+        import os, json
+        aggregated: list[str] = []
+        for idx in idx_ids:
+            path = os.path.join("index_store", "overviews", f"{idx}.jsonl")
+            if os.path.exists(path):
+                try:
+                    with open(path, encoding="utf-8") as fh:
+                        for line in fh:
+                            if not line.strip():
+                                continue
+                            try:
+                                rec = json.loads(line)
+                                ov = rec.get("overview", "").strip()
+                                if ov:
+                                    aggregated.append(ov)
+                            except json.JSONDecodeError:
+                                continue
+                except Exception as e:
+                    print(f"⚠️  Error reading {path}: {e}")
+        if aggregated:
+            self.doc_overviews = aggregated
+            print(f"📖 Loaded {len(aggregated)} overviews for indexes {[i[:8] for i in idx_ids]}")
+        else:
+            print(f"⚠️  No per-index overviews found for {idx_ids}. Using global overview file.")
+            self._load_overviews(self._global_overview_path)
 
     def _cosine_similarity(self, v1: np.ndarray, v2: np.ndarray) -> float:
         """Computes cosine similarity between two vectors."""
@@ -230,6 +267,18 @@ Respond with JSON: {{"category": "<your_choice>"}}
         
         # 🚀 NEW: Get conversation history
         history = self.chat_histories.get(session_id, []) if session_id else []
+        
+        # 🔄 Refresh overviews for this session if available
+        if session_id and session_id != getattr(self, "_current_overview_session", None):
+            candidate_path = os.path.join("index_store", "overviews", f"{session_id}.jsonl")
+            if os.path.exists(candidate_path):
+                self._load_overviews(candidate_path)
+                self._current_overview_session = session_id
+            else:
+                # Fall back to global overviews if per-session file not found
+                if self._current_overview_session != "GLOBAL":
+                    self._load_overviews(self._global_overview_path)
+                    self._current_overview_session = "GLOBAL"
         
         query_type = await self._triage_query_async(query, history)
         print(f"🎯 ROUTING DEBUG: Final triage decision: '{query_type}'")

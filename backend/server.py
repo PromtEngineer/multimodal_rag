@@ -340,7 +340,7 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
 
         # Load document overviews for intelligent routing
         try:
-            doc_overviews = self._load_document_overviews()
+            doc_overviews = self._load_document_overviews(idx_ids)
             if doc_overviews:
                 return self._route_using_overviews(message, doc_overviews)
         except Exception as e:
@@ -349,48 +349,77 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
         # Fallback to simple pattern matching if overviews unavailable
         return self._simple_pattern_routing(message, idx_ids)
 
-    def _load_document_overviews(self) -> List[str]:
-        """Load document overviews from the index store."""
-        import json
-        import os
+    def _load_document_overviews(self, idx_ids: List[str]) -> List[str]:
+        """Load and aggregate overviews for the given index IDs.
         
-        # Fix path: backend server runs from backend/ directory, so we need to go up one level
-        overviews_path = "../index_store/overviews/overviews.jsonl"
-        if not os.path.exists(overviews_path):
-            # Try alternative paths
-            alt_paths = [
-                "index_store/overviews/overviews.jsonl",  # If running from project root
-                "./index_store/overviews/overviews.jsonl",
-                "../index_store/overviews/overviews.jsonl"
+        Strategy:
+        1. Attempt to load each index's dedicated overview file.
+        2. Aggregate all overviews found across available files (deduplicated).
+        3. If none of the index files exist, fall back to the legacy global overview file.
+        """
+        import os, json
+
+        aggregated: list[str] = []
+
+        # 1️⃣  Collect overviews from per-index files
+        for idx in idx_ids:
+            candidate_paths = [
+                f"../index_store/overviews/{idx}.jsonl",
+                f"index_store/overviews/{idx}.jsonl",
+                f"./index_store/overviews/{idx}.jsonl",
             ]
-            
-            for path in alt_paths:
-                if os.path.exists(path):
-                    overviews_path = path
+            for p in candidate_paths:
+                if os.path.exists(p):
+                    print(f"📖 Loading overviews from: {p}")
+                    try:
+                        with open(p, "r", encoding="utf-8") as f:
+                            for line in f:
+                                if not line.strip():
+                                    continue
+                                try:
+                                    record = json.loads(line)
+                                    overview = record.get("overview", "").strip()
+                                    if overview:
+                                        aggregated.append(overview)
+                                except json.JSONDecodeError:
+                                    continue  # skip malformed lines
+                        break  # Stop after the first existing path for this idx
+                    except Exception as e:
+                        print(f"⚠️ Error reading {p}: {e}")
+                        break  # Don't keep trying other paths for this idx if read failed
+
+        # 2️⃣  Fall back to legacy global file if no per-index overviews found
+        if not aggregated:
+            legacy_paths = [
+                "../index_store/overviews/overviews.jsonl",
+                "index_store/overviews/overviews.jsonl",
+                "./index_store/overviews/overviews.jsonl",
+            ]
+            for p in legacy_paths:
+                if os.path.exists(p):
+                    print(f"⚠️ Falling back to legacy overviews file: {p}")
+                    try:
+                        with open(p, "r", encoding="utf-8") as f:
+                            for line in f:
+                                if not line.strip():
+                                    continue
+                                try:
+                                    record = json.loads(line)
+                                    overview = record.get("overview", "").strip()
+                                    if overview:
+                                        aggregated.append(overview)
+                                except json.JSONDecodeError:
+                                    continue
+                    except Exception as e:
+                        print(f"⚠️ Error reading legacy overviews file {p}: {e}")
                     break
-            else:
-                print(f"⚠️ Could not find overviews.jsonl in any of: {alt_paths}")
-                return []
-        
-        print(f"📖 Loading overviews from: {overviews_path}")
-        
-        overviews = []
-        try:
-            with open(overviews_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    if line.strip():
-                        data = json.loads(line)
-                        overview = data.get('overview', '').strip()
-                        if overview:
-                            overviews.append(overview)
-            
-            print(f"✅ Loaded {len(overviews)} document overviews")
-            
-        except Exception as e:
-            print(f"⚠️ Error loading overviews: {e}")
-            return []
-        
-        return overviews[:40]  # Limit to first 40 for performance
+
+        # Limit for performance
+        if aggregated:
+            print(f"✅ Loaded {len(aggregated)} document overviews from {len(idx_ids)} index(es)")
+        else:
+            print(f"⚠️ No overviews found for indices {idx_ids}")
+        return aggregated[:40]
 
     def _route_using_overviews(self, query: str, overviews: List[str]) -> bool:
         """
@@ -831,6 +860,15 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
                 except Exception:
                     # Keep defaults on parse error
                     pass
+
+            # Set per-index overview file path
+            overview_path = f"index_store/overviews/{index_id}.jsonl"
+
+            # Ensure config_override includes overview_path
+            def ensure_overview_path(cfg: dict):
+                cfg["overview_path"] = overview_path
+            
+            # we'll inject later when we build config_override
 
             # Delegate to advanced RAG API same as session indexing
             rag_api_url = "http://localhost:8001/index"

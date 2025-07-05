@@ -171,6 +171,18 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 if provence_threshold is not None:
                     rp_cfg.setdefault("provence", {})["threshold"] = float(provence_threshold)
 
+                # 🔄 Refresh document overviews for this session
+                if session_id:
+                    idx_ids = db.get_indexes_for_session(session_id)
+                    RAG_AGENT.load_overviews_for_indexes(idx_ids)
+
+                # 🔧 Set index-specific overview path
+                if session_id:
+                    rp_cfg["overview_path"] = f"index_store/overviews/{session_id}.jsonl"
+
+                # 🔧 Configure late chunking
+                rp_cfg.setdefault("retrievers", {}).setdefault("latechunk", {})["enabled"] = True
+
                 result = RAG_AGENT.run(
                     query,
                     table_name=table_name,
@@ -317,6 +329,13 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                     if provence_threshold is not None:
                         rp_cfg.setdefault("provence", {})["threshold"] = float(provence_threshold)
 
+                    # 🔧 Set index-specific overview path so each index writes separate file
+                    if session_id:
+                        rp_cfg["overview_path"] = f"index_store/overviews/{session_id}.jsonl"
+
+                    # 🔧 Configure late chunking
+                    rp_cfg.setdefault("retrievers", {}).setdefault("latechunk", {})["enabled"] = True
+
                     # Straight retrieval pipeline with streaming events
                     final_result = RAG_AGENT.retrieval_pipeline.run(
                         query,
@@ -331,6 +350,18 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                         rp_cfg.setdefault("provence", {})["enabled"] = bool(provence_prune)
                     if provence_threshold is not None:
                         rp_cfg.setdefault("provence", {})["threshold"] = float(provence_threshold)
+
+                    # 🔄 Refresh overviews for this session
+                    if session_id:
+                        idx_ids = db.get_indexes_for_session(session_id)
+                        RAG_AGENT.load_overviews_for_indexes(idx_ids)
+
+                    # 🔧 Set index-specific overview path
+                    if session_id:
+                        rp_cfg["overview_path"] = f"index_store/overviews/{session_id}.jsonl"
+
+                    # 🔧 Configure late chunking
+                    rp_cfg.setdefault("retrievers", {}).setdefault("latechunk", {})["enabled"] = True
 
                     final_result = RAG_AGENT.run(
                         query,
@@ -460,6 +491,13 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 print(f"🔧 CHUNKING CONFIG: Size: {chunk_size}, Overlap: {chunk_overlap}")
                 print(f"🔧 MODEL CONFIG: Embedding: {embedding_model or 'default'}, Enrichment: {enrich_model or 'default'}")
                 
+                # 🔧 Set index-specific overview path so each index writes separate file
+                if session_id:
+                    config_override["overview_path"] = f"index_store/overviews/{session_id}.jsonl"
+
+                # 🔧 Configure late chunking
+                config_override.setdefault("retrievers", {}).setdefault("latechunk", {})["enabled"] = True
+
                 # Create a temporary pipeline instance with the overridden config
                 temp_pipeline = INDEXING_PIPELINE.__class__(
                     config_override, 
@@ -507,6 +545,13 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 print(f"🔧 CHUNKING CONFIG: Size: {chunk_size}, Overlap: {chunk_overlap}")
                 print(f"🔧 MODEL CONFIG: Embedding: {embedding_model or 'default'}, Enrichment: {enrich_model or 'default'}")
                 
+                # 🔧 Set index-specific overview path so each index writes separate file
+                if session_id:
+                    config_override["overview_path"] = f"index_store/overviews/{session_id}.jsonl"
+
+                # 🔧 Configure late chunking
+                config_override.setdefault("retrievers", {}).setdefault("latechunk", {})["enabled"] = True
+
                 # Create temporary pipeline with overridden config
                 temp_pipeline = INDEXING_PIPELINE.__class__(
                     config_override, 
