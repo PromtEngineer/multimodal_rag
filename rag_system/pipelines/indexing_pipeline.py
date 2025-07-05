@@ -3,7 +3,7 @@ import os
 import networkx as nx
 from rag_system.ingestion.pdf_converter import PDFConverter
 from rag_system.ingestion.chunking import MarkdownRecursiveChunker
-from rag_system.indexing.representations import QwenEmbedder, EmbeddingGenerator, select_embedder
+from rag_system.indexing.representations import EmbeddingGenerator, select_embedder
 from rag_system.indexing.embedders import LanceDBManager, VectorIndexer
 from rag_system.indexing.graph_extractor import GraphExtractor
 from rag_system.utils.ollama_client import OllamaClient

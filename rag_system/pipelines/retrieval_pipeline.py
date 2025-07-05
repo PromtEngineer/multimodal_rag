@@ -13,7 +13,7 @@ from threading import Lock
 from rag_system.utils.ollama_client import OllamaClient
 from rag_system.retrieval.retrievers import MultiVectorRetriever, GraphRetriever
 from rag_system.indexing.multimodal import LocalVisionModel
-from rag_system.indexing.representations import QwenEmbedder, select_embedder
+from rag_system.indexing.representations import select_embedder
 from rag_system.indexing.embedders import LanceDBManager
 from rag_system.rerankers.reranker import QwenReranker
 from rag_system.rerankers.sentence_pruner import SentencePruner

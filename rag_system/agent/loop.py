@@ -1,17 +1,13 @@
 from typing import Dict, Any, Optional
 import json
-import concurrent.futures
-import time
-import asyncio
-from cachetools import TTLCache, LRUCache
+import time, asyncio, os
 import numpy as np
+from cachetools import TTLCache, LRUCache
 from rag_system.utils.ollama_client import OllamaClient
 from rag_system.pipelines.retrieval_pipeline import RetrievalPipeline
 from rag_system.agent.verifier import Verifier
 from rag_system.retrieval.query_transformer import QueryDecomposer, GraphQueryTranslator
 from rag_system.retrieval.retrievers import GraphRetriever
-import os
-import json as _json
 
 class Agent:
     """
@@ -650,54 +646,6 @@ FINAL ANSWER:
         overviews_snip = self.doc_overviews[:40]
         overviews_block = "\n".join(f"[{i+1}] {ov}" for i, ov in enumerate(overviews_snip))
 
-#         router_prompt = f"""
-# You are an AI router that decides whether a user question should be answered via:
-#   • "rag_query"    – search the user's private documents (summarised below)
-#   • "graph_query"  – query a public knowledge-graph for a crisp factual triple
-#   • "direct_answer" – reply from your own general knowledge (chit-chat, public facts)
-
-# RULES
-#  1. If ANY overview clearly relates to the question (entities, numbers, addresses, dates, etc.) → rag_query.
-#  2. If the question is a simple factual triple about well-known public entities → graph_query.
-#  3. Otherwise → direct_answer.
-#  4. Output must be exactly: {{"category": "rag_query"}} or {{"category": "graph_query"}} or {{"category": "direct_answer"}}.
-
-
-# Example B
-#   Overviews:
-#     • Marketing slide deck titled "Q2 Growth Strategy" … outlines campaign budgets and KPIs …
-#   Question: "List two key KPIs mentioned in the growth strategy deck."
-#   Assistant: {{"category": "rag_query"}}
-
-# Example C
-#   Overviews:
-#     • Medical lab report … Patient ID 778-Q … Cholesterol 210 mg/dL …
-#   Question: "What is the patient's cholesterol level?"
-#   Assistant: {{"category": "rag_query"}}
-
-# Example D
-#   Overviews:
-#     • Resume of Jane Doe, Senior Data Scientist …
-#   Question: "Who is the CEO of Apple?"
-#   Assistant: {{"category": "direct_answer"}}
-
-# Example E
-#   Overviews:
-#     • Research paper: "Quantum Entanglement in Photonic Systems" …
-#   Question: "Which company acquired DeepMind?"
-#   Assistant: {{"category": "graph_query"}}
-
-# DOCUMENT OVERVIEWS
-# +-------------------
-# +{overviews_block}
-
-# USER QUESTION
-# +--------------
-# +"{query}"
-
-# Return only the JSON object.
-# """
-
         router_prompt = f"""Task: Route query to correct system.
 
 Documents available: Invoices, DeepSeek-V3 research papers
@@ -727,22 +675,3 @@ Response:"""
         except json.JSONDecodeError as e:
             print(f"❌ ROUTING DEBUG: Overview routing JSON parsing failed: {e}, defaulting to 'rag_query'")
             return "rag_query"
-
-
-
-        # try:
-        #     reply = self.llm_client.generate_completion(
-        #         model=self.ollama_config.get("enrichment_model", "qwen3:0.6b"),
-        #         prompt=router_prompt,
-        #     ).get("response", "").strip().lower()
-        # except Exception as e:
-        #     print(f"⚠️  Overview router failed: {e}")
-        #     return None
-        
-        # return reply
-
-        # if "rag" == reply:
-        #     return "rag_query"
-        # if "direct" == reply:
-        #     return "direct_answer"
-        # return None
