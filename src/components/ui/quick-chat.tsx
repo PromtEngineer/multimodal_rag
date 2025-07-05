@@ -82,6 +82,10 @@ export function QuickChat({ sessionId: externalSessionId, onSessionChange, class
             const tok: string = evt.data.text || '';
             setMessages((prev) => prev.map((m) => (m.id === assistantMsg.id ? { ...m, content: (m.content as string) + tok } : m)));
           }
+          if (evt.type === 'direct_answer' || evt.type === 'single_query_result' || evt.type === 'final_answer') {
+            const answer = evt.data?.answer || evt.data?.text || '';
+            setMessages((prev) => prev.map((m)=> m.id===assistantMsg.id? { ...m, content: answer }: m));
+          }
           if (evt.type === 'complete') {
             setIsLoading(false);
           }
