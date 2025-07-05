@@ -57,7 +57,9 @@ export function QuickChat({ sessionId: externalSessionId, onSessionChange, class
         const newSess = await api.createSession('Quick Chat');
         activeSessionId = newSess.id;
         setSessionId(activeSessionId);
-        if(onSessionChange){ onSessionChange(newSess); }
+        if(onSessionChange){ 
+          onSessionChange(newSess); 
+        }
       } catch (err) {
         console.error('Failed to create quick-chat session', err);
       }

@@ -43,7 +43,7 @@ User ↔ Frontend  ↔  │ localGPT backend 8000│ ← uploads / chat
 | `rag_system/retrieval` | Runtime search. `MultiVectorRetriever` performs half-FTS / half-vector hybrid with dedup, supports BM25 & graph fallbacks |
 | `rag_system/pipelines` | End-to-end flows:<br>• **IndexingPipeline** – orchestrates embedding + DB write<br>• **RetrievalPipeline** – orchestrates search → rerank → context expansion → LLM synth |
 | `rag_system/agent` | Long-running stateful helper: triages query → decomposition → retrieval pipeline → verifier → caching |
-| `rag_system/rerankers` | Lazy-loaded AI cross-encoder (BAAI/bge-reranker-base) plug-in |
+| `rag_system/rerankers` | AI cross-encoder reranker **and** `sentence_pruner.py` (Provence context pruning) |
 | `rag_system/utils` | Thin wrapper around **Ollama** HTTP API, logging helpers |
 
 ---
@@ -56,6 +56,7 @@ User ↔ Frontend  ↔  │ localGPT backend 8000│ ← uploads / chat
    * `MultiVectorRetriever` pulls **k/2 FTS** + **k/2 vector** rows, dedups on `_rowid` or `chunk_id`.
    * Optional LanceDB reranker (linear-combination) and **AI reranker** (cross-encoder) refine top-k.
    * Parent-child expansion adds surrounding chunks (window size configurable).
+   * **Provence sentence-pruner** (optional) drops irrelevant sentences, shrinking context ~60 % when enabled (toggle in UI).
    * Prompt **_synthesize_final_answer** builds the *Verified Facts → Question* prompt and calls Ollama generation model.
 5. **Two possible aggregation strategies** (toggle `compose_from_sub_answers`):
    * **Single-stage** (default): all unique chunks from all sub-queries merged, one final synthesis call.
@@ -98,6 +99,7 @@ index_store/
   * `reranker.enabled` / `type` – `ai` uses BAAI/bge-reranker.
   * `query_decomposition.enabled` & `compose_from_sub_answers` toggle decomposition and two-stage flow.
 * Device auto-selection prioritises CUDA → MPS → CPU.
+* `OLLAMA_CONFIG['generation_model']` is now runtime-overrideable via the UI's "LLM model" dropdown; `/chat` & `/chat/stream` write `model:` into the request payload and `api_server.py` sets `RAG_AGENT.ollama_config['generation_model']` for that call.
 
 ---
 

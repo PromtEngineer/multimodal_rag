@@ -210,7 +210,7 @@ export function ConversationPage({
   // Track if user is near bottom so we don't interrupt manual scrolling
   useEffect(() => {
     if(isUserNearBottom){
-      scrollToBottom()
+    scrollToBottom()
     }
   }, [messages, isLoading])
 

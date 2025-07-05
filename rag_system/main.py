@@ -67,12 +67,12 @@ PIPELINE_CONFIGS = {
             "late_chunking": {
                 "enabled": True,
                 "table_suffix": "_lc_v3"
-            },
-            "dense": {
+        },
+            "dense": { 
                 "enabled": True,
                 "weight": 0.7
             },
-            "bm25": {
+            "bm25": { 
                 "enabled": True,
                 "index_name": "rag_bm25_index"
             },

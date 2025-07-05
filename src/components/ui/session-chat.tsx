@@ -6,7 +6,7 @@ import { ChatInput } from "./chat-input"
 import { EmptyChatState } from "./empty-chat-state"
 import { ChatMessage, ChatSession, chatAPI, generateUUID } from "@/lib/api"
 import { AttachedFile } from "@/lib/types"
-import { useEffect, useState, forwardRef, useImperativeHandle } from "react"
+import { useEffect, useState, forwardRef, useImperativeHandle, useCallback } from "react"
 import { Button } from "./button"
 import type { Step } from '@/lib/api'
 import { ChatSettingsModal } from '@/components/ui/chat-settings-modal'
@@ -62,37 +62,8 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
   
   const apiService = chatAPI
 
-  // Expose functions to parent component (moved after sendMessage definition)
-
-  // Load session when sessionId changes
-  useEffect(() => {
-    if (sessionId) {
-      // Only load session if we don't already have the current session
-      // This prevents overriding messages when a new session is created
-      if (!currentSession || currentSession.id !== sessionId) {
-        loadSession(sessionId)
-      }
-    } else {
-      // Clear messages if no session
-      setMessages([])
-      setCurrentSession(null)
-    }
-  }, [sessionId, currentSession]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Fetch available models on mount
-  useEffect(()=>{
-    (async()=>{
-      try{
-        const resp=await apiService.getModels();
-        setGenerationModels(resp.generation_models||[])
-        if(resp.generation_models&&resp.generation_models.length>0){
-          setSelectedModel(resp.generation_models[0])
-        }
-      }catch(e){console.warn('Failed to load models',e)}
-    })()
-  },[])
-
-  const loadSession = async (id: string) => {
+  // Define loadSession with useCallback before useEffect
+  const loadSession = useCallback(async (id: string) => {
     try {
       setError(null)
       const { session, messages: sessionMessages } = await apiService.getSession(id)
@@ -118,7 +89,35 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
       console.error('Failed to load session:', error)
       setError('Failed to load session')
     }
-  }
+  }, [apiService, onSessionChange])
+
+  // Load session when sessionId changes
+  useEffect(() => {
+    if (sessionId) {
+      // Only load session if we don't already have the current session
+      // This prevents overriding messages when a new session is created
+      if (!currentSession || currentSession.id !== sessionId) {
+        loadSession(sessionId)
+      }
+    } else {
+      // Clear messages if no session
+      setMessages([])
+      setCurrentSession(null)
+    }
+  }, [sessionId, currentSession, loadSession]) // Added missing dependencies
+
+  // Fetch available models on mount
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const resp=await apiService.getModels();
+        setGenerationModels(resp.generation_models||[])
+        if(resp.generation_models&&resp.generation_models.length>0){
+          setSelectedModel(resp.generation_models[0])
+        }
+      }catch(e){console.warn('Failed to load models',e)}
+    })()
+  },[apiService])
 
   const sendMessage = async (content: string, attachedFiles?: AttachedFile[]) => {
     // --- Guard Clauses ---
@@ -139,7 +138,9 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
           const newSession = await apiService.createSession()
           activeSessionId = newSession.id
           setCurrentSession(newSession)
-          if (onSessionChange) onSessionChange(newSession)
+          if (onSessionChange) {
+            onSessionChange(newSession)
+          }
         } catch (error) {
           console.error('Failed to create session:', error)
           setError('Failed to create session')
@@ -410,6 +411,23 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
                 steps.forEach(s => {
                   if (s.status !== 'done') s.status = 'done';
                 });
+                
+                // 🔄 REFRESH SESSION: After completion, refresh session data to get updated title
+                if (activeSessionId) {
+                  // Always refresh session data so updated title & message count are reflected in the UI
+                  setTimeout(async () => {
+                    try {
+                      const { session } = await apiService.getSession(activeSessionId as string);
+                      setCurrentSession(session);
+                      if (onSessionChange) {
+                        onSessionChange(session);
+                      }
+                    } catch (error) {
+                      console.error('Failed to refresh session after completion:', error);
+                    }
+                  }, 100); // Small delay to ensure backend has processed the title update
+                }
+                
                 return { ...m, content: { steps }, metadata: { message_type: 'complete' } };
               }
               if (evt.type === 'direct_answer') {

@@ -4,9 +4,19 @@ import socketserver
 from urllib.parse import urlparse, parse_qs
 import os
 import requests
+import sys
 
-# Import the core logic from the new factory script
-from rag_system.factory import get_agent, get_indexing_pipeline
+# Add backend directory to path for database imports
+backend_dir = os.path.join(os.path.dirname(__file__), '..', 'backend')
+if backend_dir not in sys.path:
+    sys.path.append(backend_dir)
+
+from backend.database import ChatDatabase, generate_session_title
+from rag_system.main import get_agent
+from rag_system.factory import get_indexing_pipeline
+
+# Initialize database connection once at module level
+db = ChatDatabase()
 
 # Get the desired agent mode from environment variables, defaulting to 'default'
 # This allows us to easily switch between 'default', 'fast', 'react', etc.
@@ -92,6 +102,36 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 self.send_json_response({"error": "Query is required"}, status_code=400)
                 return
 
+            # 🔄 UPDATE SESSION TITLE: If this is the first message in the session, update the title
+            if session_id:
+                try:
+                    # Check if this is the first message by calling the backend server
+                    backend_url = f"http://localhost:8000/sessions/{session_id}"
+                    session_resp = requests.get(backend_url)
+                    if session_resp.status_code == 200:
+                        session_data = session_resp.json()
+                        session = session_data.get('session', {})
+                        # If message_count is 0, this is the first message
+                        if session.get('message_count', 0) == 0:
+                            # Generate a title from the first message
+                            title = generate_session_title(query)
+                            # Update the session title via backend API
+                            # We'll need to add this endpoint to the backend, for now let's make a direct database call
+                            # This is a temporary solution until we add a proper API endpoint
+                            db.update_session_title(session_id, title)
+                            print(f"📝 Updated session title to: {title}")
+                            
+                            # 💾 STORE USER MESSAGE: Add the user message to the database
+                            user_message_id = db.add_message(session_id, query, "user")
+                            print(f"💾 Stored user message: {user_message_id}")
+                        else:
+                            # Not the first message, but still store the user message
+                            user_message_id = db.add_message(session_id, query, "user")
+                            print(f"💾 Stored user message: {user_message_id}")
+                except Exception as e:
+                    print(f"⚠️ Failed to update session title or store user message: {e}")
+                    # Continue with the request even if title update fails
+
             # Allow explicit table_name override
             table_name = data.get('table_name')
             if not table_name and session_id:
@@ -149,6 +189,15 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             
             # The result is a dict, so we need to dump it to a JSON string
             self.send_json_response(result)
+            
+            # 💾 STORE AI RESPONSE: Add the AI response to the database
+            if session_id and result and result.get("answer"):
+                try:
+                    ai_message_id = db.add_message(session_id, result["answer"], "assistant")
+                    print(f"💾 Stored AI response: {ai_message_id}")
+                except Exception as e:
+                    print(f"⚠️ Failed to store AI response: {e}")
+                    # Continue even if storage fails
 
         except json.JSONDecodeError:
             self.send_json_response({"error": "Invalid JSON"}, status_code=400)
@@ -192,6 +241,36 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             if not query:
                 self.send_json_response({"error": "Query is required"}, status_code=400)
                 return
+
+            # 🔄 UPDATE SESSION TITLE: If this is the first message in the session, update the title
+            if session_id:
+                try:
+                    # Check if this is the first message by calling the backend server
+                    backend_url = f"http://localhost:8000/sessions/{session_id}"
+                    session_resp = requests.get(backend_url)
+                    if session_resp.status_code == 200:
+                        session_data = session_resp.json()
+                        session = session_data.get('session', {})
+                        # If message_count is 0, this is the first message
+                        if session.get('message_count', 0) == 0:
+                            # Generate a title from the first message
+                            title = generate_session_title(query)
+                            # Update the session title via backend API
+                            # We'll need to add this endpoint to the backend, for now let's make a direct database call
+                            # This is a temporary solution until we add a proper API endpoint
+                            db.update_session_title(session_id, title)
+                            print(f"📝 Updated session title to: {title}")
+                            
+                            # 💾 STORE USER MESSAGE: Add the user message to the database
+                            user_message_id = db.add_message(session_id, query, "user")
+                            print(f"💾 Stored user message: {user_message_id}")
+                        else:
+                            # Not the first message, but still store the user message
+                            user_message_id = db.add_message(session_id, query, "user")
+                            print(f"💾 Stored user message: {user_message_id}")
+                except Exception as e:
+                    print(f"⚠️ Failed to update session title or store user message: {e}")
+                    # Continue with the request even if title update fails
 
             # Allow explicit table_name override
             table_name = data.get('table_name')
@@ -273,6 +352,15 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
 
                 # Ensure the final answer is sent (in case callback missed it)
                 emit("complete", final_result)
+                
+                # 💾 STORE AI RESPONSE: Add the AI response to the database
+                if session_id and final_result and final_result.get("answer"):
+                    try:
+                        ai_message_id = db.add_message(session_id, final_result["answer"], "assistant")
+                        print(f"💾 Stored AI response: {ai_message_id}")
+                    except Exception as e:
+                        print(f"⚠️ Failed to store AI response: {e}")
+                        # Continue even if storage fails
             except BrokenPipeError:
                 print("🔌 Client disconnected from SSE stream.")
             except Exception as e:

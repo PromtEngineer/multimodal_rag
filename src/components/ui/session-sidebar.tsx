@@ -113,6 +113,14 @@ export function SessionSidebar({
       <div className="p-4 border-b border-gray-800">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold text-white">Chats</h2>
+          <Button
+            onClick={handleNewSession}
+            size="sm"
+            className="h-8 w-8 p-0 bg-gray-700 hover:bg-gray-600 text-white"
+            title="New Chat"
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
         </div>
       </div>
 

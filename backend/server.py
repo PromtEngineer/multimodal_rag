@@ -278,7 +278,7 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
                 db.update_session_title(session_id, title)
             
             # 🎯 SMART ROUTING: Decide between direct LLM vs RAG
-            idx_ids = db.get_indexes_for_session(session_id)
+                idx_ids = db.get_indexes_for_session(session_id)
             force_rag = bool(data.get("force_rag", False))
             use_rag = True if force_rag else self._should_use_rag(message, idx_ids)
             
@@ -533,98 +533,66 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
     
     def _handle_rag_query(self, session_id: str, message: str, data: dict, idx_ids: List[str]):
         """
-        Handle query using the full RAG pipeline.
-        
+        Handle query using the full RAG pipeline (delegates to the advanced RAG API running on port 8001).
+
         Returns:
-            tuple: (response_text, source_documents)
+            tuple[str, List[dict]]: (response_text, source_documents)
         """
+        # Defaults
         response_text = ""
         source_docs: List[dict] = []
 
+        # Build payload for RAG API
+        rag_api_url = "http://localhost:8001/chat"
+        table_name = f"text_pages_{idx_ids[-1]}" if idx_ids else None
+        payload: Dict[str, Any] = {
+            "query": message,
+            "session_id": session_id,
+        }
+        if table_name:
+            payload["table_name"] = table_name
+
+        # Copy optional parameters from the incoming request
+        optional_params: Dict[str, tuple[type, str]] = {
+            "compose_sub_answers": (bool, "compose_sub_answers"),
+            "query_decompose": (bool, "query_decompose"),
+            "ai_rerank": (bool, "ai_rerank"),
+            "context_expand": (bool, "context_expand"),
+            "verify": (bool, "verify"),
+            "retrieval_k": (int, "retrieval_k"),
+            "context_window_size": (int, "context_window_size"),
+            "reranker_top_k": (int, "reranker_top_k"),
+            "search_type": (str, "search_type"),
+            "dense_weight": (float, "dense_weight"),
+            "provence_prune": (bool, "provence_prune"),
+            "provence_threshold": (float, "provence_threshold"),
+        }
+        for key, (caster, payload_key) in optional_params.items():
+            val = data.get(key)
+            if val is not None:
+                try:
+                    payload[payload_key] = caster(val)  # type: ignore[arg-type]
+                except Exception:
+                    payload[payload_key] = val
+
         try:
-            # The advanced RAG server runs on port 8001
-            rag_api_url = "http://localhost:8001/chat"
-
-            # Determine vector table: prefer last linked index if exists
-            table_name = None
-            if idx_ids:
-                table_name = f"text_pages_{idx_ids[-1]}"
-
-            payload: Dict[str, Any] = {"query": message, "session_id": session_id}
-            if table_name:
-                payload["table_name"] = table_name
-
-            # Extract RAG configuration parameters from the incoming data
-            compose_flag = data.get("compose_sub_answers")
-            decomp_flag = data.get("query_decompose")
-            ai_rerank_flag = data.get("ai_rerank")
-            ctx_expand_flag = data.get("context_expand")
-            verify_flag = data.get("verify")
-
-            # ✨ NEW RETRIEVAL PARAMETERS (all optional)
-            retrieval_k = data.get("retrieval_k")
-            context_window_size = data.get("context_window_size")
-            reranker_top_k = data.get("reranker_top_k")
-            search_type = data.get("search_type")
-            dense_weight = data.get("dense_weight")
-            provence_prune = data.get("provence_prune")
-            provence_threshold = data.get("provence_threshold")
-
-            # Add feature flags to payload if provided
-            if compose_flag is not None:
-                payload["compose_sub_answers"] = bool(compose_flag)
-            if decomp_flag is not None:
-                payload["query_decompose"] = bool(decomp_flag)
-            if ai_rerank_flag is not None:
-                payload["ai_rerank"] = bool(ai_rerank_flag)
-            if ctx_expand_flag is not None:
-                payload["context_expand"] = bool(ctx_expand_flag)
-            if verify_flag is not None:
-                payload["verify"] = bool(verify_flag)
-
-            # Add retrieval parameters if provided
-            if retrieval_k is not None:
-                payload["retrieval_k"] = int(retrieval_k)
-            if context_window_size is not None:
-                payload["context_window_size"] = int(context_window_size)
-            if reranker_top_k is not None:
-                payload["reranker_top_k"] = int(reranker_top_k)
-            if search_type is not None:
-                payload["search_type"] = str(search_type)
-            if dense_weight is not None:
-                payload["dense_weight"] = float(dense_weight)
-
-            # 🌿 Provence pruning
-            if provence_prune is not None:
-                payload["provence_prune"] = bool(provence_prune)
-            if provence_threshold is not None:
-                payload["provence_threshold"] = float(provence_threshold)
-
             rag_response = requests.post(rag_api_url, json=payload)
-
             if rag_response.status_code == 200:
                 rag_data = rag_response.json()
-                response_text = rag_data.get("answer", "No answer found in RAG response.")
+                response_text = rag_data.get("answer", "No answer found.")
                 source_docs = rag_data.get("source_documents", [])
             else:
-                error_info = rag_response.text
-                response_text = f"Error from RAG API: {error_info}"
-                print(f"❌ RAG API error ({rag_response.status_code}): {error_info}")
-
-            # 🧹 Clean up any thinking markers that might sneak through
-            response_text = re.sub(r'<think>.*?</think>', '', response_text, flags=re.DOTALL | re.IGNORECASE)
-            response_text = re.sub(r'<thinking>.*?</thinking>', '', response_text, flags=re.DOTALL | re.IGNORECASE)
-            response_text = response_text.strip()
-
-            if rag_response.status_code == 200:
-                print(f"✅ Received RAG response with {len(source_docs)} source docs.")
-
+                response_text = f"Error from RAG API ({rag_response.status_code}): {rag_response.text}"
+                print(f"❌ RAG API error: {response_text}")
         except requests.exceptions.ConnectionError:
             response_text = "Could not connect to the RAG API server. Please ensure it is running."
-            print("❌ Connection to RAG API failed. Is the server running on port 8001?")
+            print("❌ Connection to RAG API failed (port 8001).")
         except Exception as e:
             response_text = f"Error processing RAG query: {str(e)}"
             print(f"❌ RAG processing error: {e}")
+
+        # Strip any <think>/<thinking> tags that might slip through
+        response_text = re.sub(r'<(think|thinking)>.*?</\\1>', '', response_text, flags=re.DOTALL | re.IGNORECASE).strip()
 
         return response_text, source_docs
 
@@ -924,8 +892,8 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
         except Exception as e:
             self.send_json_response({'error': str(e)}, status_code=500)
 
-    def send_json_response(self, data, status_code=200):
-        """Send a JSON response with proper error handling"""
+    def send_json_response(self, data, status_code: int = 200):
+        """Send a JSON (UTF-8) response with CORS headers. Safe against client disconnects."""
         try:
             self.send_response(status_code)
             self.send_header('Content-Type', 'application/json')
@@ -933,12 +901,12 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
             self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
             self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
             self.end_headers()
-            
-            response = json.dumps(data, indent=2)
-            self.wfile.write(response.encode('utf-8'))
+        
+            response_bytes = json.dumps(data, indent=2).encode('utf-8')
+            self.wfile.write(response_bytes)
         except BrokenPipeError:
-            # Client disconnected - log but don't crash
-            print("⚠️  Client disconnected during response (this is normal for long RAG queries)")
+            # Client disconnected before we could finish sending
+            print("⚠️  Client disconnected during response – ignoring.")
         except Exception as e:
             print(f"❌ Error sending response: {e}")
     
