@@ -19,7 +19,9 @@ class OverviewBuilder:
     )
 
     def __init__(self, llm_client, model: str = "qwen3:0.6b", first_n_chunks: int = 5,
-                 out_path: str = "index_store/overviews/overviews.jsonl"):
+                 out_path: str | None = None):
+        if out_path is None:
+            out_path = "index_store/overviews/overviews.jsonl"
         self.llm_client = llm_client
         self.model = model
         self.first_n = first_n_chunks

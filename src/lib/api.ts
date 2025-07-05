@@ -471,6 +471,7 @@ class ChatAPI {
     enableEnrich?: boolean;
     embeddingModel?: string;
     enrichModel?: string;
+    overviewModel?: string;
     batchSizeEmbed?: number;
     batchSizeEnrich?: number;
   } = {}): Promise<{ message: string }> {
@@ -490,6 +491,7 @@ class ChatAPI {
           enableEnrich: opts.enableEnrich ?? true,
           embeddingModel: opts.embeddingModel,
           enrichModel: opts.enrichModel,
+          overviewModel: opts.overviewModel,
           batchSizeEmbed: opts.batchSizeEmbed ?? 50,
           batchSizeEnrich: opts.batchSizeEnrich ?? 25,
         }),

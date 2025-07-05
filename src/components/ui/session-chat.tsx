@@ -58,9 +58,8 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
   const [contextWindowSize, setContextWindowSize] = useState<number>(1)
   const [rerankerTopK, setRerankerTopK] = useState<number>(10)
   const [searchType, setSearchType] = useState<string>('hybrid')
-  const [denseWeight, setDenseWeight] = useState<number>(0.7)
   const [generationModels,setGenerationModels]=useState<string[]>([])
-  const [selectedModel,setSelectedModel]=useState<string>('')
+  const [selectedModel,setSelectedModel]=useState<string>('qwen3:8b')
   const [currentIndexId, setCurrentIndexId] = useState<string | null>(null)
   const [currentIndexName, setCurrentIndexName] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
@@ -121,7 +120,8 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
         const resp=await apiService.getModels();
         setGenerationModels(resp.generation_models||[])
         if(resp.generation_models&&resp.generation_models.length>0){
-          setSelectedModel(resp.generation_models[0])
+          const def = resp.generation_models.find((m:string)=>m==='qwen3:8b');
+          setSelectedModel(def || resp.generation_models[0])
         }
       }catch(e){console.warn('Failed to load models',e)}
     })()
@@ -249,7 +249,6 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             contextWindowSize,
             rerankerTopK,
             searchType,
-            denseWeight,
             forceRag: forceDocs,
             provencePrune,
           },
@@ -462,7 +461,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
           contextWindowSize,
           rerankerTopK,
           searchType,
-          denseWeight,
+          forceRag: forceDocs,
           provencePrune,
         })
       
@@ -641,12 +640,11 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             // Retrieval Settings
             {type: 'dropdown', label:'LLM model', value: selectedModel, setter: setSelectedModel, options: generationModels.map(m=>({value:m,label:m}))},
             {type: 'dropdown', label:'Search type', value: searchType, setter: setSearchType, options: [
-              {value: 'hybrid', label: 'Hybrid (Vector + BM25)'},
+              {value: 'hybrid', label: 'Hybrid (Vector + FTS)'},
               {value: 'vector_only', label: 'Vector Only'},
-              {value: 'bm25_only', label: 'BM25 Only'}
+              {value: 'bm25_only', label: 'FTS Only'}
             ]},
             {type: 'slider', label:'Retrieval chunks', value: retrievalK, setter: setRetrievalK, min: 5, max: 50, unit: ' chunks'},
-            {type: 'slider', label:'Dense search weight', value: denseWeight, setter: setDenseWeight, min: 0.1, max: 0.9, step: 0.1},
             
             // Reranking & Context
             {type: 'toggle', label:'AI reranker', checked: enableAiRerank, setter: setEnableAiRerank},

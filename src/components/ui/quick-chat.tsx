@@ -48,7 +48,8 @@ export function QuickChat({ sessionId: externalSessionId, onSessionChange, class
         const resp = await api.getModels();
         setGenerationModels(resp.generation_models||[]);
         if(resp.generation_models && resp.generation_models.length>0){
-          setSelectedModel(resp.generation_models[0]);
+          const def = resp.generation_models.find((m:string)=>m==='qwen3:8b');
+          setSelectedModel(def || resp.generation_models[0]);
         }
       }catch(e){console.warn('Failed to load models',e);}
     })();
@@ -86,13 +87,13 @@ export function QuickChat({ sessionId: externalSessionId, onSessionChange, class
       const history = api.messagesToHistory(messages);
       const resp = await api.sendMessage({ message: content, conversation_history: history, model: selectedModel });
 
-      const assistantMsg: ChatMessage = {
-        id: crypto.randomUUID(),
+    const assistantMsg: ChatMessage = {
+      id: crypto.randomUUID(),
         content: resp.response,
-        sender: 'assistant',
-        timestamp: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
+      sender: 'assistant',
+      timestamp: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, assistantMsg]);
     } catch (err) {
       console.error('Quick chat failed', err);
     } finally {

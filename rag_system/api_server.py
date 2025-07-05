@@ -448,8 +448,9 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             retrieval_mode = data.get("retrieval_mode", "hybrid")
             window_size = int(data.get("window_size", 2))
             enable_enrich = bool(data.get("enable_enrich", True))
-            embedding_model = data.get("embedding_model")
-            enrich_model = data.get("enrich_model")
+            embedding_model = data.get('embeddingModel')
+            enrich_model = data.get('enrichModel')
+            overview_model = data.get('overviewModel') or data.get('overview_model_name')
             batch_size_embed = int(data.get("batch_size_embed", 50))
             batch_size_enrich = int(data.get("batch_size_enrich", 25))
             
@@ -506,6 +507,10 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 if enrich_model:
                     config_override["enrich_model"] = enrich_model
                 
+                # 🔧 Overview model (can differ from enrichment)
+                if overview_model:
+                    config_override["overview_model_name"] = overview_model
+                
                 print(f"🔧 INDEXING CONFIG: Contextual Enrichment: {enable_enrich}, Window Size: {window_size}")
                 print(f"🔧 CHUNKING CONFIG: Size: {chunk_size}, Overlap: {chunk_overlap}")
                 print(f"🔧 MODEL CONFIG: Embedding: {embedding_model or 'default'}, Enrichment: {enrich_model or 'default'}")
@@ -559,6 +564,10 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 # 🔧 Configure enrichment model if specified
                 if enrich_model:
                     config_override["enrich_model"] = enrich_model
+                
+                # 🔧 Overview model (can differ from enrichment)
+                if overview_model:
+                    config_override["overview_model_name"] = overview_model
                 
                 print(f"🔧 INDEXING CONFIG: Contextual Enrichment: {enable_enrich}, Window Size: {window_size}")
                 print(f"🔧 CHUNKING CONFIG: Size: {chunk_size}, Overlap: {chunk_overlap}")

@@ -303,8 +303,8 @@ export function ConversationPage({
                 <div className={`flex gap-3 ${isUser ? 'justify-end' : 'justify-start'}`}>
                   {!isUser && (
                     <ChatBubbleAvatar 
-                      fallback="L" 
-                      className="mt-1 flex-shrink-0"
+                      fallback="AI" 
+                      className="mt-1 flex-shrink-0 text-black"
                     />
                   )}
                   
@@ -364,9 +364,9 @@ export function ConversationPage({
 
                   {isUser && (
                     <ChatBubbleAvatar 
-                      src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=64&h=64&q=80&crop=faces&fit=crop"
-                      fallback="U" 
-                      className="mt-1 flex-shrink-0"
+                      className="mt-1 flex-shrink-0 text-black"
+                      src="https://i.pravatar.cc/40?u=user"
+                      fallback="User"
                     />
                   )}
                 </div>
@@ -378,7 +378,7 @@ export function ConversationPage({
           {isLoading && (
             <div className="w-full group">
               <div className="flex gap-3 justify-start">
-                <ChatBubbleAvatar fallback="L" className="mt-1 flex-shrink-0" />
+                <ChatBubbleAvatar fallback="AI" className="mt-1 flex-shrink-0 text-black" />
                 <div className="flex flex-col space-y-2 items-start max-w-[80%]">
                   <div className="rounded-2xl px-4 py-3 bg-gray-800 text-gray-100">
                     <div className="flex items-center space-x-2">

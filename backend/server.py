@@ -840,6 +840,7 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
             enrich_model = None
             batch_size_embed = 50
             batch_size_enrich = 25
+            overview_model = None
             
             if 'Content-Length' in self.headers and int(self.headers['Content-Length']) > 0:
                 try:
@@ -857,6 +858,7 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
                     enrich_model = opts.get('enrichModel')
                     batch_size_embed = int(opts.get('batchSizeEmbed', 50))
                     batch_size_enrich = int(opts.get('batchSizeEnrich', 25))
+                    overview_model = opts.get('overviewModel')
                 except Exception:
                     # Keep defaults on parse error
                     pass
@@ -892,6 +894,8 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
                 payload["embedding_model"] = embedding_model
             if enrich_model:
                 payload["enrich_model"] = enrich_model
+            if overview_model:
+                payload["overview_model_name"] = overview_model
                 
             rag_resp = requests.post(rag_api_url, json=payload)
             if rag_resp.status_code==200:
@@ -908,6 +912,8 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
                     meta_updates["embedding_model"] = embedding_model
                 if enrich_model:
                     meta_updates["enrich_model"] = enrich_model
+                if overview_model:
+                    meta_updates["overview_model"] = overview_model
                 try:
                     db.update_index_metadata(index_id, meta_updates)
                 except Exception as e:
@@ -918,7 +924,20 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
                     **meta_updates
                 })
             else:
-                self.send_json_response({"error":f"RAG indexing failed: {rag_resp.text}"}, status_code=500)
+                # Gracefully handle scenario where table already exists (idempotent build)
+                try:
+                    err_json = rag_resp.json()
+                except Exception:
+                    err_json = {}
+                err_text = err_json.get('error') if isinstance(err_json, dict) else rag_resp.text
+                if err_text and 'already exists' in err_text:
+                    # Treat as non-fatal; return message indicating index previously built
+                    self.send_json_response({
+                        "message": "Index already built – skipping rebuild.",
+                        "note": err_text
+                })
+                else:
+                    self.send_json_response({"error":f"RAG indexing failed: {rag_resp.text}"}, status_code=500)
         except Exception as e:
             self.send_json_response({'error':str(e)}, status_code=500)
     
@@ -990,6 +1009,7 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
             self.send_header('Access-Control-Allow-Origin', '*')
             self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
             self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+            self.send_header('Access-Control-Allow-Credentials', 'true')
             self.end_headers()
         
             response_bytes = json.dumps(data, indent=2).encode('utf-8')

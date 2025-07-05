@@ -306,6 +306,36 @@ ORIGINAL QUESTION: "{query}"
         retrieval_time = time.time() - start_time
         logger.debug("Retrieved %s chunks in %.2fs", len(retrieved_docs), retrieval_time)
 
+        # -----------------------------------------------------------
+        #  LATE-CHUNK MERGING (merge ±1 sub-vector into central hit)
+        # -----------------------------------------------------------
+        if self.retriever_configs.get("latechunk", {}).get("enabled") and retrieved_docs:
+            merged_count = 0
+            for doc in retrieved_docs:
+                try:
+                    cid = doc.get("chunk_id")
+                    meta = doc.get("metadata", {})
+                    if meta.get("latechunk_merged"):
+                        continue  # already processed
+                    doc_id = doc.get("document_id")
+                    cidx = doc.get("chunk_index")
+                    if doc_id is None or cidx is None or cidx == -1:
+                        continue
+                    # Fetch neighbouring late-chunks inside same document (±1)
+                    siblings = self._get_surrounding_chunks_lancedb(doc, window_size=1)
+                    # Keep only same document_id and ordered by chunk_index
+                    siblings = [s for s in siblings if s.get("document_id") == doc_id]
+                    siblings.sort(key=lambda s: s.get("chunk_index", 0))
+                    merged_text = " \n".join(s.get("text", "") for s in siblings)
+                    if merged_text:
+                        doc["text"] = merged_text
+                        meta["latechunk_merged"] = True
+                        merged_count += 1
+                except Exception as e:
+                    print(f"⚠️  Late-chunk merge failed for chunk {doc.get('chunk_id')}: {e}")
+            if merged_count:
+                print(f"🪄 Late-chunk merging applied to {merged_count} retrieved chunks.")
+
         # --- AI Reranking Step ---
         ai_reranker = self._get_ai_reranker()
         if ai_reranker and retrieved_docs:

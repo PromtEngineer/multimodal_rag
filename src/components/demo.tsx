@@ -63,8 +63,8 @@ export function Demo() {
         }
 
         // Always refresh the sidebar so that updated titles / message counts are displayed
-        if (sidebarRef) {
-            await sidebarRef.refreshSessions()
+            if (sidebarRef) {
+                await sidebarRef.refreshSessions()
         }
     }
 

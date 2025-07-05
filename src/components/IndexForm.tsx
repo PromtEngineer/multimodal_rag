@@ -5,6 +5,7 @@ import { GlassToggle } from '@/components/ui/GlassToggle';
 import { AccordionGroup } from '@/components/ui/AccordionGroup';
 import { ModelSelect } from '@/components/ModelSelect';
 import { chatAPI, ChatSession } from '@/lib/api';
+import { InfoTooltip } from '@/components/ui/InfoTooltip';
 
 interface Props {
   onClose: () => void;
@@ -16,13 +17,15 @@ export function IndexForm({ onClose, onIndexed }: Props) {
   const [indexName, setIndexName] = useState('');
   const [chunkSize, setChunkSize] = useState(512);
   const [chunkOverlap, setChunkOverlap] = useState(64);
-  const [windowSize, setWindowSize] = useState(2);
+  const [windowSize, setWindowSize] = useState(5);
   const [enableEnrich, setEnableEnrich] = useState(true);
-  const [retrievalMode, setRetrievalMode] = useState<'hybrid' | 'vector' | 'bm25'>('hybrid');
+  const [retrievalMode, setRetrievalMode] = useState<'hybrid' | 'vector' | 'fts'>('hybrid');
   const [embeddingModel, setEmbeddingModel] = useState<string>();
-  const [enrichModel, setEnrichModel] = useState<string>();
-  const [batchSizeEmbed, setBatchSizeEmbed] = useState(50);
-  const [batchSizeEnrich, setBatchSizeEnrich] = useState(25);
+  const DEFAULT_LLM = 'qwen3:0.6b';
+  const [enrichModel, setEnrichModel] = useState<string>(DEFAULT_LLM);
+  const [overviewModel, setOverviewModel] = useState<string>(DEFAULT_LLM);
+  const [batchSizeEmbed, setBatchSizeEmbed] = useState(64);
+  const [batchSizeEnrich, setBatchSizeEnrich] = useState(64);
   const [loading, setLoading] = useState(false);
   const [enableLateChunk, setEnableLateChunk] = useState(false);
   const [enableDoclingChunk, setEnableDoclingChunk] = useState(false);
@@ -43,11 +46,12 @@ export function IndexForm({ onClose, onIndexed }: Props) {
         doclingChunk: enableDoclingChunk,
         chunkSize: chunkSize,
         chunkOverlap: chunkOverlap,
-        retrievalMode: retrievalMode,
+        retrievalMode: retrievalMode==='fts' ? 'bm25' : retrievalMode,
         windowSize: windowSize,
         enableEnrich: enableEnrich,
         embeddingModel: embeddingModel,
         enrichModel: enrichModel,
+        overviewModel: overviewModel,
         batchSizeEmbed: batchSizeEmbed,
         batchSizeEnrich: batchSizeEnrich
       });
@@ -102,67 +106,89 @@ export function IndexForm({ onClose, onIndexed }: Props) {
 
         {/* Retrieval mode & Late-chunk toggle */}
         <div>
-          <label className="block text-xs uppercase tracking-wide text-gray-300 mb-1">Retrieval mode</label>
+          <label className="flex items-center gap-1 text-xs uppercase tracking-wide text-gray-300 mb-1">Retrieval mode <InfoTooltip text="Choose how chunks are found. Hybrid combines full-text search with vectors; FTS uses textual matching only; Vector relies purely on dense similarity." /></label>
           <div className="flex gap-3">
-            {(['hybrid','vector','bm25'] as const).map((m)=>(
-              <button key={m} onClick={()=>setRetrievalMode(m)} className={`px-3 py-1 rounded text-xs font-sans ${retrievalMode===m?'bg-white/20':'bg-white/10 hover:bg-white/20'}`}>{m}</button>
+            {(['hybrid','vector','fts'] as const).map((m)=>(
+              <button key={m} onClick={()=>setRetrievalMode(m)} className={`px-3 py-1 rounded text-xs font-sans ${retrievalMode===m?'bg-white/20':'bg-white/10 hover:bg-white/20'}`}>{m==='fts' ? 'FTS' : m}</button>
             ))}
           </div>
-          <div className="flex items-center gap-2 mt-3">
-            <span className="text-xs text-gray-400">Late-chunk vectors</span>
-            <GlassToggle checked={enableLateChunk} onChange={setEnableLateChunk} />
+          <div className="grid grid-cols-2 gap-4 mt-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">Late-chunk vectors <InfoTooltip text="Split chunks into sub-vectors to improve recall, then merge them back after retrieval." size={12} /></span>
+              <GlassToggle checked={enableLateChunk} onChange={setEnableLateChunk} />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">High-recall chunking <InfoTooltip text="Sentence-level packing (Docling) for maximum recall at indexing time." size={12} /></span>
+              <GlassToggle checked={enableDoclingChunk} onChange={setEnableDoclingChunk} />
+            </div>
           </div>
-        </div>
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            <div>
+              <label className="flex items-center gap-1 text-xs mb-1 text-gray-400">Chunk size <InfoTooltip text="Maximum token length for each chunk before overlap." size={12} /></label>
+              <GlassInput type="number" value={chunkSize} onChange={(e) => setChunkSize(parseInt(e.target.value))} />
+            </div>
+            <div>
+              <label className="flex items-center gap-1 text-xs mb-1 text-gray-400">Chunk overlap <InfoTooltip text="Tokens reused between adjacent chunks to preserve context." size={12} /></label>
+              <GlassInput
+                type="number"
+                value={chunkOverlap}
+                onChange={(e) => setChunkOverlap(parseInt(e.target.value))}
+              />
+            </div>
+          </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs mb-1 text-gray-400">Chunk size</label>
-            <GlassInput type="number" value={chunkSize} onChange={(e) => setChunkSize(parseInt(e.target.value))} />
-          </div>
-          <div>
-            <label className="block text-xs mb-1 text-gray-400">Chunk overlap</label>
-            <GlassInput
-              type="number"
-              value={chunkOverlap}
-              onChange={(e) => setChunkOverlap(parseInt(e.target.value))}
-            />
+          {/* Embedding & Overview models */}
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            <div>
+              <label className="flex items-center gap-1 text-xs mb-1 text-gray-400">Embedding model <InfoTooltip text="Model used to generate dense vectors stored in the index." size={12} /></label>
+              <ModelSelect 
+                value={embeddingModel} 
+                onChange={setEmbeddingModel}
+                type="embedding"
+                placeholder="Select embedding model"
+              />
+            </div>
+            <div>
+              <label className="flex items-center gap-1 text-xs mb-1 text-gray-400">Overview LLM <InfoTooltip text="LLM that writes the short overview paragraph per document." size={12} /></label>
+              <ModelSelect 
+                value={overviewModel}
+                onChange={setOverviewModel}
+                type="generation"
+                placeholder="Select overview LLM"
+              />
+            </div>
           </div>
         </div>
 
         {/* Contextual retrieval section */}
-        <AccordionGroup title="Contextual Retrieval">
+        <AccordionGroup title={<><span>Contextual Retrieval</span> <InfoTooltip text="Adds neighbour chunks into each original chunk then enriches with LLM – improves semantic continuity but increases indexing latency." /></>}>
           <div className="flex items-center gap-3">
             <span className="text-xs text-gray-400">Enable</span>
             <GlassToggle checked={enableEnrich} onChange={setEnableEnrich} />
           </div>
           <div className="grid grid-cols-2 gap-4 mt-3">
             <div>
-              <label className="block text-xs mb-1 text-gray-400">Context window</label>
+              <label className="flex items-center gap-1 text-xs mb-1 text-gray-400">Context window <InfoTooltip text="Number of neighbour chunks included when enriching context." size={12} /></label>
               <GlassInput type="number" value={windowSize} onChange={(e)=>setWindowSize(parseInt(e.target.value))} />
             </div>
             <div>
-              <label className="block text-xs mb-1 text-gray-400">LLM</label>
-              <GlassInput value="qwen3:0.6b" disabled />
+              <label className="block text-xs mb-1 text-gray-400">Retrieval LLM</label>
+              <ModelSelect 
+                value={enrichModel}
+                onChange={setEnrichModel}
+                type="generation"
+                placeholder="Select retrieval LLM"
+              />
             </div>
           </div>
         </AccordionGroup>
-
-        <div>
-          <label className="block text-xs mb-1 text-gray-400">Embedding model</label>
-          <ModelSelect 
-            value={embeddingModel} 
-            onChange={setEmbeddingModel}
-            type="embedding"
-            placeholder="Select embedding model"
-          />
-        </div>
       </div>
 
       {/* Advanced */}
-      <AccordionGroup title="Advanced parameters">
+      <AccordionGroup title={<><span>Batch Size</span> <InfoTooltip text="Control the number of chunks processed per batch. Larger values speed up indexing but require more memory." /></>}>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs mb-1 text-gray-400">Embedding batch size</label>
+            <label className="flex items-center gap-1 text-xs mb-1 text-gray-400">Embedding batch size <InfoTooltip text="Chunks processed per batch when producing embeddings." size={12} /></label>
             <GlassInput
               type="number"
               value={batchSizeEmbed}
@@ -170,19 +196,13 @@ export function IndexForm({ onClose, onIndexed }: Props) {
             />
           </div>
           <div>
-            <label className="block text-xs mb-1 text-gray-400">Enrichment batch size</label>
+            <label className="flex items-center gap-1 text-xs mb-1 text-gray-400">Context retrieval batch size <InfoTooltip text="Chunks sent per request during contextual enrichment." size={12} /></label>
             <GlassInput
               type="number"
               value={batchSizeEnrich}
               onChange={(e) => setBatchSizeEnrich(parseInt(e.target.value))}
             />
           </div>
-        </div>
-        {/* TODO: fusion weights, decomposition toggles, reranker, etc. */}
-        {/* Chunker mode */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400">High-recall chunking (Docling)</span>
-          <GlassToggle checked={enableDoclingChunk} onChange={setEnableDoclingChunk} />
         </div>
       </AccordionGroup>
 
