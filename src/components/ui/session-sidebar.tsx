@@ -104,6 +104,7 @@ export function SessionSidebar({
       if (currentSessionId === sessionId && onSessionSelect) {
         onSessionSelect(sessionId);
       }
+      setMenuOpenId(null);
     } catch (error) {
       console.error('Failed to rename session:', error);
       setError('Failed to rename session');
