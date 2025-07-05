@@ -47,11 +47,11 @@ export function Demo() {
     }
 
     const handleNewSession = () => {
-        // Don't create session immediately - just show empty state
+        // Reset state and return to landing page so user can choose chat type
         setCurrentSessionId(undefined)
         setCurrentSession(null)
-        setShowConversation(true)
-        setHomeMode('CHAT_EXISTING') // Ensure we're in the right mode to show SessionChat
+        setShowConversation(false)  // Hide conversation view & sidebar
+        setHomeMode('HOME')         // Show landing selector (Create index / Chat with index / LLM Chat)
     }
 
     const handleSessionChange = async (session: ChatSession) => {
