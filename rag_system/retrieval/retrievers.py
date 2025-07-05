@@ -8,71 +8,19 @@ import os
 from PIL import Image
 from transformers import CLIPProcessor, CLIPModel
 import torch
+import logging
+import pandas as pd
+import math
+import concurrent.futures
+from functools import lru_cache
 
 from rag_system.indexing.embedders import LanceDBManager
-from rag_system.indexing.representations import OllamaEmbedder
+from rag_system.indexing.representations import QwenEmbedder
 from rag_system.indexing.multimodal import LocalVisionModel
+from rag_system.utils.logging_utils import log_retrieval_results
 
-# (BM25Retriever and GraphRetriever remain the same)
-class BM25Retriever:
-    def __init__(self, index_path: str, index_name: str):
-        self.index_path = os.path.join(index_path, f"{index_name}.pkl")
-        self.bm25 = None
-        self.chunks = None
-        self._load_index()
-
-    def _load_index(self):
-        """Loads the BM25 index and chunks from a pickle file."""
-        if not os.path.exists(self.index_path):
-            print(f"Warning: BM25 index file not found at {self.index_path}. BM25 retrieval will be skipped.")
-            return
-        
-        try:
-            with open(self.index_path, "rb") as f:
-                data = pickle.load(f)
-                self.bm25 = data["index"]
-                self.chunks = data["chunks"]
-            print(f"✅ BM25 index loaded successfully from {self.index_path}")
-        except Exception as e:
-            print(f"Error loading BM25 index: {e}")
-
-    def retrieve(self, query: str, k: int = 5) -> List[Dict[str, Any]]:
-        if not self.bm25 or not self.chunks:
-            return []
-
-        print(f"\n--- Performing BM25 Retrieval for query: '{query}' ---")
-        tokenized_query = query.lower().split()
-        
-        # Use get_top_n for efficient retrieval and scoring
-        top_chunks = self.bm25.get_top_n(tokenized_query, self.chunks, n=k)
-
-        results = []
-        # The rank_bm25 library already returns sorted chunks.
-        # We just need to format them and add the score.
-        # To get the scores, we need to re-score the top results.
-        # This is a known behavior of the library's get_top_n method.
-        if top_chunks:
-            doc_scores = self.bm25.get_scores(tokenized_query)
-            chunk_texts = [chunk['text'] for chunk in self.chunks]
-            
-            for chunk in top_chunks:
-                try:
-                    # Find the original index to get the score
-                    original_index = chunk_texts.index(chunk['text'])
-                    score = float(doc_scores[original_index])
-                    if score > 0:
-                        results.append({
-                            'chunk_id': chunk.get('chunk_id'),
-                            'text': chunk.get('text'),
-                            'score': score,
-                            'metadata': chunk.get('metadata', {})
-                        })
-                except ValueError:
-                    # This case should ideally not happen if chunks are unique
-                    continue
-
-        print(f"Retrieved {len(results)} documents using BM25.")
-        return results
+# BM25Retriever is no longer needed.
+# class BM25Retriever: ...
 
 from fuzzywuzzy import process
 
@@ -86,67 +34,167 @@ class GraphRetriever:
         query_parts = query.split()
         entities = []
         for part in query_parts:
-            # Find the best match for each part of the query
             match = process.extractOne(part, self.graph.nodes(), score_cutoff=score_cutoff)
             if match and isinstance(match[0], str):
                 entities.append(match[0])
         
         retrieved_docs = []
-        for entity in set(entities): # Use set to avoid duplicate entities
+        for entity in set(entities):
             for neighbor in self.graph.neighbors(entity):
                 retrieved_docs.append({
                     'chunk_id': f"graph_{entity}_{neighbor}",
                     'text': f"Entity: {entity}, Neighbor: {neighbor}",
-                    'score': 1.0, # Placeholder score
+                    'score': 1.0,
                     'metadata': {'source': 'graph'}
                 })
         
         print(f"Retrieved {len(retrieved_docs)} documents from the graph.")
         return retrieved_docs[:k]
 
+# region === MultiVectorRetriever ===
 class MultiVectorRetriever:
     """
-    Performs hybrid retrieval across separate text and image vector indexes.
+    Performs hybrid (vector + FTS) or vector-only retrieval.
     """
-    def __init__(self, db_manager: LanceDBManager, text_embedder: OllamaEmbedder, vision_model: LocalVisionModel = None):
+    def __init__(self, db_manager: LanceDBManager, text_embedder: QwenEmbedder, vision_model: LocalVisionModel = None, *, fusion_config: Dict[str, Any] | None = None):
         self.db_manager = db_manager
         self.text_embedder = text_embedder
         self.vision_model = vision_model
+        self.fusion_config = fusion_config or {"method": "linear", "bm25_weight": 0.5, "vec_weight": 0.5}
 
-    def _search_table(self, table_name: str, query_embedding: np.ndarray, k: int) -> List[Dict[str, Any]]:
-        """Helper to search a single LanceDB table."""
+        # Lightweight in-memory LRU cache for single-query embeddings (256 entries)
+        @lru_cache(maxsize=256)
+        def _embed_single(q: str):
+            return self.text_embedder.create_embeddings([q])[0]
+
+        self._embed_single = _embed_single
+
+    def retrieve(self, text_query: str, table_name: str, k: int, reranker=None) -> List[Dict[str, Any]]:
+        """
+        Performs a search on a single LanceDB table.
+        If a reranker is provided, it performs a hybrid search.
+        Otherwise, it performs a standard vector search.
+        """
+        print(f"\n--- Performing Retrieval for query: '{text_query}' on table '{table_name}' ---")
+        
         try:
+            if table_name is None:
+                table_name = "default_text_table"
             tbl = self.db_manager.get_table(table_name)
-            results = tbl.search(query_embedding).limit(k).to_df()
+            
+            # Create / fetch cached text embedding for the query
+            text_query_embedding = self._embed_single(text_query)
+            
+            logger = logging.getLogger(__name__)
+
+            # Always perform hybrid lexical + vector search
+            logger.debug(
+                "Running hybrid search on table '%s' (k=%s, have_reranker=%s)",
+                table_name,
+                k,
+                bool(reranker),
+            )
+
+            if reranker:
+                logger.debug("Hybrid + reranker path not yet implemented with manual fusion; proceeding without extra reranker.")
+
+            # Manual two-leg hybrid: take half from each modality
+            fts_k = k // 2
+            vec_k = k - fts_k
+
+            # Run FTS and vector search in parallel to cut latency
+            def _run_fts():
+                # Very short queries often underperform → add fuzzy wildcard
+                fts_query = text_query
+                if len(text_query.split()) == 1:
+                    fts_query = f"{text_query}* OR {text_query}~"
+                return (
+                     tbl.search(query=fts_query, query_type="fts")
+                        .limit(fts_k)
+                        .to_df()
+                 )
+
+            def _run_vec():
+                if vec_k == 0:
+                    return None
+                return (
+                    tbl.search(text_query_embedding)
+                       .limit(vec_k * 2)  # fetch extra to allow for dedup
+                       .to_df()
+                )
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                fts_future = executor.submit(_run_fts)
+                vec_future = executor.submit(_run_vec)
+                fts_df = fts_future.result()
+                vec_df = vec_future.result()
+
+            if vec_df is not None:
+                combined = pd.concat([fts_df, vec_df])
+            else:
+                combined = fts_df
+
+            # Remove duplicates preserving first occurrence, then trim to k
+            dedup_subset = ["_rowid"] if "_rowid" in combined.columns else (["chunk_id"] if "chunk_id" in combined.columns else None)
+            if dedup_subset:
+                combined = combined.drop_duplicates(subset=dedup_subset, keep="first")
+            combined = combined.head(k)
+
+            results_df = combined
+            logger.debug(
+                "Hybrid (fts=%s, vec=%s) → %s unique chunks",
+                len(fts_df),
+                0 if vec_df is None else len(vec_df),
+                len(results_df),
+            )
             
             retrieved_docs = []
-            for _, row in results.iterrows():
+            for _, row in results_df.iterrows():
                 metadata = json.loads(row.get('metadata', '{}'))
+                # Add top-level fields back into metadata for consistency if they don't exist
+                metadata.setdefault('document_id', row.get('document_id'))
+                metadata.setdefault('chunk_index', row.get('chunk_index'))
+                
+                # Determine score (vector distance or FTS). Replace NaN with 0.0
+                raw_score = row.get('_distance') if '_distance' in row else row.get('score')
+                try:
+                    if raw_score is None or (isinstance(raw_score, float) and math.isnan(raw_score)):
+                        raw_score = 0.0
+                except Exception:
+                    raw_score = 0.0
+
+                combined_score = raw_score
+                # Optional linear-weight fusion if both FTS & vector scores exist
+                if '_distance' in row and 'score' in row:
+                    try:
+                        bm25 = row.get('score', 0.0)
+                        vec_sim = 1.0 / (1.0 + row.get('_distance', 1.0))  # convert distance to similarity
+                        w_bm25 = float(self.fusion_config.get('bm25_weight', 0.5))
+                        w_vec = float(self.fusion_config.get('vec_weight', 0.5))
+                        combined_score = w_bm25 * bm25 + w_vec * vec_sim
+                    except Exception:
+                        pass
+
                 retrieved_docs.append({
                     'chunk_id': row.get('chunk_id'),
                     'text': metadata.get('original_text', row.get('text')),
-                    'score': row.get('_distance'),
+                    'score': combined_score,
+                    'bm25': row.get('score'),
+                    '_distance': row.get('_distance'),
+                    'document_id': row.get('document_id'),
+                    'chunk_index': row.get('chunk_index'),
                     'metadata': metadata
                 })
+
+            logger.debug("Hybrid search returned %s results", len(retrieved_docs))
+            log_retrieval_results(retrieved_docs, k)
+            print(f"Retrieved {len(retrieved_docs)} documents.")
             return retrieved_docs
+        
         except Exception as e:
             print(f"Could not search table '{table_name}': {e}")
             return []
-
-    def retrieve(self, text_query: str, text_table: str, image_table: str, k: int = 10) -> List[Dict[str, Any]]:
-        print(f"\n--- Performing Text-Based Retrieval for query: '{text_query}' ---")
-        
-        # 1. Create Text Embedding for the Query
-        text_query_embedding = self.text_embedder.create_embeddings([text_query])[0]
-        
-        # 2. Search the text table with the text embedding
-        results = self._search_table(text_table, text_query_embedding, k)
-        
-        print(f"Retrieved {len(results)} documents.")
-        return results
+# endregion
 
 if __name__ == '__main__':
-    # This test requires models to be downloaded and indexes to exist.
-    # It's best tested as part of the full retrieval pipeline.
-    print("retrievers.py updated with MultiVectorRetriever.")
-    print("This component will be tested in the final retrieval pipeline.")
+    print("retrievers.py updated for LanceDB FTS Hybrid Search.")

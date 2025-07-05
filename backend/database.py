@@ -10,8 +10,9 @@ class ChatDatabase:
         self.init_database()
     
     def init_database(self):
-        """Initialize the database with required tables"""
+        """Initialize the SQLite database with required tables"""
         conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
         
         # Enable foreign keys
         conn.execute("PRAGMA foreign_keys = ON")
@@ -57,6 +58,40 @@ class ChatDatabase:
             )
         ''')
         conn.execute('CREATE INDEX IF NOT EXISTS idx_session_documents_session_id ON session_documents(session_id)')
+        
+        # --- NEW: Index persistence tables ---
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS indexes (
+                id TEXT PRIMARY KEY,
+                name TEXT UNIQUE,
+                description TEXT,
+                created_at TEXT,
+                updated_at TEXT,
+                vector_table_name TEXT,
+                metadata TEXT
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS index_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                index_id TEXT,
+                original_filename TEXT,
+                stored_path TEXT,
+                FOREIGN KEY(index_id) REFERENCES indexes(id)
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS session_indexes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT,
+                index_id TEXT,
+                linked_at TEXT,
+                FOREIGN KEY(session_id) REFERENCES sessions(id),
+                FOREIGN KEY(index_id) REFERENCES indexes(id)
+            )
+        ''')
         
         conn.commit()
         conn.close()
@@ -279,6 +314,108 @@ class ChatDatabase:
         paths = [row[0] for row in cursor.fetchall()]
         conn.close()
         return paths
+
+    # -------- Index helpers ---------
+
+    def create_index(self, name: str, description: str|None = None, metadata: dict | None = None) -> str:
+        idx_id = str(uuid.uuid4())
+        created = datetime.now().isoformat()
+        vector_table = f"text_pages_{idx_id}"
+        conn = sqlite3.connect(self.db_path)
+        conn.execute('''
+            INSERT INTO indexes (id, name, description, created_at, updated_at, vector_table_name, metadata)
+            VALUES (?,?,?,?,?,?,?)
+        ''', (idx_id, name, description, created, created, vector_table, json.dumps(metadata or {})))
+        conn.commit()
+        conn.close()
+        print(f"📂 Created new index '{name}' ({idx_id[:8]})")
+        return idx_id
+
+    def get_index(self, index_id: str) -> dict | None:
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cur = conn.execute('SELECT * FROM indexes WHERE id=?', (index_id,))
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            return None
+        idx = dict(row)
+        idx['metadata'] = json.loads(idx['metadata'] or '{}')
+        cur = conn.execute('SELECT original_filename, stored_path FROM index_documents WHERE index_id=?', (index_id,))
+        docs = [{'filename': r[0], 'stored_path': r[1]} for r in cur.fetchall()]
+        idx['documents'] = docs
+        conn.close()
+        return idx
+
+    def list_indexes(self) -> list[dict]:
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute('SELECT * FROM indexes').fetchall()
+        res = []
+        for r in rows:
+            item = dict(r)
+            item['metadata'] = json.loads(item['metadata'] or '{}')
+            # attach documents list for convenience
+            docs_cur = conn.execute('SELECT original_filename, stored_path FROM index_documents WHERE index_id=?', (item['id'],))
+            docs = [{'filename':d[0],'stored_path':d[1]} for d in docs_cur.fetchall()]
+            item['documents'] = docs
+            res.append(item)
+        conn.close()
+        return res
+
+    def add_document_to_index(self, index_id: str, filename: str, stored_path: str):
+        conn = sqlite3.connect(self.db_path)
+        conn.execute('INSERT INTO index_documents (index_id, original_filename, stored_path) VALUES (?,?,?)', (index_id, filename, stored_path))
+        conn.commit()
+        conn.close()
+
+    def link_index_to_session(self, session_id: str, index_id: str):
+        conn = sqlite3.connect(self.db_path)
+        conn.execute('INSERT INTO session_indexes (session_id, index_id, linked_at) VALUES (?,?,?)', (session_id, index_id, datetime.now().isoformat()))
+        conn.commit()
+        conn.close()
+
+    def get_indexes_for_session(self, session_id: str) -> list[str]:
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.execute('SELECT index_id FROM session_indexes WHERE session_id=? ORDER BY linked_at', (session_id,))
+        ids = [r[0] for r in cursor.fetchall()]
+        conn.close()
+        return ids
+
+    def delete_index(self, index_id: str) -> bool:
+        """Delete an index and its related records (documents, session links). Returns True if deleted."""
+        conn = sqlite3.connect(self.db_path)
+        try:
+            # Get vector table name before deletion (optional, for LanceDB cleanup)
+            cur = conn.execute('SELECT vector_table_name FROM indexes WHERE id = ?', (index_id,))
+            row = cur.fetchone()
+            vector_table_name = row[0] if row else None
+
+            # Remove child rows first due to foreign‐key constraints
+            conn.execute('DELETE FROM index_documents WHERE index_id = ?', (index_id,))
+            conn.execute('DELETE FROM session_indexes WHERE index_id = ?', (index_id,))
+            cursor = conn.execute('DELETE FROM indexes WHERE id = ?', (index_id,))
+            deleted = cursor.rowcount > 0
+            conn.commit()
+        finally:
+            conn.close()
+
+        if deleted:
+            print(f"🗑️ Deleted index {index_id[:8]}... and related records")
+            # Optional: attempt to drop LanceDB table if available
+            if vector_table_name:
+                try:
+                    from rag_system.indexing.embedders import LanceDBManager
+                    import os
+                    db_path = os.getenv('LANCEDB_PATH') or './rag_system/index_store/lancedb'
+                    ldb = LanceDBManager(db_path)
+                    db = ldb.db
+                    if hasattr(db, 'table_names') and vector_table_name in db.table_names():
+                        db.drop_table(vector_table_name)
+                        print(f"🚮 Dropped LanceDB table '{vector_table_name}'")
+                except Exception as e:
+                    print(f"⚠️ Could not drop LanceDB table '{vector_table_name}': {e}")
+        return deleted
 
 def generate_session_title(first_message: str, max_length: int = 50) -> str:
     """Generate a session title from the first message"""

@@ -49,3 +49,11 @@ __pycache__/
 /shared_uploads
 chat_history.db
 *.pkl
+
+# Backend generated files
+backend/shared_uploads/
+backend/chat_history.db
+
+# Vector DB artefacts
+lancedb/
+index_store/overviews/

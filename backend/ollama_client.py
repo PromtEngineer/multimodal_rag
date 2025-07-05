@@ -52,7 +52,7 @@ class OllamaClient:
             print(f"Error pulling model: {e}")
             return False
     
-    def chat(self, message: str, model: str = "llama3.2", conversation_history: List[Dict] = None) -> str:
+    def chat(self, message: str, model: str = "llama3.2", conversation_history: List[Dict] = None, enable_thinking: bool = True) -> str:
         """Send a chat message to Ollama"""
         if conversation_history is None:
             conversation_history = []
@@ -61,26 +61,52 @@ class OllamaClient:
         messages = conversation_history + [{"role": "user", "content": message}]
         
         try:
+            payload = {
+                "model": model,
+                "messages": messages,
+                "stream": False,
+            }
+            
+            # Multiple approaches to disable thinking tokens
+            if not enable_thinking:
+                payload.update({
+                    "think": False,  # Native Ollama parameter
+                    "options": {
+                        "think": False,
+                        "thinking": False,
+                        "temperature": 0.7,
+                        "top_p": 0.9
+                    }
+                })
+            else:
+                payload["think"] = True
+            
             response = requests.post(
                 f"{self.api_url}/chat",
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "stream": False
-                },
+                json=payload,
                 timeout=60
             )
             
             if response.status_code == 200:
                 result = response.json()
-                return result["message"]["content"]
+                response_text = result["message"]["content"]
+                
+                # Additional cleanup: remove any thinking tokens that might slip through
+                if not enable_thinking:
+                    # Remove common thinking token patterns
+                    import re
+                    response_text = re.sub(r'<think>.*?</think>', '', response_text, flags=re.DOTALL | re.IGNORECASE)
+                    response_text = re.sub(r'<thinking>.*?</thinking>', '', response_text, flags=re.DOTALL | re.IGNORECASE)
+                    response_text = response_text.strip()
+                
+                return response_text
             else:
                 return f"Error: {response.status_code} - {response.text}"
                 
         except requests.exceptions.RequestException as e:
             return f"Connection error: {e}"
     
-    def chat_stream(self, message: str, model: str = "llama3.2", conversation_history: List[Dict] = None):
+    def chat_stream(self, message: str, model: str = "llama3.2", conversation_history: List[Dict] = None, enable_thinking: bool = True):
         """Stream chat response from Ollama"""
         if conversation_history is None:
             conversation_history = []
@@ -88,13 +114,29 @@ class OllamaClient:
         messages = conversation_history + [{"role": "user", "content": message}]
         
         try:
+            payload = {
+                "model": model,
+                "messages": messages,
+                "stream": True,
+            }
+            
+            # Multiple approaches to disable thinking tokens
+            if not enable_thinking:
+                payload.update({
+                    "think": False,  # Native Ollama parameter
+                    "options": {
+                        "think": False,
+                        "thinking": False,
+                        "temperature": 0.7,
+                        "top_p": 0.9
+                    }
+                })
+            else:
+                payload["think"] = True
+            
             response = requests.post(
                 f"{self.api_url}/chat",
-                json={
-                    "model": model,
-                    "messages": messages,
-                    "stream": True
-                },
+                json=payload,
                 stream=True,
                 timeout=60
             )
@@ -105,7 +147,15 @@ class OllamaClient:
                         try:
                             data = json.loads(line)
                             if "message" in data and "content" in data["message"]:
-                                yield data["message"]["content"]
+                                content = data["message"]["content"]
+                                
+                                # Filter out thinking tokens in streaming mode
+                                if not enable_thinking:
+                                    # Skip content that looks like thinking tokens
+                                    if '<think>' in content.lower() or '<thinking>' in content.lower():
+                                        continue
+                                
+                                yield content
                         except json.JSONDecodeError:
                             continue
             else:

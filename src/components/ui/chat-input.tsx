@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useState, useRef } from "react"
-import { ArrowUp, Paperclip, X, FileText } from "lucide-react"
+import { ArrowUp, Settings as SettingsIcon, Plus, X, FileText } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { AttachedFile } from "@/lib/types"
 
@@ -11,13 +11,17 @@ interface ChatInputProps {
   disabled?: boolean
   placeholder?: string
   className?: string
+  onOpenSettings?: () => void
+  onAddIndex?: () => void
 }
 
 export function ChatInput({ 
   onSendMessage, 
   disabled = false,
   placeholder = "Message localGPT...",
-  className = ""
+  className = "",
+  onOpenSettings,
+  onAddIndex
 }: ChatInputProps) {
   const [message, setMessage] = useState("")
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
@@ -145,56 +149,49 @@ export function ChatInput({
           </div>
         )}
 
-        <div className="relative flex items-end gap-3">
-          {/* Hidden file input */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf"
-            multiple
-            onChange={handleFileChange}
-            className="hidden"
+        <div className="bg-gray-900 border border-gray-700 rounded-2xl px-5 pt-4 pb-3">
+          {/* Hidden file input (kept for future use) */}
+          <input ref={fileInputRef} type="file" accept=".pdf" multiple onChange={handleFileChange} className="hidden" />
+
+          {/* Textarea */}
+          <textarea
+            ref={textareaRef}
+            value={message}
+            onChange={handleInput}
+            onKeyDown={handleKeyDown}
+            placeholder={attachedFiles.length > 0 ? "Ask questions about your attached files..." : placeholder}
+            disabled={disabled || isLoading}
+            rows={1}
+            className="w-full bg-transparent border-none text-white placeholder-gray-400 resize-none overflow-y-hidden focus:outline-none focus:ring-0 disabled:opacity-50 disabled:cursor-not-allowed text-base"
+            style={{ maxHeight: '120px', minHeight: '44px' }}
           />
 
-          {/* Attach button */}
-          <button
-            type="button"
-            onClick={handleFileAttach}
-            disabled={disabled || isLoading}
-            className="p-3 text-gray-400 hover:text-white hover:bg-gray-800 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Attach PDF files"
-          >
-            <Paperclip className="w-5 h-5" />
-          </button>
-
-          <div className="flex-1 relative">
-            <textarea
-              ref={textareaRef}
-              value={message}
-              onChange={handleInput}
-              onKeyDown={handleKeyDown}
-              placeholder={attachedFiles.length > 0 ? "Ask questions about your attached files..." : placeholder}
-              disabled={disabled || isLoading}
-              rows={1}
-              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 pr-12 text-white placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ maxHeight: '120px', minHeight: '44px' }}
-            />
-            
-            {/* Send button positioned inside textarea */}
-            <div className="absolute right-2 bottom-2">
-              <Button
-                type="submit"
-                size="sm"
-                disabled={(!message.trim() && attachedFiles.length === 0) || disabled || isLoading}
-                className="w-8 h-8 p-0 rounded-full bg-white hover:bg-gray-100 text-black disabled:bg-gray-600 disabled:text-gray-400"
+          {/* Action row */}
+          <div className="mt-1 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={()=>onOpenSettings && onOpenSettings()}
+                disabled={disabled || isLoading}
+                className="flex items-center gap-1 p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Chat settings"
               >
-                {isLoading ? (
-                  <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <ArrowUp className="w-4 h-4" />
-                )}
-              </Button>
+                <SettingsIcon className="w-5 h-5" />
+                <span className="text-xs hidden sm:inline">Settings</span>
+              </button>
             </div>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={(!message.trim() && attachedFiles.length === 0) || disabled || isLoading}
+              className="w-8 h-8 p-0 rounded-full bg-white hover:bg-gray-100 text-black disabled:bg-gray-600 disabled:text-gray-400"
+            >
+              {isLoading ? (
+                <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <ArrowUp className="w-4 h-4" />
+              )}
+            </Button>
           </div>
         </div>
       </form>

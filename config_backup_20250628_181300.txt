@@ -1,0 +1,4 @@
+📋 CURRENT CONFIGURATION BACKUP:
+External Models: {'embedding_model': 'BAAI/bge-small-en-v1.5', 'reranker_model': 'answerdotai/answerai-colbert-small-v1', 'vision_model': 'Qwen/Qwen-VL-Chat', 'fallback_reranker': 'BAAI/bge-reranker-base'}
+Ollama Config: {'host': 'http://localhost:11434', 'generation_model': 'qwen3:8b', 'enrichment_model': 'qwen3:0.6b'}
+Pipeline Config (default storage): {'lancedb_uri': './lancedb', 'text_table_name': 'text_pages_v3', 'image_table_name': 'image_pages_v3', 'bm25_path': './index_store/bm25', 'graph_path': './index_store/graph/knowledge_graph.gml'}

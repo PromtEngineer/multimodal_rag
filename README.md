@@ -121,3 +121,82 @@ You can easily switch retrieval strategies on or off:
 ```
 
 This modularity allows you to experiment with different RAG techniques to see what works best for your use case.
+
+## ⚡ Local Run Guide (updated 2025-06-17)
+
+The stack has three separate processes that need to be running:
+
+1. **Advanced RAG API** – heavy lifting (indexing / retrieval)
+   * Port `8001`
+   * Start from repository root
+     ```bash
+     python -m rag_system.api_server   # Ctrl-C to stop
+     ```
+   * First launch downloads / loads the embedding model defined in
+     `rag_system/main.py`  (`BAAI/bge-small-en-v1.5` by default).  The first
+     request can therefore take ~1 min.  Keep the server running so the model
+     stays in memory.
+
+2. **Legacy Backend (`server.py`)** – sessions, uploads, REST layer that the
+   Next.js UI talks to
+   * Port `8000`
+     ```bash
+     cd backend
+     python server.py
+     ```
+   * Needs to be running **in addition to** the RAG API; otherwise the UI
+     shows "Backend offline".
+
+3. **Frontend (Next.js)**
+   * Port `3000` (or whichever you choose via `PORT`)
+     ```bash
+     npm install
+     npm run dev       # open http://localhost:3000
+     ```
+
+💡  *Alternative:*  run both Python servers in one process:
+```bash
+python combined_server.py        # starts :8000 and :8001
+```
+
+### One-time setup
+```bash
+# Python deps
+pip install -r backend/requirements.txt -r rag_system/requirements.txt
+
+# Node deps (UI)
+npm install
+
+# Ollama models (generation + embedding)
+ollama pull qwen3:8b                 # generation
+ollama pull qwen3-embedding-0.6b     # embeddings
+ollama serve                         # in a separate terminal
+```
+
+### Typical workflow
+1. "Create new index" → give it a name.
+2. Upload PDFs (stored under `backend/shared_uploads/`).
+3. Click **Build Index** – this triggers `IndexingPipeline.run(...)` on
+   the RAG server.  If you see `TypeError: unexpected keyword argument 'documents'`
+   make sure the RAG server has been restarted after pulling the latest
+   code (the patched `documents` alias is required).
+4. When the build completes, open a new chat session, attach the newly
+   built index, and start chatting.
+5. Toggle **"Stream phases"** in the chat footer to watch step-by-step
+   reasoning events (analyze → retrieval → rerank → … → final answer).
+
+### Troubleshooting
+* **Port already in use** – kill stray processes:
+  ```bash
+  lsof -i :8000 ; kill <pid>
+  lsof -i :8001 ; kill <pid>
+  ```
+* **Broken pipe / 500** from `/chat` or `/index` – normally means the RAG
+  server crashed.  Check its terminal for the real traceback.  Common
+  causes: missing LanceDB table (build the index first), model still
+  loading, out-of-memory on MPS.
+* **Embedding model** – change `embedding_model_name` in
+  `rag_system/main.py` (or `rag_system/config.py`) if you want to switch
+  away from the default BAAI BGE model.
+
+Happy hacking! 🎉

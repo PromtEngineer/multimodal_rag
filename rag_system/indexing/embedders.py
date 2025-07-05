@@ -1,12 +1,15 @@
+from sentence_transformers import SentenceTransformer
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from rag_system.indexing.representations import QwenEmbedder
+# from rag_system.indexing.representations import BM25Generator
 import lancedb
+import pandas as pd
 import pyarrow as pa
 from typing import List, Dict, Any
 import numpy as np
 import os
 import pickle
 import json
-
-from rag_system.indexing.representations import BM25Generator
 
 class LanceDBManager:
     def __init__(self, db_path: str):
@@ -43,9 +46,11 @@ class VectorIndexer:
         # and the full metadata object as a JSON string.
         schema = pa.schema([
             pa.field("vector", pa.list_(pa.float32(), vector_dim)),
-            pa.field("text", pa.string()), # This is the text that was embedded
+            pa.field("text", pa.string(), nullable=False),
             pa.field("chunk_id", pa.string()),
-            pa.field("metadata", pa.string()) # Contains original_text, summary, etc.
+            pa.field("document_id", pa.string()),
+            pa.field("chunk_index", pa.int32()),
+            pa.field("metadata", pa.string())
         ])
 
         data = []
@@ -54,40 +59,40 @@ class VectorIndexer:
             if 'original_text' not in chunk['metadata']:
                 chunk['metadata']['original_text'] = chunk['text']
 
+            # Extract document_id and chunk_index for top-level storage
+            doc_id = chunk.get("metadata", {}).get("document_id", "unknown")
+            chunk_idx = chunk.get("metadata", {}).get("chunk_index", -1)
+
+            # Defensive check for text content to ensure it's a non-empty string
+            text_content = chunk.get('text', '')
+            if not text_content or not isinstance(text_content, str):
+                text_content = ""
+
             data.append({
                 "vector": vector.tolist(),
-                "text": chunk["text"], # This is the enriched text
-                "chunk_id": chunk["chunk_id"],
-                "metadata": json.dumps(chunk.get("metadata", {}))
+                "text": text_content,
+                "chunk_id": chunk['chunk_id'],
+                "document_id": doc_id,
+                "chunk_index": chunk_idx,
+                "metadata": json.dumps(chunk)
             })
 
-        table_names = self.db_manager.db.table_names()
-        if table_name in table_names:
+        # Incremental indexing: append to existing table if present, otherwise create it
+        db = self.db_manager.db  # underlying LanceDB connection
+
+        if hasattr(db, "table_names") and table_name in db.table_names():
             tbl = self.db_manager.get_table(table_name)
-            tbl.add(data, mode="overwrite") 
-            print(f"Overwrote {len(data)} vectors in table '{table_name}'.")
+            print(f"Appending {len(data)} vectors to existing table '{table_name}'.")
         else:
+            print(f"Creating table '{table_name}' (new) and adding {len(data)} vectors...")
             tbl = self.db_manager.create_table(table_name, schema=schema, mode="create")
-            tbl.add(data)
-            print(f"Created table '{table_name}' and indexed {len(data)} vectors.")
 
+        tbl.add(data)
+        print(f"Indexed {len(data)} vectors into table '{table_name}'.")
 
-class BM25Indexer:
-    def __init__(self, index_path: str):
-        self.index_path = index_path
-        os.makedirs(self.index_path, exist_ok=True)
-
-    def index(self, index_name: str, chunks: List[Dict[str, Any]]):
-        # BM25 should also operate on the enriched text
-        bm25_generator = BM25Generator()
-        bm25_index = bm25_generator.generate(chunks)
-        
-        if bm25_index:
-            data_to_save = {"index": bm25_index, "chunks": chunks}
-            file_path = os.path.join(self.index_path, f"{index_name}.pkl")
-            with open(file_path, "wb") as f:
-                pickle.dump(data_to_save, f)
-            print(f"BM25 index and chunk data saved to {file_path}")
+# BM25Indexer is no longer needed as we are moving to LanceDB's native FTS.
+# class BM25Indexer:
+#     ...
 
 if __name__ == '__main__':
     print("embedders.py updated for contextual enrichment.")

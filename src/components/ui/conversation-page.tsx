@@ -5,9 +5,11 @@ import { useRef, useEffect, useState } from "react"
 import {
   ChatBubbleAvatar,
 } from "@/components/ui/chat-bubble"
-import { Copy, RefreshCcw, ThumbsUp, ThumbsDown, Volume2, MoreHorizontal, ChevronDown } from "lucide-react"
+import { Copy, RefreshCcw, ThumbsUp, ThumbsDown, Volume2, MoreHorizontal, ChevronDown, Loader2, CheckCircle, XOctagon } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ChatMessage } from "@/lib/api"
+import { cn } from "@/lib/utils"
+import Markdown from "@/components/Markdown"
 
 interface ConversationPageProps {
   messages: ChatMessage[]
@@ -25,6 +27,175 @@ const actionIcons = [
   { icon: MoreHorizontal, type: "More", action: "more" },
 ]
 
+// Citation block toggle component
+function Citation({doc, idx}: {doc:any, idx:number}){
+  const [open,setOpen]=React.useState(false);
+  const preview = (doc.text||'').replace(/\s+/g,' ').trim().slice(0,160) + ((doc.text||'').length>160?'…':'');
+  return (
+    <div onClick={()=>setOpen(!open)} className="text-xs text-gray-300 bg-gray-900/60 rounded p-2 cursor-pointer hover:bg-gray-800 transition">
+      <span className="font-semibold mr-1">[{idx+1}]</span>{open?doc.text:preview}
+    </div>
+  );
+}
+
+// NEW: Expandable list of citations per assistant message
+function CitationsBlock({docs}:{docs:any[]}){
+  const scored = docs.filter(d => d.rerank_score || d.score || d._distance)
+  scored.sort((a, b) => (b.rerank_score ?? b.score ?? 1/b._distance) - (a.rerank_score ?? a.score ?? 1/a._distance))
+  const [expanded, setExpanded] = useState(false);
+
+  if (scored.length === 0) return null;
+
+  const visibleDocs = expanded ? scored : scored.slice(0, 5);
+
+  return (
+    <div className="mt-2 text-xs text-gray-400">
+      <p className="font-semibold mb-1">Sources:</p>
+      <div className="grid grid-cols-1 gap-2">
+        {visibleDocs.map((doc, i) => <Citation key={doc.chunk_id || i} doc={doc} idx={i} />)}
+      </div>
+      {scored.length > 5 && (
+        <button 
+          onClick={() => setExpanded(!expanded)} 
+          className="text-blue-400 hover:text-blue-300 mt-2 text-xs"
+        >
+          {expanded ? 'Show less' : `Show ${scored.length-5} more`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function StepIcon({ status }: { status: 'pending' | 'active' | 'done' | 'error' }) {
+  switch (status) {
+    case 'pending':
+      return <MoreHorizontal className="w-4 h-4 text-neutral-600" />
+    case 'active':
+      return <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+    case 'done':
+      return <CheckCircle className="w-4 h-4 text-green-400" />
+    case 'error':
+      return <XOctagon className="w-4 h-4 text-red-400" />
+    default:
+      return null
+  }
+}
+
+const statusBorder: Record<string, string> = {
+  pending: 'border-neutral-800',
+  active: 'border-blue-400 animate-pulse',
+  done: 'border-green-400',
+  error: 'border-red-400'
+}
+
+// Component to handle <think> tokens and render them in a collapsible block
+function ThinkingText({ text }: { text: string }) {
+  const regex = /<think>([\s\S]*?)<\/think>/g;
+  const thinkSegments: string[] = [];
+  const visibleText = text.replace(regex, (_, p1) => {
+    thinkSegments.push(p1.trim());
+    return ""; // remove thinking content from main text
+  });
+
+  return (
+    <>
+      {thinkSegments.length > 0 && (
+        <details className="thinking-block inline-block align-baseline mr-2" open={false}>
+          <summary className="cursor-pointer text-xs text-gray-400 uppercase select-none">Thinking</summary>
+          <div className="mt-1 space-y-1 text-xs text-gray-400 italic">
+            {thinkSegments.map((seg, idx) => (
+              <div key={idx}>{seg}</div>
+            ))}
+          </div>
+        </details>
+      )}
+      {visibleText.trim() && (
+        <Markdown text={visibleText} className="whitespace-pre-wrap" />
+      )}
+    </>
+  );
+}
+
+function StructuredMessageBlock({ content }: { content: Array<Record<string, any>> | { steps: any[] } }) {
+  const steps: any[] = Array.isArray(content) ? content : (content as any).steps;
+  // Determine if sub-query answers are present
+  const hasSubAnswers = steps.some((s: any) => s.key === 'answer' && Array.isArray(s.details) && s.details.length > 0);
+  // Compute the last index that has started (status !== 'pending') so we only
+  // render steps that are in progress or completed. This avoids showing the
+  // whole plan upfront and reveals each stage sequentially.
+  const lastRevealedIdx = (() => {
+    for (let i = steps.length - 1; i >= 0; i--) {
+      if (steps[i].status && steps[i].status !== 'pending') {
+        return i;
+      }
+    }
+    return -1; // nothing started yet
+  })();
+
+  const visibleSteps = lastRevealedIdx >= 0 ? steps.slice(0, lastRevealedIdx + 1) : [];
+
+  return (
+    <div className="flex flex-col">
+      {visibleSteps.map((step: any, index: number) => {
+        if (step.key && step.label) {
+          const borderCls = statusBorder[step.status] || statusBorder['pending']
+          const statusClass = `timeline-card card my-1 py-2 pl-3 pr-2 bg-[#0d0d0d] rounded border-l-2 ${borderCls}`
+          
+          return (
+            <div key={step.key} className={statusClass}>
+              <div className="flex items-center gap-2 mb-1">
+                <StepIcon status={step.status} />
+                <span className="text-sm font-medium text-neutral-100">{step.label}</span>
+              </div>
+              {/* Details for each step */}
+              {step.key === 'final' && step.details && typeof step.details === 'object' && !Array.isArray(step.details) ? (
+                <div className="space-y-3">
+                  <div className="whitespace-pre-wrap text-gray-100">
+                    <ThinkingText text={step.details.answer} />
+                  </div>
+                  {!hasSubAnswers && step.details.source_documents && step.details.source_documents.length > 0 && (
+                    <CitationsBlock docs={step.details.source_documents} />
+                  )}
+                </div>
+              ) : step.key === 'final' && step.details && typeof step.details === 'string' ? (
+                <div className="whitespace-pre-wrap text-gray-100">
+                  <ThinkingText text={step.details} />
+                </div>
+              ) : Array.isArray(step.details) ? (
+                step.key === 'decompose' && step.details.every((d: any)=> typeof d === 'string') ? (
+                  // Render list of sub-query strings
+                  <ul className="list-disc list-inside space-y-1 text-neutral-200">
+                    {step.details.map((q: string, idx:number)=>(
+                      <li key={idx}>{q}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  // Handle array of sub-answers
+                  <div className="space-y-2">
+                    {step.details.map((detail: any, idx: number) => (
+                      <div key={idx} className="border-l-2 border-blue-400 pl-2">
+                        <div className="font-semibold">{detail.question}</div>
+                        <div><ThinkingText text={detail.answer} /></div>
+                        {detail.source_documents && detail.source_documents.length > 0 && (
+                          <CitationsBlock docs={detail.source_documents} />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : (
+                // Handle string details
+                <ThinkingText text={step.details as string} />
+              )}
+            </div>
+          );
+        }
+        return null;
+      })}
+    </div>
+  );
+}
+
 export function ConversationPage({ 
   messages, 
   isLoading = false,
@@ -34,10 +205,13 @@ export function ConversationPage({
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const [showScrollButton, setShowScrollButton] = useState(false)
+  const [isUserNearBottom,setIsUserNearBottom]=useState(true)
 
-  // Auto-scroll to bottom when new messages arrive
+  // Track if user is near bottom so we don't interrupt manual scrolling
   useEffect(() => {
-    scrollToBottom()
+    if(isUserNearBottom){
+      scrollToBottom()
+    }
   }, [messages, isLoading])
 
   // Monitor scroll position to show/hide scroll button
@@ -49,6 +223,7 @@ export function ConversationPage({
       const { scrollTop, scrollHeight, clientHeight } = scrollContainer
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 100
       setShowScrollButton(!isNearBottom)
+      setIsUserNearBottom(isNearBottom)
     }
 
     scrollContainer.addEventListener('scroll', handleScroll)
@@ -76,7 +251,19 @@ export function ConversationPage({
 
   const handleAction = (action: string, messageId: string, messageContent: string) => {
     if (onAction) {
-      onAction(action, messageId, messageContent)
+      // For structured messages, we'll just join the text parts for copy/paste
+      let contentToPass: string;
+      if (typeof messageContent === 'string') {
+        contentToPass = messageContent;
+      } else if (Array.isArray(messageContent)) {
+        contentToPass = (messageContent as any[]).map((s: any) => s.text || s.answer || '').join('\n');
+      } else if (messageContent && typeof messageContent === 'object' && Array.isArray((messageContent as any).steps)) {
+        // For {steps: Step[]} structure
+        contentToPass = (messageContent as any).steps.map((s: any) => s.label + (s.details ? (typeof s.details === 'string' ? (': ' + s.details) : '') : '')).join('\n');
+      } else {
+        contentToPass = '';
+      }
+      onAction(action, messageId, contentToPass)
       return
     }
     
@@ -106,7 +293,7 @@ export function ConversationPage({
 
   return (
     <div className={`flex flex-col h-full bg-black relative overflow-hidden ${className}`}>
-      <ScrollArea ref={scrollAreaRef} className="flex-1 px-4 py-6 min-h-0">
+      <ScrollArea ref={scrollAreaRef} className="flex-1 h-full px-4 pt-4 pb-6 min-h-0">
         <div className="max-w-4xl mx-auto space-y-6">
           {messages.map((message) => {
             const isUser = message.sender === "user"
@@ -121,9 +308,9 @@ export function ConversationPage({
                     />
                   )}
                   
-                  <div className={`flex flex-col space-y-2 ${isUser ? 'items-end' : 'items-start'} max-w-[80%]`}>
+                  <div className={`flex flex-col space-y-2 ${isUser ? 'items-end' : 'items-start'} max-w-full md:max-w-3xl`}>
                     <div
-                      className={`rounded-2xl px-4 py-3 ${
+                      className={`rounded-2xl px-5 py-4 ${
                         isUser 
                           ? "bg-white text-black" 
                           : "bg-gray-800 text-gray-100"
@@ -138,8 +325,11 @@ export function ConversationPage({
                           </div>
                         </div>
                       ) : (
-                        <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                          {message.content}
+                        <div className="whitespace-pre-wrap text-base leading-relaxed">
+                          {typeof message.content === 'string' 
+                              ? <ThinkingText text={message.content} />
+                              : <StructuredMessageBlock content={message.content} />
+                          }
                         </div>
                       )}
                     </div>
@@ -149,7 +339,10 @@ export function ConversationPage({
                         {actionIcons.map(({ icon: Icon, type, action }) => (
                           <button
                             key={action}
-                            onClick={() => handleAction(action, message.id, message.content)}
+                            onClick={() => {
+                              const content = typeof message.content === 'string' ? message.content : (message.content as any[]).map(s => s.text || s.answer).join('\\n');
+                              handleAction(action, message.id, content)
+                            }}
                             className="p-1.5 hover:bg-gray-700 rounded-md transition-colors text-gray-400 hover:text-gray-200"
                             title={type}
                           >
@@ -157,6 +350,15 @@ export function ConversationPage({
                           </button>
                         ))}
                       </div>
+                    )}
+
+                    {/* Global citations only for plain-string messages */}
+                    {(!isUser &&
+                      !message.isLoading &&
+                      typeof message.content === 'string' &&
+                      Array.isArray((message as any).metadata?.source_documents) &&
+                      (message as any).metadata.source_documents.length > 0) && (
+                        <CitationsBlock docs={(message as any).metadata.source_documents} />
                     )}
                   </div>
 

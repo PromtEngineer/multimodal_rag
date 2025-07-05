@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useState, useEffect } from "react"
-import { Plus, MessageSquare, Calendar, Hash, Trash2 } from "lucide-react"
+import { Plus, MessageSquare, MoreVertical } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ChatSession, chatAPI } from "@/lib/api"
@@ -31,6 +31,7 @@ export function SessionSidebar({
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
 
   // Load sessions on mount
   useEffect(() => {
@@ -107,23 +108,16 @@ export function SessionSidebar({
   }
 
   return (
-    <div className={`w-64 bg-black border-r border-gray-800 flex flex-col ${className}`}>
+    <div className={`w-64 h-full min-h-0 bg-black border-r border-gray-800 flex flex-col ${className}`}>
       {/* Header */}
       <div className="p-4 border-b border-gray-800">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold text-white">Chats</h2>
-          <Button
-            onClick={handleNewSession}
-            size="sm"
-            className="w-8 h-8 p-0 bg-gray-800 hover:bg-gray-600 text-gray-300"
-          >
-            <Plus className="w-4 h-4" />
-          </Button>
         </div>
       </div>
 
       {/* Sessions List */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0 overflow-y-auto">
         <div className="p-2">
           {error && (
             <div className="mb-4 p-3 bg-red-900 text-red-200 text-sm rounded-lg">
@@ -151,55 +145,37 @@ export function SessionSidebar({
               <p className="text-xs mt-1">Start a new chat to begin</p>
             </div>
           ) : (
-            <div className="space-y-1">
+            <div className="space-y-px">
               {sessions.map((session) => (
                 <div
                   key={session.id}
-                  className={`relative group rounded-lg transition-colors ${
+                  className={`relative group pl-1 rounded transition-colors ${
                     currentSessionId === session.id
-                      ? 'bg-blue-600 text-white'
-                      : 'hover:bg-gray-900 text-gray-300'
+                      ? 'bg-gray-700/60 text-white border-l-2 border-white'
+                      : 'hover:bg-gray-800 text-gray-300'
                   }`}
                 >
                   <button
                     onClick={() => onSessionSelect(session.id)}
-                    className="w-full p-3 text-left"
+                    className="w-full pl-3 pr-8 py-2 text-left text-sm"
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0 pr-8">
-                        <div className="flex items-center gap-2 mb-1">
-                          <MessageSquare className="w-3 h-3 flex-shrink-0" />
-                          <p className="font-medium text-sm truncate">
-                            {truncateTitle(session.title)}
-                          </p>
-                        </div>
-                        
-                        <div className="flex items-center gap-3 text-xs opacity-70">
-                          <div className="flex items-center gap-1">
-                            <Hash className="w-3 h-3" />
-                            <span>{session.message_count}</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            <span>{formatDate(session.updated_at)}</span>
-                          </div>
-                        </div>
-                        
-                        <div className="text-xs mt-1 opacity-50">
-                          {session.model_used}
-                        </div>
-                      </div>
-                    </div>
+                    <p className="truncate">
+                      {truncateTitle(session.title)}
+                    </p>
                   </button>
                   
-                  {/* Delete button - appears on hover */}
-                  <button
-                    onClick={(e) => handleDeleteSession(session.id, e)}
-                    className="absolute right-2 top-2 p-1.5 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 rounded text-gray-400 hover:text-white"
-                    title="Delete conversation"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+                  {/* Overflow menu */}
+                  <div className="absolute right-2 top-2 index-row-menu">
+                    <button onClick={(e)=>{e.stopPropagation(); setMenuOpenId(menuOpenId===session.id?null:session.id);}} className="p-1 text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition">
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
+                    {menuOpenId===session.id && (
+                      <div className="absolute right-0 top-full mt-1 bg-black/90 backdrop-blur border border-white/10 rounded shadow-lg py-1 w-32 text-sm z-50">
+                        <button onClick={(e)=>{e.stopPropagation(); onSessionSelect(session.id); setMenuOpenId(null);}} className="block w-full text-left px-4 py-2 hover:bg-white/10">Open</button>
+                        <button onClick={(e)=>handleDeleteSession(session.id,e)} className="block w-full text-left px-4 py-2 hover:bg-white/10 text-red-400 hover:text-red-500">Delete</button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
