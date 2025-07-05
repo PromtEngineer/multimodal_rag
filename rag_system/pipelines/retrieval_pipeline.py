@@ -531,3 +531,13 @@ ORIGINAL QUESTION: "{query}"
         reaching into private helpers. If the retriever has not yet been
         instantiated, it is created on first access via `_get_dense_retriever`."""
         return self._get_dense_retriever()
+
+    def update_embedding_model(self, model_name: str):
+        """Switch embedding model at runtime and clear cached objects so they re-initialize."""
+        if self.config.get("embedding_model_name") == model_name:
+            return  # nothing to do
+        print(f"🔧 RetrievalPipeline switching embedding model to '{model_name}' (was '{self.config.get('embedding_model_name')}')")
+        self.config["embedding_model_name"] = model_name
+        # Reset caches so new instances are built on demand
+        self.text_embedder = None
+        self.dense_retriever = None

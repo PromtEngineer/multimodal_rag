@@ -47,11 +47,7 @@ def _apply_index_embedding_model(idx_ids):
         model = (idx.get("metadata") or {}).get("embedding_model")
         if model:
             rp = RAG_AGENT.retrieval_pipeline
-            if rp.config.get("embedding_model_name") != model:
-                print(f"🔧 Switching embedding model to '{model}' for retrieval pipeline")
-                rp.config["embedding_model_name"] = model
-                # Force re-init on next access
-                rp.text_embedder = None
+            rp.update_embedding_model(model)
     except Exception as e:
         print(f"⚠️ Could not apply index embedding model: {e}")
 
