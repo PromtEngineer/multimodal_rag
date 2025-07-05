@@ -11,6 +11,8 @@ import { Button } from "./button"
 import type { Step } from '@/lib/api'
 import { ChatSettingsModal } from '@/components/ui/chat-settings-modal'
 import { IndexForm } from '@/components/IndexForm'
+import SessionIndexInfo from '@/components/SessionIndexInfo'
+import { Database } from 'lucide-react'
 
 interface SessionChatProps {
   sessionId?: string
@@ -24,6 +26,9 @@ export interface SessionChatRef {
   sendMessage: (content: string, attachedFiles?: AttachedFile[]) => Promise<void>
   currentSession: ChatSession | null
 }
+
+// Helper to shorten long titles
+const truncate = (str: string, n: number = 18) => str.length > n ? str.slice(0, n) + '…' : str;
 
 export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({ 
   sessionId,
@@ -57,8 +62,10 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
   const [generationModels,setGenerationModels]=useState<string[]>([])
   const [selectedModel,setSelectedModel]=useState<string>('')
   const [currentIndexId, setCurrentIndexId] = useState<string | null>(null)
+  const [currentIndexName, setCurrentIndexName] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [showIndexForm, setShowIndexForm] = useState(false)
+  const [showIndexInfo, setShowIndexInfo] = useState(false)
   
   const apiService = chatAPI
 
@@ -83,6 +90,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
           const lastIdxObj = idxResp.indexes[idxResp.indexes.length - 1] as any
           const idxId = (lastIdxObj.index_id ?? lastIdxObj.id) as string
           setCurrentIndexId(idxId ?? null)
+          setCurrentIndexName(lastIdxObj.name ?? lastIdxObj.title ?? idxId.slice(0,8))
         }
       } catch {}
     } catch (error) {
@@ -194,6 +202,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             const lastIdxObj = idxResp.indexes[idxResp.indexes.length - 1] as any;
             idxId = (lastIdxObj.index_id ?? lastIdxObj.id) as string;
             setCurrentIndexId(idxId ?? null);
+            setCurrentIndexName(lastIdxObj.name ?? lastIdxObj.title ?? idxId.slice(0,8));
           }
         } catch {}
       }
@@ -565,6 +574,17 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
               placeholder="Ask anything"
               onOpenSettings={()=>setShowSettings(true)}
               onAddIndex={()=>setShowIndexForm(true)}
+              leftExtras={currentIndexId && currentIndexName ? (
+                <button
+                  type="button"
+                  onClick={()=>setShowIndexInfo(true)}
+                  title="View index info"
+                  className="flex items-center gap-1 p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-full transition-colors"
+                >
+                  <Database className="w-5 h-5" />
+                  <span className="text-xs hidden sm:inline">{truncate(currentIndexName,12)}</span>
+                </button>
+              ) : undefined}
             />
           </div>
         </div>
@@ -592,6 +612,17 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
               placeholder="Message localGPT..."
               onOpenSettings={()=>setShowSettings(true)}
               onAddIndex={()=>setShowIndexForm(true)}
+              leftExtras={currentIndexId && currentIndexName ? (
+                <button
+                  type="button"
+                  onClick={()=>setShowIndexInfo(true)}
+                  title="View index info"
+                  className="flex items-center gap-1 p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-full transition-colors"
+                >
+                  <Database className="w-5 h-5" />
+                  <span className="text-xs hidden sm:inline">{truncate(currentIndexName,12)}</span>
+                </button>
+              ) : undefined}
             />
           </div>
         </>
@@ -637,6 +668,11 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             if(onSessionChange) onSessionChange(s);
           }}
         />
+      )}
+
+      {/* Index info modal */}
+      {showIndexInfo && currentSession && (
+        <SessionIndexInfo sessionId={currentSession.id} onClose={()=>setShowIndexInfo(false)} />
       )}
     </div>
   )

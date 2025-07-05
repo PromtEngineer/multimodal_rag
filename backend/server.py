@@ -666,6 +666,15 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
 
             if rag_response.status_code == 200:
                 print("✅ RAG API successfully indexed documents.")
+                # Merge key config values into index metadata
+                idx_meta = {
+                    "session_linked": True,
+                    "retrieval_mode": "hybrid",
+                }
+                try:
+                    db.update_index_metadata(session_id, idx_meta)  # session_id used as index_id in text table naming
+                except Exception as e:
+                    print(f"⚠️ Failed to update index metadata for session index: {e}")
                 self.send_json_response(rag_response.json())
             else:
                 error_info = rag_response.text
@@ -848,21 +857,27 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
                 
             rag_resp = requests.post(rag_api_url, json=payload)
             if rag_resp.status_code==200:
-                self.send_json_response({
-                    "response": rag_resp.json(),
+                meta_updates = {
+                    "chunk_size": chunk_size,
+                    "chunk_overlap": chunk_overlap,
+                    "retrieval_mode": retrieval_mode,
+                    "window_size": window_size,
+                    "enable_enrich": enable_enrich,
                     "latechunk": latechunk,
                     "docling_chunk": docling_chunk,
-                    "indexing_config": {
-                        "chunk_size": chunk_size,
-                        "chunk_overlap": chunk_overlap,
-                        "retrieval_mode": retrieval_mode,
-                        "window_size": window_size,
-                        "enable_enrich": enable_enrich,
-                        "embedding_model": embedding_model,
-                        "enrich_model": enrich_model,
-                        "batch_size_embed": batch_size_embed,
-                        "batch_size_enrich": batch_size_enrich
-                    }
+                }
+                if embedding_model:
+                    meta_updates["embedding_model"] = embedding_model
+                if enrich_model:
+                    meta_updates["enrich_model"] = enrich_model
+                try:
+                    db.update_index_metadata(index_id, meta_updates)
+                except Exception as e:
+                    print(f"⚠️ Failed to update index metadata: {e}")
+
+                self.send_json_response({
+                    "response": rag_resp.json(),
+                    **meta_updates
                 })
             else:
                 self.send_json_response({"error":f"RAG indexing failed: {rag_resp.text}"}, status_code=500)

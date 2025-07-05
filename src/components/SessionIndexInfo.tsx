@@ -8,6 +8,7 @@ interface Props {
 
 export default function SessionIndexInfo({ sessionId, onClose }: Props) {
   const [files, setFiles] = useState<string[]>([]);
+  const [indexMeta, setIndexMeta] = useState<any | null>(null);
   const [session, setSession] = useState<ChatSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -20,6 +21,7 @@ export default function SessionIndexInfo({ sessionId, onClose }: Props) {
         if(first){
           setSession(first.session??{...first, title:first.name, model_used:first.model_used||''});
           setFiles(first.documents?.map((d:any)=>d.filename) || []);
+          setIndexMeta(first.metadata || {});
         } else {
           setError('No indexes linked to this chat');
         }
@@ -46,6 +48,34 @@ export default function SessionIndexInfo({ sessionId, onClose }: Props) {
               <span className="block text-xs uppercase tracking-wide text-gray-300 mb-1">Model</span>
               <p className="text-sm">{session?.model_used}</p>
             </div>
+            {indexMeta && (
+              <div className="space-y-3">
+                {indexMeta.embedding_model && (
+                  <div>
+                    <span className="block text-xs uppercase tracking-wide text-gray-300 mb-1">Embedding model</span>
+                    <p className="text-sm">{indexMeta.embedding_model}</p>
+                  </div>
+                )}
+                {indexMeta.retrieval_mode && (
+                  <div>
+                    <span className="block text-xs uppercase tracking-wide text-gray-300 mb-1">Retrieval mode</span>
+                    <p className="text-sm capitalize">{indexMeta.retrieval_mode}</p>
+                  </div>
+                )}
+                {typeof indexMeta.chunk_size==='number' && (
+                  <div>
+                    <span className="block text-xs uppercase tracking-wide text-gray-300 mb-1">Chunk size</span>
+                    <p className="text-sm">{indexMeta.chunk_size} tokens</p>
+                  </div>
+                )}
+                {typeof indexMeta.window_size==='number' && (
+                  <div>
+                    <span className="block text-xs uppercase tracking-wide text-gray-300 mb-1">Context window</span>
+                    <p className="text-sm">{indexMeta.window_size}</p>
+                  </div>
+                )}
+              </div>
+            )}
             <div>
               <span className="block text-xs uppercase tracking-wide text-gray-300 mb-1">Files ({files.length})</span>
               <ul className="list-disc list-inside space-y-1 text-sm">

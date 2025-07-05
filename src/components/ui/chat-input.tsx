@@ -13,6 +13,7 @@ interface ChatInputProps {
   className?: string
   onOpenSettings?: () => void
   onAddIndex?: () => void
+  leftExtras?: React.ReactNode
 }
 
 export function ChatInput({ 
@@ -21,7 +22,8 @@ export function ChatInput({
   placeholder = "Message localGPT...",
   className = "",
   onOpenSettings,
-  onAddIndex
+  onAddIndex,
+  leftExtras
 }: ChatInputProps) {
   const [message, setMessage] = useState("")
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
@@ -179,6 +181,7 @@ export function ChatInput({
                 <SettingsIcon className="w-5 h-5" />
                 <span className="text-xs hidden sm:inline">Settings</span>
               </button>
+              {leftExtras}
             </div>
             <Button
               type="submit"

@@ -417,6 +417,21 @@ class ChatDatabase:
                     print(f"⚠️ Could not drop LanceDB table '{vector_table_name}': {e}")
         return deleted
 
+    def update_index_metadata(self, index_id: str, updates: dict):
+        """Merge new key/values into an index's metadata JSON column."""
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cur = conn.execute('SELECT metadata FROM indexes WHERE id=?', (index_id,))
+        row = cur.fetchone()
+        if row is None:
+            conn.close()
+            raise ValueError("Index not found")
+        existing = json.loads(row['metadata'] or '{}')
+        existing.update(updates)
+        conn.execute('UPDATE indexes SET metadata=?, updated_at=? WHERE id=?', (json.dumps(existing), datetime.now().isoformat(), index_id))
+        conn.commit()
+        conn.close()
+
 def generate_session_title(first_message: str, max_length: int = 50) -> str:
     """Generate a session title from the first message"""
     # Clean up the message
