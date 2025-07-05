@@ -2,6 +2,7 @@ from typing import List, Dict, Any, Protocol
 import numpy as np
 from transformers import AutoModel, AutoTokenizer
 import torch
+import os
 
 # We keep the protocol to ensure a consistent interface
 class EmbeddingModel(Protocol):
@@ -80,6 +81,38 @@ class EmbeddingGenerator:
         )
         
         return all_embeddings
+
+class OllamaEmbedder(EmbeddingModel):
+    """Call Ollama's /api/embeddings endpoint for each text."""
+    def __init__(self, model_name: str, host: str | None = None, timeout: int = 60):
+        self.model_name = model_name
+        self.host = (host or os.getenv("OLLAMA_HOST") or "http://localhost:11434").rstrip("/")
+        self.timeout = timeout
+
+    def _embed_single(self, text: str):
+        import requests, numpy as np, json
+        payload = {"model": self.model_name, "prompt": text}
+        r = requests.post(f"{self.host}/api/embeddings", json=payload, timeout=self.timeout)
+        r.raise_for_status()
+        data = r.json()
+        # Ollama may return {"embedding": [...]} or {"data": [...]} depending on version
+        vec = data.get("embedding") or data.get("data")
+        if vec is None:
+            raise ValueError("Unexpected Ollama embeddings response format")
+        return np.array(vec, dtype="float32")
+
+    def create_embeddings(self, texts: List[str]):
+        import numpy as np
+        vectors = [self._embed_single(t) for t in texts]
+        return np.vstack(vectors)
+
+def select_embedder(model_name: str, ollama_host: str | None = None):
+    """Return appropriate EmbeddingModel implementation for the given name."""
+    if "/" in model_name or model_name.startswith("http"):
+        # Treat as HF model path
+        return QwenEmbedder(model_name=model_name)
+    # Otherwise assume it's an Ollama tag
+    return OllamaEmbedder(model_name=model_name, host=ollama_host)
 
 _TOKENIZER = None  # Will hold the shared HF tokenizer instance
 _MODEL = None      # Will hold the shared HF model instance

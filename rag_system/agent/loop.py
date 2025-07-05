@@ -97,10 +97,12 @@ class Agent:
                     print(f"⚠️  Error reading {path}: {e}")
         if aggregated:
             self.doc_overviews = aggregated
+            self._current_overview_session = "|".join(idx_ids)  # cache composite key so no overwrite
             print(f"📖 Loaded {len(aggregated)} overviews for indexes {[i[:8] for i in idx_ids]}")
         else:
             print(f"⚠️  No per-index overviews found for {idx_ids}. Using global overview file.")
             self._load_overviews(self._global_overview_path)
+            self._current_overview_session = "GLOBAL"
 
     def _cosine_similarity(self, v1: np.ndarray, v2: np.ndarray) -> float:
         """Computes cosine similarity between two vectors."""
@@ -269,16 +271,16 @@ Respond with JSON: {{"category": "<your_choice>"}}
         history = self.chat_histories.get(session_id, []) if session_id else []
         
         # 🔄 Refresh overviews for this session if available
-        if session_id and session_id != getattr(self, "_current_overview_session", None):
-            candidate_path = os.path.join("index_store", "overviews", f"{session_id}.jsonl")
-            if os.path.exists(candidate_path):
-                self._load_overviews(candidate_path)
-                self._current_overview_session = session_id
-            else:
-                # Fall back to global overviews if per-session file not found
-                if self._current_overview_session != "GLOBAL":
-                    self._load_overviews(self._global_overview_path)
-                    self._current_overview_session = "GLOBAL"
+        # if session_id and session_id != getattr(self, "_current_overview_session", None):
+        #     candidate_path = os.path.join("index_store", "overviews", f"{session_id}.jsonl")
+        #     if os.path.exists(candidate_path):
+        #         self._load_overviews(candidate_path)
+        #         self._current_overview_session = session_id
+        #     else:
+        #         # Fall back to global overviews if per-session file not found
+        #         if self._current_overview_session != "GLOBAL":
+        #             self._load_overviews(self._global_overview_path)
+        #             self._current_overview_session = "GLOBAL"
         
         query_type = await self._triage_query_async(query, history)
         print(f"🎯 ROUTING DEBUG: Final triage decision: '{query_type}'")

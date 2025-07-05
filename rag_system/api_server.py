@@ -5,6 +5,7 @@ from urllib.parse import urlparse, parse_qs
 import os
 import requests
 import sys
+import functools
 
 # Add backend directory to path for database imports
 backend_dir = os.path.join(os.path.dirname(__file__), '..', 'backend')
@@ -33,6 +34,26 @@ if RAG_AGENT is None:
     exit(1)
 print("✅ RAG Agent initialized successfully with MAXIMUM ACCURACY.")
 # ---
+
+# Add helper near top after db & agent init
+# -------------- Helper ----------------
+
+def _apply_index_embedding_model(idx_ids):
+    """Ensure retrieval pipeline uses the embedding model stored with the first index."""
+    if not idx_ids:
+        return
+    try:
+        idx = db.get_index(idx_ids[0])
+        model = (idx.get("metadata") or {}).get("embedding_model")
+        if model:
+            rp = RAG_AGENT.retrieval_pipeline
+            if rp.config.get("embedding_model_name") != model:
+                print(f"🔧 Switching embedding model to '{model}' for retrieval pipeline")
+                rp.config["embedding_model_name"] = model
+                # Force re-init on next access
+                rp.text_embedder = None
+    except Exception as e:
+        print(f"⚠️ Could not apply index embedding model: {e}")
 
 class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -174,6 +195,7 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 # 🔄 Refresh document overviews for this session
                 if session_id:
                     idx_ids = db.get_indexes_for_session(session_id)
+                    _apply_index_embedding_model(idx_ids)
                     RAG_AGENT.load_overviews_for_indexes(idx_ids)
 
                 # 🔧 Set index-specific overview path
@@ -354,6 +376,7 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                     # 🔄 Refresh overviews for this session
                     if session_id:
                         idx_ids = db.get_indexes_for_session(session_id)
+                        _apply_index_embedding_model(idx_ids)
                         RAG_AGENT.load_overviews_for_indexes(idx_ids)
 
                     # 🔧 Set index-specific overview path
@@ -577,6 +600,13 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                     "batch_size_enrich": batch_size_enrich
                 }
             })
+
+            if embedding_model:
+                try:
+                    db.update_index_metadata(session_id, {"embedding_model": embedding_model})
+                except Exception as e:
+                    print(f"⚠️ Could not update embedding_model metadata: {e}")
+
         except json.JSONDecodeError:
             self.send_json_response({"error": "Invalid JSON"}, status_code=400)
         except Exception as e:

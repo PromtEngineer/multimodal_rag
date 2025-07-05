@@ -13,7 +13,7 @@ from threading import Lock
 from rag_system.utils.ollama_client import OllamaClient
 from rag_system.retrieval.retrievers import MultiVectorRetriever, GraphRetriever
 from rag_system.indexing.multimodal import LocalVisionModel
-from rag_system.indexing.representations import QwenEmbedder
+from rag_system.indexing.representations import QwenEmbedder, select_embedder
 from rag_system.indexing.embedders import LanceDBManager
 from rag_system.rerankers.reranker import QwenReranker
 from rag_system.rerankers.sentence_pruner import SentencePruner
@@ -74,8 +74,10 @@ class RetrievalPipeline:
 
     def _get_text_embedder(self):
         if self.text_embedder is None:
-            self.text_embedder = QwenEmbedder(
-                model_name=self.config.get("embedding_model_name", "BAAI/bge-small-en-v1.5")
+            from rag_system.indexing.representations import select_embedder
+            self.text_embedder = select_embedder(
+                self.config.get("embedding_model_name", "BAAI/bge-small-en-v1.5"),
+                self.ollama_config.get("host") if isinstance(self.ollama_config, dict) else None,
             )
         return self.text_embedder
 

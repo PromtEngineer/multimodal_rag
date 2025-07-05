@@ -3,7 +3,7 @@ import os
 import networkx as nx
 from rag_system.ingestion.pdf_converter import PDFConverter
 from rag_system.ingestion.chunking import MarkdownRecursiveChunker
-from rag_system.indexing.representations import QwenEmbedder, EmbeddingGenerator
+from rag_system.indexing.representations import QwenEmbedder, EmbeddingGenerator, select_embedder
 from rag_system.indexing.embedders import LanceDBManager, VectorIndexer
 from rag_system.indexing.graph_extractor import GraphExtractor
 from rag_system.utils.ollama_client import OllamaClient
@@ -73,8 +73,9 @@ class IndexingPipeline:
                 )
             self.lancedb_manager = LanceDBManager(db_path=db_path)
             self.vector_indexer = VectorIndexer(self.lancedb_manager)
-            embedding_model = QwenEmbedder(
-                model_name=self.config.get("embedding_model_name", "BAAI/bge-small-en-v1.5")
+            embedding_model = select_embedder(
+                self.config.get("embedding_model_name", "BAAI/bge-small-en-v1.5"),
+                self.ollama_config.get("host") if isinstance(self.ollama_config, dict) else None,
             )
             self.embedding_generator = EmbeddingGenerator(
                 embedding_model=embedding_model, 
@@ -104,10 +105,12 @@ class IndexingPipeline:
             )
 
         # Overview builder always enabled for triage routing
+        ov_path = self.config.get("overview_path")
         self.overview_builder = OverviewBuilder(
             llm_client=self.llm_client,
             model=self.config.get("overview_model_name", self.ollama_config.get("enrichment_model", "qwen3:0.6b")),
             first_n_chunks=self.config.get("overview_first_n_chunks", 5),
+            out_path=ov_path if ov_path else None,
         )
 
         # ------------------------------------------------------------------
