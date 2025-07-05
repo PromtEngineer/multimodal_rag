@@ -65,34 +65,20 @@ export function QuickChat({ sessionId: externalSessionId, onSessionChange, class
       }
     }
 
-    // Placeholder assistant message for streaming
-    const assistantMsg: ChatMessage = {
-      id: crypto.randomUUID(),
-      content: '',
-      sender: 'assistant',
-      timestamp: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, assistantMsg]);
-
     try {
-      await api.streamSessionMessage(
-        { query: content, session_id: activeSessionId, composeSubAnswers: false, decompose: false, aiRerank: false, contextExpand: false },
-        (evt) => {
-          if (evt.type === 'token') {
-            const tok: string = evt.data.text || '';
-            setMessages((prev) => prev.map((m) => (m.id === assistantMsg.id ? { ...m, content: (m.content as string) + tok } : m)));
-          }
-          if (evt.type === 'direct_answer' || evt.type === 'single_query_result' || evt.type === 'final_answer') {
-            const answer = evt.data?.answer || evt.data?.text || '';
-            setMessages((prev) => prev.map((m)=> m.id===assistantMsg.id? { ...m, content: answer }: m));
-          }
-          if (evt.type === 'complete') {
-            setIsLoading(false);
-          }
-        }
-      );
+      const history = api.messagesToHistory(messages);
+      const resp = await api.sendMessage({ message: content, conversation_history: history });
+
+      const assistantMsg: ChatMessage = {
+        id: crypto.randomUUID(),
+        content: resp.response,
+        sender: 'assistant',
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
     } catch (err) {
-      console.error('Quick chat stream failed', err);
+      console.error('Quick chat failed', err);
+    } finally {
       setIsLoading(false);
     }
 
