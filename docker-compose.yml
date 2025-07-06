@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  rag-server:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - RAG_CONFIG_MODE=default
+      - RAG_LOG_LEVEL=INFO
+      - HF_TOKEN=${HF_TOKEN:-}
+    volumes:
+      - ./shared_uploads:/app/shared_uploads
+      - ./index_store:/app/index_store
+      - ./lancedb:/app/lancedb
+      - ./chat_data.db:/app/chat_data.db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Optional: Add Ollama service for complete deployment
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    # Uncomment if you have GPU support
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+volumes:
+  ollama_data: 
