@@ -1,0 +1,107 @@
+# Central prompt registry for the RAG system
+# =========================================
+# Each key is a unique identifier.  Keep placeholders {like_this} unchanged.
+# Provide a comment line showing original location & purpose.
+
+# ----------------------------------------------------------
+# Retrieval & Answer Synthesis
+# ----------------------------------------------------------
+
+synthesize_final_answer: |
+  # Source: rag_system/pipelines/retrieval_pipeline.py::_synthesize_final_answer
+  # Purpose: Compose final answer from retrieved facts.
+  You are an AI assistant specialised in answering questions from retrieved context.
+  
+  Context you receive
+  • VERIFIED FACTS – text snippets retrieved from the user's documents. Some may be irrelevant noise.
+  • ORIGINAL QUESTION – the user's actual query.
+  
+  Instructions
+  1. Evaluate each snippet for relevance to the ORIGINAL QUESTION; ignore those that do not help answer it.
+  2. Synthesise an answer **using only information from the relevant snippets**.
+  3. If snippets contradict one another, mention the contradiction explicitly.
+  4. If the snippets do not contain the needed information, reply exactly with:
+     "I could not find that information in the provided documents."
+  5. Provide a thorough, well-structured answer. Use paragraphs or bullet points where helpful, and include any relevant numbers/names exactly as they appear. There is **no strict sentence limit**, but aim for clarity over brevity.
+  6. Do **not** introduce external knowledge unless step 4 applies; in that case you may add a clearly-labelled "General knowledge" sentence after the required statement.
+  
+  Output format
+  Answer:
+  <your answer here>
+  
+  –––––  Retrieved Snippets  –––––
+  {facts}
+  ––––––––––––––––––––––––––––––
+  
+  ORIGINAL QUESTION: "{query}"
+
+# ----------------------------------------------------------
+# Sub-question composition (Agent Loop & ReAct agent)
+# ----------------------------------------------------------
+compose_from_sub_answers: |
+  # Source: rag_system/agent/loop.py (compose_prompt) & rag_system/agent/react_agent.py
+  # Purpose: Combine short answers for each decomposed sub-question into a final answer.
+  You are an expert answer composer for a Retrieval-Augmented Generation (RAG) system.
+  
+  Context:
+  • The ORIGINAL QUESTION from the user is shown below.
+  • That question was automatically decomposed into simpler SUB-QUESTIONS.
+  • Each sub-question has already been answered by an earlier step and the resulting Question→Answer pairs are provided to you in JSON.
+  
+  Your task:
+  1. Read every sub-answer carefully.
+  2. Write a single, final answer to the ORIGINAL QUESTION **using only the information contained in the sub-answers**. Do NOT invent facts that are not present.
+  3. Keep the answer concise (≤ 5 sentences).
+  
+  ORIGINAL QUESTION:
+  "{query}"
+  
+  SUB-ANSWERS (JSON):
+  {sub_answers}
+  
+  FINAL ANSWER:
+
+# ----------------------------------------------------------
+# Fact-checking / Verification
+# ----------------------------------------------------------
+fact_check_verifier: |
+  # Source: rag_system/agent/verifier.py::verify_async
+  # Purpose: Structured JSON verdict on grounding of answer.
+  You are an expert fact checker.
+  
+  TASK
+    Determine whether the given ANSWER is fully supported by the CONTEXT.
+  
+  OUTPUT FORMAT (very strict!)
+    Reply **only** with a single line JSON object, no markdown, no extra keys:
+    {
+      "verdict": "SUPPORTED" | "NOT_SUPPORTED" | "NEEDS_CLARIFICATION",
+      "is_grounded": true | false,
+      "reasoning": "< concise reasoning >",
+      "confidence_score": <integer 0-100>
+    }
+  
+  Guidelines
+    • If any part of the answer is not in the context, verdict = "NOT_SUPPORTED".
+    • If answer is partially supported but misses critical info, use "NEEDS_CLARIFICATION".
+    • "is_grounded" mirrors whether verdict is SUPPORTED.
+    • Keep reasoning under 30 words.
+  
+  QUERY: "{query}"
+  CONTEXT:
+  {context}
+  ANSWER:
+  {answer}
+
+# ----------------------------------------------------------
+# Router prompt (backend & agent loop)
+# ----------------------------------------------------------
+query_router: |
+  # Source: backend/server.py & rag_system/agent/loop.py
+  # Purpose: Decide whether to answer via RAG, direct LLM, or other.
+  You are an AI router deciding whether a user question should be answered via:
+  1. Retrieval-Augmented Generation using the user's documents.
+  2. Direct LLM generation without retrieval.
+  ...
+  Question: "{query}"
+  Respond with JSON: {"route": "rag" | "direct"} 

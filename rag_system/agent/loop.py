@@ -8,6 +8,7 @@ from rag_system.pipelines.retrieval_pipeline import RetrievalPipeline
 from rag_system.agent.verifier import Verifier
 from rag_system.retrieval.query_transformer import QueryDecomposer, GraphQueryTranslator
 from rag_system.retrieval.retrievers import GraphRetriever
+from rag_system.prompts import fmt
 
 class Agent:
     """
@@ -504,32 +505,11 @@ Respond with JSON: {{"category": "<your_choice>"}}
 
                     if compose_from_sub_answers:
                         print("\n--- Composing final answer from sub-answers ---")
-                        compose_prompt = f"""
-You are an expert answer composer for a Retrieval-Augmented Generation (RAG) system.
-
-Context:
-• The ORIGINAL QUESTION from the user is shown below.
-• That question was automatically decomposed into simpler SUB-QUESTIONS.
-• Each sub-question has already been answered by an earlier step and the resulting Question→Answer pairs are provided to you in JSON.
-
-Your task:
-1. Read every sub-answer carefully.
-2. Write a single, final answer to the ORIGINAL QUESTION **using only the information contained in the sub-answers**. Do NOT invent facts that are not present.
-3. If the original question includes a comparison (e.g., "Which, A or B, …") clearly state the outcome (e.g., "A > B"). Quote concrete numbers when available.
-4. If any aspect of the original question cannot be answered with the given sub-answers, explicitly say so (e.g., "The provided context does not mention …").
-5. Keep the answer concise (≤ 5 sentences) and use a factual, third-person tone.
-
-Input
-------
-ORIGINAL QUESTION:
-"{contextual_query}"
-
-SUB-ANSWERS (JSON):
-{json.dumps(sub_answers, indent=2)}
-
-------
-FINAL ANSWER:
-"""
+                        compose_prompt = fmt(
+                            "compose_from_sub_answers",
+                            query=contextual_query,
+                            sub_answers=json.dumps(sub_answers, indent=2),
+                        )
                         # --- Stream composition answer token-by-token ---
                         answer_parts: list[str] = []
 

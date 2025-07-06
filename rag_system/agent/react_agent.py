@@ -9,6 +9,7 @@ from rag_system.retrieval.query_transformer import QueryDecomposer
 from rag_system.utils.ollama_client import OllamaClient
 from rag_system.pipelines.retrieval_pipeline import RetrievalPipeline
 from rag_system.utils.logging_utils import log_query
+from rag_system.prompts import fmt
 
 
 class Tool:
@@ -271,27 +272,11 @@ User Query: "{query}"
 
                     # --- Compose final answer ---
                     if compose_from_sub_answers and sub_answers:
-                        compose_prompt = f"""
-You are an expert answer composer for a Retrieval-Augmented Generation (RAG) system.
-
-Context:
-• The ORIGINAL QUESTION from the user is shown below.
-• That question was automatically decomposed into simpler SUB-QUESTIONS.
-• Each sub-question has already been answered by an earlier step and the resulting Question→Answer pairs are provided to you in JSON.
-
-Your task:
-1. Read every sub-answer carefully.
-2. Write a single, final answer to the ORIGINAL QUESTION **using only the information contained in the sub-answers**. Do NOT invent facts that are not present.
-3. Keep the answer concise (≤ 5 sentences).
-
-ORIGINAL QUESTION:
-"{query}"
-
-SUB-ANSWERS (JSON):
-{json.dumps(sub_answers, indent=2)}
-
-FINAL ANSWER:
-"""
+                        compose_prompt = fmt(
+                            "compose_from_sub_answers",
+                            query=query,
+                            sub_answers=json.dumps(sub_answers, indent=2),
+                        )
                         compose_resp = self.llm_client.generate_completion(
                             model=self.ollama_config["generation_model"],
                             prompt=compose_prompt,

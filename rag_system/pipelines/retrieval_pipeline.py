@@ -22,6 +22,8 @@ from rag_system.rerankers.sentence_pruner import SentencePruner
 import os
 from PIL import Image
 
+from rag_system.prompts import fmt
+
 # ---------------------------------------------------------------------------
 # Thread-safety helpers
 # ---------------------------------------------------------------------------
@@ -218,32 +220,7 @@ class RetrievalPipeline:
 
     def _synthesize_final_answer(self, query: str, facts: str, *, event_callback=None) -> str:
         """Uses a text LLM to synthesize a final answer from extracted facts."""
-        prompt = f"""
-You are an AI assistant specialised in answering questions from retrieved context.
-
-Context you receive
-• VERIFIED FACTS – text snippets retrieved from the user's documents. Some may be irrelevant noise.  
-• ORIGINAL QUESTION – the user's actual query.
-
-Instructions
-1. Evaluate each snippet for relevance to the ORIGINAL QUESTION; ignore those that do not help answer it.  
-2. Synthesise an answer **using only information from the relevant snippets**.  
-3. If snippets contradict one another, mention the contradiction explicitly.  
-4. If the snippets do not contain the needed information, reply exactly with:  
-   "I could not find that information in the provided documents."  
-5. Provide a thorough, well-structured answer. Use paragraphs or bullet points where helpful, and include any relevant numbers/names exactly as they appear. There is **no strict sentence limit**, but aim for clarity over brevity.  
-6. Do **not** introduce external knowledge unless step 4 applies; in that case you may add a clearly-labelled "General knowledge" sentence after the required statement.
-
-Output format
-Answer:
-<your answer here>
-
-–––––  Retrieved Snippets  –––––
-{facts}
-––––––––––––––––––––––––––––––
-
-ORIGINAL QUESTION: "{query}"
-"""
+        prompt = fmt("synthesize_final_answer", query=query, facts=facts)
         # Stream the answer token-by-token so the caller can forward them as SSE
         answer_parts: list[str] = []
         for tok in self.ollama_client.stream_completion(
