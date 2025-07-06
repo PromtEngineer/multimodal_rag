@@ -1,7 +1,6 @@
 from typing import Dict, Any
 import json
 from rag_system.utils.ollama_client import OllamaClient
-from rag_system.prompts import fmt
 
 class VerificationResult:
     def __init__(self, is_grounded: bool, reasoning: str, verdict: str, confidence_score: int):
@@ -24,12 +23,37 @@ class Verifier:
     # --- Async wrapper ------------------------------------------------
     async def verify_async(self, query: str, context: str, answer: str) -> VerificationResult:
         """Async variant that calls the Ollama client asynchronously."""
-        prompt = fmt(
-            "fact_check_verifier",
-            query=query,
-            context=context[:4000],
-            answer=answer,
-        )
+        prompt = f"""
+You are an expert fact checker.
+
+TASK
+  Determine whether the given ANSWER is fully supported by the CONTEXT.
+
+OUTPUT FORMAT (very strict!)
+  Reply **only** with a single line JSON object, no markdown, no extra keys:
+  {{
+    "verdict": "SUPPORTED" | "NOT_SUPPORTED" | "NEEDS_CLARIFICATION",
+    "is_grounded": true | false,
+    "reasoning": "< concise reasoning >",
+    "confidence_score": <integer 0-100>
+  }}
+
+Guidelines
+  • If any part of the answer is not in the context, verdict = "NOT_SUPPORTED".
+  • If answer is partially supported but misses critical info, use "NEEDS_CLARIFICATION".
+  • "is_grounded" mirrors whether verdict is SUPPORTED.
+  • Keep reasoning under 30 words.
+
+QUERY: "{query}"
+CONTEXT:
+"""
+        prompt += context[:4000]  # Clamp to avoid huge prompts
+        prompt += """
+ANSWER:
+"""
+        prompt += answer
+        prompt += """
+"""
         resp = await self.llm_client.generate_completion_async(self.llm_model, prompt, format="json")
         try:
             data = json.loads(resp.get("response", "{}"))

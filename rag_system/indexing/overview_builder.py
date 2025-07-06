@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os, json, logging, re
 from typing import List, Dict, Any
-from rag_system.prompts import fmt
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +10,13 @@ class OverviewBuilder:
     The overview is derived from the first *n* chunks of the document.
     """
 
-    DEFAULT_PROMPT_ID = "overview_builder_summary"
+    DEFAULT_PROMPT = (
+        "You will receive the beginning of a document. "
+        "In no more than 120 tokens, describe what the document is about, "
+        "state its type (e.g. invoice, slide deck, policy, research paper, receipt) "
+        "and mention 3-5 important entities, numbers or dates it contains.\n\n"
+        "DOCUMENT_START:\n{text}\n\nOVERVIEW:"
+    )
 
     def __init__(self, llm_client, model: str = "qwen3:0.6b", first_n_chunks: int = 5,
                  out_path: str | None = None):
@@ -27,7 +32,7 @@ class OverviewBuilder:
         if not chunks:
             return
         head_text = "\n".join(c["text"] for c in chunks[: self.first_n] if c.get("text"))
-        prompt = fmt(self.DEFAULT_PROMPT_ID, text=head_text[:5000])
+        prompt = self.DEFAULT_PROMPT.format(text=head_text[:5000])  # safety cap
         try:
             resp = self.llm_client.generate_completion(model=self.model, prompt=prompt, enable_thinking=False)
             summary_raw = resp.get("response", "")

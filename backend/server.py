@@ -281,7 +281,7 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
                 db.update_session_title(session_id, title)
             
             # 🎯 SMART ROUTING: Decide between direct LLM vs RAG
-            idx_ids = db.get_indexes_for_session(session_id)
+                idx_ids = db.get_indexes_for_session(session_id)
             force_rag = bool(data.get("force_rag", False))
             use_rag = True if force_rag else self._should_use_rag(message, idx_ids)
             
@@ -433,12 +433,6 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
         # Format overviews for the routing prompt
         overviews_block = "\n".join(f"[{i+1}] {ov}" for i, ov in enumerate(overviews))
         
-        # Use a prompt registry instead of a hardcoded prompt
-        prompt_registry = {
-            "use_rag": "USE_RAG",
-            "direct_llm": "DIRECT_LLM"
-        }
-        
         router_prompt = f"""You are an AI router deciding whether a user question should be answered via:
 • "USE_RAG" – search the user's private documents (described below)  
 • "DIRECT_LLM" – reply from general knowledge (greetings, public facts, unrelated topics)
@@ -479,9 +473,12 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
             decision = response.strip().upper()
             
             # Parse decision
-            if decision in prompt_registry:
-                print(f"🎯 Overview-based routing: {decision} for query: '{query[:50]}...'")
-                return decision == "USE_RAG"
+            if "USE_RAG" in decision:
+                print(f"🎯 Overview-based routing: USE_RAG for query: '{query[:50]}...'")
+                return True
+            elif "DIRECT_LLM" in decision:
+                print(f"⚡ Overview-based routing: DIRECT_LLM for query: '{query[:50]}...'")
+                return False
             else:
                 print(f"⚠️ Unclear routing decision '{decision}', defaulting to RAG")
                 return True  # Default to RAG when uncertain
