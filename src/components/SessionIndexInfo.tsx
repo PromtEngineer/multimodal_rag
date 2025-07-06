@@ -76,8 +76,14 @@ export default function SessionIndexInfo({ sessionId, onClose }: Props) {
     }
     
     if (indexStatus === 'functional') {
-      // Check if this is a limited inspection case
-      if (indexMeta.inspection_limitation) {
+      // Check if we have complete configuration metadata
+      const hasCompleteConfig = indexMeta.chunk_size && 
+                               indexMeta.chunk_overlap !== undefined &&
+                               indexMeta.retrieval_mode &&
+                               indexMeta.embedding_model;
+      
+      // Only show limited message if we truly have limited data
+      if (indexMeta.inspection_limitation && !hasCompleteConfig) {
         return {
           type: 'info',
           title: '🔍 Limited Configuration Data',
@@ -85,11 +91,8 @@ export default function SessionIndexInfo({ sessionId, onClose }: Props) {
         };
       }
       
-      return {
-        type: 'success',
-        title: '✅ Index Functional',
-        message: 'The index is working properly and all configuration data is available.'
-      };
+      // Don't show any status message for functional indexes with complete metadata
+      return null;
     }
     
     return null;
