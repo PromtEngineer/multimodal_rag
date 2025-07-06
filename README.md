@@ -1,202 +1,352 @@
-# Multimodal RAG Chat Application
+# RAG System - Unified Deployment & Management
 
-This project is a sophisticated, full-stack multimodal chat application that leverages a local-first AI stack to provide a powerful and private Retrieval-Augmented Generation (RAG) experience.
+A comprehensive Retrieval-Augmented Generation (RAG) system with intelligent document processing, multi-modal capabilities, and smart query routing.
 
-It features a modular, configurable RAG pipeline, a robust API-driven architecture, and an intuitive user interface built with Next.js and Tailwind CSS.
+## 🚀 Quick Start
 
-## 🌟 Key Features
+### Single Command Startup
+```bash
+# Development mode (recommended for local development)
+python run_system.py
 
--   **🖥️ Full-Stack Architecture**: A complete solution with a Next.js frontend, a Python backend, and a separate, advanced RAG API server.
--   **🤖 Advanced RAG Pipeline**: A modular and configurable RAG system that can be adapted for different retrieval strategies.
--   **🧩 Modular Retrieval**: Easily enable or disable different retrieval techniques like **Graph-based RAG** and **Reranking** through simple configuration changes.
--   **📤 Upload, Index, then Chat**: A robust and intuitive workflow. Users upload documents, explicitly trigger an indexing job, and only then can they chat with the newly ingested knowledge.
--   **🧠 Agentic Triage**: The system intelligently routes user queries. General questions are answered directly by an LLM, while specific ones trigger the RAG pipeline.
--   **🔒 100% Local & Private**: The entire stack, including LLMs and embedding models, runs locally using [Ollama](https://ollama.com/), ensuring your data never leaves your machine.
--   **📝 Session-Based Chat**: Persistent, session-based conversations managed by a SQLite database.
+# Or using Make
+make dev
+```
 
-## 🛠️ Tech Stack
+### Production Deployment
+```bash
+# Docker deployment (recommended for production)
+make deploy
 
--   **Frontend**: Next.js, React, Tailwind CSS, Shadcn/ui
--   **Backend**: Python (standard library `http.server`)
--   **Advanced RAG System**: Python, LanceDB, PyMuPDF, `transformers`
--   **Local AI**: Ollama (for running LLMs like Llama 3, Qwen, etc.)
--   **Database**: SQLite
+# Or manual production mode
+make prod
+```
 
-## 🚀 Getting Started
+## 📋 System Architecture
+
+The system consists of four main components:
+
+1. **Ollama Server** (Port 11434) - LLM inference engine
+2. **RAG API Server** (Port 8001) - Advanced RAG pipeline
+3. **Backend Server** (Port 8000) - Session management and routing
+4. **Frontend** (Port 3000) - Next.js web interface
+
+## 🛠️ Installation
 
 ### Prerequisites
+- Python 3.11+
+- Node.js 18+
+- Ollama ([install here](https://ollama.ai))
+- Docker (optional, for containerized deployment)
 
--   Python 3.8+
--   Node.js and npm/yarn
--   [Ollama](https://ollama.com/) installed and running.
+### Setup
+```bash
+# Clone repository
+git clone <repository-url>
+cd rag_system_old
 
-### Installation & Setup
+# Install dependencies
+make install
 
-1.  **Clone the repository:**
-    ```bash
-    git clone <repository-url>
-    cd multimodal-rag
-    ```
-
-2.  **Set up the Backend & RAG System:**
-    -   Install Python dependencies for the main backend:
-      ```bash
-      pip install -r backend/requirements.txt
-      ```
-    -   Install Python dependencies for the RAG system:
-      ```bash
-      pip install -r rag_system/requirements.txt
-      ```
-
-3.  **Set up the Frontend:**
-    ```bash
-    npm install
-    ```
-
-4.  **Pull Required Ollama Models:**
-    The system is configured to use specific models. Pull them using Ollama:
-    ```bash
-    ollama pull qwen2.5vl:7b  # Or your model of choice for generation/VLM
-    ollama pull qwen3-embedding-0.6b # For embeddings
-    ```
-    *Note: You can change the models used in `rag_system/main.py`.*
-
-### Running the Application
-
-The application consists of three main components that need to be running simultaneously: the **Frontend**, the **Backend**, and the **RAG API Server**.
-
-1.  **Start the Advanced RAG API Server:**
-    This server handles all the heavy lifting of indexing and retrieval.
-    ```bash
-    python -m rag_system.main api
-    ```
-    You should see output indicating it's running on port 8001.
-
-2.  **Start the Main Backend Server:**
-    This server handles sessions, database interactions, and communication with the frontend.
-    ```bash
-    python backend/server.py
-    ```
-    This will run on port 8000.
-
-3.  **Start the Frontend Development Server:**
-    ```bash
-    npm run dev
-    ```
-    The application will be available at [http://localhost:3002](http://localhost:3002).
-
-## 📄 Workflow: Upload, Index, Chat
-
-1.  Open the application and start a "New Chat".
-2.  Use the attachment icon to select the PDF files you want to work with.
-3.  Upon selection, the files are automatically uploaded.
-4.  The UI will then prompt you to **"Index Documents"**. The chat input will be disabled.
-5.  Click the "Index Documents" button. The RAG server will process your files, extract text, and create vector embeddings.
-6.  Once indexing is complete, the chat input will be enabled, and you can start asking questions about your documents.
-
-## 🔧 Configuration & Modularity
-
-The RAG pipeline is highly configurable via the `PIPELINE_CONFIGS` dictionary in `rag_system/main.py`.
-
-### Enabling/Disabling Retrieval Modules
-
-You can easily switch retrieval strategies on or off:
-
--   **Graph RAG**: Set `graph_rag["enabled"]` to `true` or `false`.
--   **Reranker**: Set `reranker["enabled"]` to `true` or `false`.
-
-```python
-# In rag_system/main.py
-...
-"retrieval": {
-    "graph_rag": {
-        "enabled": False, # <-- Toggle this
-        "graph_path": "./index_store/graph/knowledge_graph.gml"
-    },
-    "reranker": {
-        "enabled": False, # <-- Toggle this
-        "model_name": "Qwen/Qwen3-Reranker-0.6B",
-    },
-...
+# Start system
+make dev
 ```
 
-This modularity allows you to experiment with different RAG techniques to see what works best for your use case.
+## 📖 Usage Guide
 
-## ⚡ Local Run Guide (updated 2025-06-17)
-
-The stack has three separate processes that need to be running:
-
-1. **Advanced RAG API** – heavy lifting (indexing / retrieval)
-   * Port `8001`
-   * Start from repository root
-     ```bash
-     python -m rag_system.api_server   # Ctrl-C to stop
-     ```
-   * First launch downloads / loads the embedding model defined in
-     `rag_system/main.py`  (`BAAI/bge-small-en-v1.5` by default).  The first
-     request can therefore take ~1 min.  Keep the server running so the model
-     stays in memory.
-
-2. **Legacy Backend (`server.py`)** – sessions, uploads, REST layer that the
-   Next.js UI talks to
-   * Port `8000`
-     ```bash
-     cd backend
-     python server.py
-     ```
-   * Needs to be running **in addition to** the RAG API; otherwise the UI
-     shows "Backend offline".
-
-3. **Frontend (Next.js)**
-   * Port `3000` (or whichever you choose via `PORT`)
-     ```bash
-     npm install
-     npm run dev       # open http://localhost:3000
-     ```
-
-💡  *Alternative:*  run both Python servers in one process:
+### Development Commands
 ```bash
-python combined_server.py        # starts :8000 and :8001
+# Start in development mode with hot reload
+make dev
+
+# Start without frontend (backend only)
+make dev-no-frontend
+
+# View aggregated logs from all services
+make logs
+
+# Check system health
+make health
+
+# Stop all services
+make stop
 ```
 
-### One-time setup
+### Production Commands
 ```bash
-# Python deps
-pip install -r backend/requirements.txt -r rag_system/requirements.txt
+# Start in production mode
+make prod
 
-# Node deps (UI)
+# Docker deployment
+make docker-build    # Build images
+make docker-up       # Start containers
+make docker-down     # Stop containers
+make docker-logs     # View container logs
+```
+
+### Maintenance Commands
+```bash
+# Clean temporary files and logs
+make clean
+
+# Update system
+make update
+
+# Create backup
+make backup
+
+# Monitor system resources
+make monitor
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+```bash
+# RAG API Configuration
+OLLAMA_HOST=http://localhost:11434
+NODE_ENV=development
+
+# Backend Configuration
+RAG_API_URL=http://localhost:8001
+
+# Frontend Configuration
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+### Service Configuration
+The unified launcher (`run_system.py`) supports various options:
+
+```bash
+# Development mode with frontend
+python run_system.py --mode dev
+
+# Production mode
+python run_system.py --mode prod
+
+# Skip frontend startup
+python run_system.py --no-frontend
+
+# View logs only (don't start services)
+python run_system.py --logs-only
+
+# Health check
+python run_system.py --health
+```
+
+## 📊 Features
+
+### Smart Query Routing
+- **Direct LLM**: Fast responses for general queries (~1.3s)
+- **RAG Pipeline**: Document-aware responses for specific queries
+- **Automatic Detection**: Uses document overviews for intelligent routing
+
+### Document Processing
+- **Multi-format Support**: PDF, text, markdown
+- **Intelligent Chunking**: Recursive markdown chunking with overlap
+- **Contextual Enrichment**: LLM-based content enhancement
+- **Vector Indexing**: Dense embeddings with LanceDB
+
+### Advanced Retrieval
+- **Hybrid Search**: Combines dense and sparse (BM25) retrieval
+- **AI Reranking**: ColBERT-based relevance scoring
+- **Late-chunk Merging**: Expands context while maintaining precision
+- **Graph Extraction**: Entity-relationship knowledge graphs
+
+### User Interface
+- **Modern Design**: Glass-morphism UI with responsive layout
+- **Real-time Chat**: Streaming responses with typing indicators
+- **Session Management**: Persistent conversation history
+- **Index Management**: Document upload and indexing interface
+
+## 📁 Project Structure
+
+```
+rag_system_old/
+├── run_system.py              # Unified system launcher
+├── Makefile                   # Development and deployment commands
+├── docker-compose.yml         # Container orchestration
+├── requirements.txt           # Python dependencies
+├── package.json              # Node.js dependencies
+│
+├── rag_system/               # Core RAG implementation
+│   ├── main.py              # Agent factory and configuration
+│   ├── api_server.py        # RAG API server
+│   ├── pipelines/           # Indexing and retrieval pipelines
+│   ├── agent/               # ReAct agent implementation
+│   ├── indexing/            # Document processing
+│   ├── retrieval/           # Search and retrieval
+│   └── rerankers/           # AI-based reranking
+│
+├── backend/                  # Backend API server
+│   ├── server.py            # Main server with smart routing
+│   ├── database.py          # Session and document management
+│   └── ollama_client.py     # Ollama integration
+│
+├── src/                     # Frontend Next.js application
+│   ├── app/                 # App router pages
+│   ├── components/          # React components
+│   └── lib/                 # Utilities and API client
+│
+├── Documentation/           # Technical documentation
+├── logs/                   # Runtime logs
+├── lancedb/               # Vector database
+├── index_store/           # Document indexes
+└── shared_uploads/        # Uploaded files
+```
+
+## 🐳 Docker Deployment
+
+### Quick Deploy
+```bash
+# Build and start all services
+make deploy
+```
+
+### Manual Docker Commands
+```bash
+# Build images
+docker-compose build
+
+# Start services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop services
+docker-compose down
+```
+
+### Service Health Monitoring
+All services include health checks:
+- **Ollama**: API endpoint availability
+- **RAG API**: Model listing endpoint
+- **Backend**: Health endpoint
+- **Frontend**: Homepage accessibility
+
+## 🔍 Monitoring & Debugging
+
+### Log Files
+```bash
+# View all logs
+tail -f logs/*.log
+
+# Specific service logs
+tail -f logs/rag-api.log
+tail -f logs/backend.log
+tail -f logs/frontend.log
+tail -f logs/ollama.log
+```
+
+### Health Checks
+```bash
+# System health overview
+make health
+
+# Individual service health
+curl http://localhost:11434/api/tags  # Ollama
+curl http://localhost:8001/models     # RAG API
+curl http://localhost:8000/health     # Backend
+curl http://localhost:3000            # Frontend
+```
+
+### Performance Monitoring
+```bash
+# Resource usage
+make monitor
+
+# Process information
+ps aux | grep -E "(python|node|ollama)"
+
+# Port usage
+netstat -tlnp | grep -E "(3000|8000|8001|11434)"
+```
+
+## 🚨 Troubleshooting
+
+### Common Issues
+
+**Port Already in Use**
+```bash
+# Check what's using the port
+lsof -ti:8000
+
+# Kill process using port
+kill $(lsof -ti:8000)
+```
+
+**Ollama Not Starting**
+```bash
+# Check Ollama installation
+ollama --version
+
+# Manual start
+ollama serve
+```
+
+**Frontend Build Errors**
+```bash
+# Clear cache and rebuild
+rm -rf .next node_modules
 npm install
-
-# Ollama models (generation + embedding)
-ollama pull qwen3:8b                 # generation
-ollama pull qwen3-embedding-0.6b     # embeddings
-ollama serve                         # in a separate terminal
+npm run build
 ```
 
-### Typical workflow
-1. "Create new index" → give it a name.
-2. Upload PDFs (stored under `backend/shared_uploads/`).
-3. Click **Build Index** – this triggers `IndexingPipeline.run(...)` on
-   the RAG server.  If you see `TypeError: unexpected keyword argument 'documents'`
-   make sure the RAG server has been restarted after pulling the latest
-   code (the patched `documents` alias is required).
-4. When the build completes, open a new chat session, attach the newly
-   built index, and start chatting.
-5. Toggle **"Stream phases"** in the chat footer to watch step-by-step
-   reasoning events (analyze → retrieval → rerank → … → final answer).
+**RAG API Errors**
+```bash
+# Check Python dependencies
+pip install -r requirements.txt
 
-### Troubleshooting
-* **Port already in use** – kill stray processes:
-  ```bash
-  lsof -i :8000 ; kill <pid>
-  lsof -i :8001 ; kill <pid>
-  ```
-* **Broken pipe / 500** from `/chat` or `/index` – normally means the RAG
-  server crashed.  Check its terminal for the real traceback.  Common
-  causes: missing LanceDB table (build the index first), model still
-  loading, out-of-memory on MPS.
-* **Embedding model** – change `embedding_model_name` in
-  `rag_system/main.py` (or `rag_system/config.py`) if you want to switch
-  away from the default BAAI BGE model.
+# Verify model availability
+ollama list
+```
 
-Happy hacking! 🎉
+### Getting Help
+1. Check logs: `make logs`
+2. Verify health: `make health`
+3. Review documentation in `Documentation/`
+4. Check GitHub issues
+
+## 🔄 Development Workflow
+
+### Local Development
+1. `make dev` - Start all services
+2. Edit code (hot reload enabled)
+3. `make logs` - Monitor changes
+4. `make stop` - Stop when done
+
+### Production Testing
+1. `make prod` - Test production mode
+2. `make docker-build` - Build containers
+3. `make docker-up` - Test containerized deployment
+
+### Deployment
+1. `make deploy` - Full production deployment
+2. `make monitor` - Monitor resources
+3. `make backup` - Regular backups
+
+## 📈 Performance
+
+### Typical Response Times
+- **General Queries**: ~1.3s (direct LLM)
+- **Document Queries**: ~3-5s (full RAG pipeline)
+- **Index Building**: ~30s per document
+
+### Resource Requirements
+- **RAM**: 8GB+ (16GB recommended)
+- **Storage**: 10GB+ for models and indexes
+- **CPU**: 4+ cores recommended
+- **GPU**: Optional, improves performance
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create feature branch: `git checkout -b feature-name`
+3. Make changes and test: `make dev`
+4. Commit changes: `git commit -m "Description"`
+5. Push and create pull request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
