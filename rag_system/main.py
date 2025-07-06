@@ -304,48 +304,59 @@ def show_graph():
         print(f"Error: {e}")
 
 def run_api_server():
-    """Starts the consolidated RAG server."""
-    import sys
-    import os
-    
-    # Add root directory to path
-    root_dir = os.path.dirname(os.path.dirname(__file__))
-    if root_dir not in sys.path:
-        sys.path.append(root_dir)
-    
-    # Import and run the consolidated server
-    from server import main as server_main
-    server_main()
+    """Starts the advanced RAG API server."""
+    from rag_system.api_server import start_server
+    start_server()
 
 def main():
-    """Main entry point with multiple options"""
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="RAG System")
-    parser.add_argument("--mode", choices=["server", "index", "test"], 
-                       default="server", help="Run mode")
-    parser.add_argument("--files", nargs="+", help="Files to index")
-    parser.add_argument("--query", help="Query to run")
-    
-    args = parser.parse_args()
-    
-    if args.mode == "server":
+    if len(sys.argv) < 2:
+        print("Usage: python main.py [index|chat|show_graph|api] [query]")
+        return
+
+    command = sys.argv[1]
+    if command == "index":
+        # Allow passing file paths from the command line
+        files = sys.argv[2:] if len(sys.argv) > 2 else None
+        run_indexing(files)
+    elif command == "chat":
+        if len(sys.argv) < 3:
+            print("Usage: python main.py chat <query>")
+            return
+        query = " ".join(sys.argv[2:])
+        # 🆕 Print the result for command-line usage
+        print(run_chat(query))
+    elif command == "show_graph":
+        show_graph()
+    elif command == "api":
         run_api_server()
-    elif args.mode == "index" and args.files:
-        run_indexing(args.files)
-    elif args.mode == "test":
-        # Run basic functionality test
-        agent = get_agent()
-        if agent:
-            print("✅ RAG Agent initialized successfully")
-            if args.query:
-                result = agent.run(args.query)
-                print(f"Query: {args.query}")
-                print(f"Answer: {result.get('answer', 'No answer')}")
-        else:
-            print("❌ RAG Agent initialization failed")
     else:
-        parser.print_help()
+        print(f"Unknown command: {command}")
 
 if __name__ == "__main__":
-    main()
+    # This allows running the script from the command line to index documents.
+    parser = argparse.ArgumentParser(description="Main entry point for the RAG system.")
+    parser.add_argument(
+        '--index',
+        type=str,
+        help='Path to the directory containing documents to index.'
+    )
+    parser.add_argument(
+        '--config',
+        type=str,
+        default='default',
+        help='The configuration profile to use (e.g., "default", "fast").'
+    )
+
+    args = parser.parse_args()
+
+    # Load environment variables
+    load_dotenv()
+
+    if args.index:
+        run_indexing(args.index, args.config)
+    else:
+        # This is where you might start a server or interactive session
+        print("No action specified. Use --index to process documents.")
+        # Example of how to get an agent instance
+        # agent = get_agent(args.config)
+        # print(f"Agent loaded with '{args.config}' config.")

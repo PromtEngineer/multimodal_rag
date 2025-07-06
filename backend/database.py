@@ -350,30 +350,16 @@ class ChatDatabase:
     def list_indexes(self) -> list[dict]:
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
-        
-        # Get all indexes
         rows = conn.execute('SELECT * FROM indexes').fetchall()
         res = []
-        
-        # Get all documents for all indexes in one query
-        all_docs = {}
-        if rows:
-            index_ids = [r['id'] for r in rows]
-            placeholders = ','.join(['?' for _ in index_ids])
-            docs_cur = conn.execute(f'SELECT index_id, original_filename, stored_path FROM index_documents WHERE index_id IN ({placeholders})', index_ids)
-            for doc_row in docs_cur.fetchall():
-                index_id = doc_row[0]
-                if index_id not in all_docs:
-                    all_docs[index_id] = []
-                all_docs[index_id].append({'filename': doc_row[1], 'stored_path': doc_row[2]})
-        
-        # Build result with documents
         for r in rows:
             item = dict(r)
             item['metadata'] = json.loads(item['metadata'] or '{}')
-            item['documents'] = all_docs.get(item['id'], [])
+            # attach documents list for convenience
+            docs_cur = conn.execute('SELECT original_filename, stored_path FROM index_documents WHERE index_id=?', (item['id'],))
+            docs = [{'filename':d[0],'stored_path':d[1]} for d in docs_cur.fetchall()]
+            item['documents'] = docs
             res.append(item)
-        
         conn.close()
         return res
 

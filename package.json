@@ -6,7 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "system:start": "python run_system.py start",
+    "system:stop": "python run_system.py stop",
+    "system:restart": "python run_system.py restart",
+    "system:status": "python run_system.py status",
+    "system:logs": "python run_system.py logs",
+    "setup": "pip install -r requirements.txt && npm install"
   },
   "dependencies": {
     "@radix-ui/react-avatar": "^1.1.10",

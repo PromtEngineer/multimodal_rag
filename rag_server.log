@@ -1,0 +1,322 @@
+2025-07-05 23:34:53,891 - __main__ - INFO - 🚀 Starting Consolidated RAG System Server Deployment
+2025-07-05 23:34:53,891 - __main__ - INFO - ============================================================
+2025-07-05 23:34:53,891 - __main__ - INFO - 🔍 Running pre-flight checks...
+2025-07-05 23:34:53,891 - __main__ - INFO - ✅ Directory ensured: shared_uploads
+2025-07-05 23:34:53,891 - __main__ - INFO - ✅ Directory ensured: index_store
+2025-07-05 23:34:53,892 - __main__ - INFO - ✅ Directory ensured: index_store/overviews
+2025-07-05 23:34:53,892 - __main__ - INFO - 🔧 Configuration:
+2025-07-05 23:34:53,892 - __main__ - INFO -    Port: 8000
+2025-07-05 23:34:53,892 - __main__ - INFO -    RAG Mode: default
+2025-07-05 23:34:53,892 - __main__ - INFO -    Log Level: INFO
+2025-07-05 23:34:54,232 - numexpr.utils - INFO - Note: NumExpr detected 12 cores but "NUMEXPR_MAX_THREADS" not set, so enforcing safe limit of 8.
+2025-07-05 23:34:54,232 - numexpr.utils - INFO - NumExpr defaulting to 8 threads.
+2025-07-05 23:34:56,470 - datasets - INFO - PyTorch version 2.4.1 available.
+2025-07-05 23:34:57,401 - consolidated_server - INFO - Initializing RAG Agent in mode: default
+2025-07-05 23:34:58,723 - rag_system.indexing.contextualizer - INFO - Initialized ContextualEnricher with Ollama model 'qwen3:0.6b' (batch_size=10).
+2025-07-05 23:34:58,723 - consolidated_server - INFO - ✅ RAG Agent initialized successfully
+2025-07-05 23:34:58,723 - __main__ - INFO - ✅ Consolidated server module imported successfully
+2025-07-05 23:34:58,724 - __main__ - INFO - ✅ Database connection established
+2025-07-05 23:34:58,724 - __main__ - INFO - ✅ RAG agent initialized successfully
+2025-07-05 23:34:58,724 - __main__ - INFO - ✅ All pre-flight checks passed
+2025-07-05 23:34:58,724 - __main__ - INFO - ============================================================
+2025-07-05 23:34:58,724 - __main__ - INFO - 🌟 Starting consolidated server...
+2025-07-05 23:34:58,724 - consolidated_server - INFO - ✅ Database initialized successfully
+2025-07-05 23:34:58,725 - consolidated_server - INFO - 📄 Initializing simple PDF processing...
+2025-07-05 23:34:58,725 - consolidated_server - INFO - ✅ Simple PDF processor initialized
+2025-07-05 23:34:58,725 - consolidated_server - INFO - ✅ Global PDF processor initialized
+2025-07-05 23:34:58,726 - consolidated_server - INFO - 🧹 Cleaning up empty sessions...
+2025-07-05 23:34:58,726 - consolidated_server - INFO - ✨ No empty sessions to clean up
+2025-07-05 23:34:58,726 - consolidated_server - ERROR - ❌ Server startup failed: [Errno 48] Address already in use
+2025-07-05 23:35:16,431 - __main__ - INFO - 🚀 Starting Consolidated RAG System Server Deployment
+2025-07-05 23:35:16,431 - __main__ - INFO - ============================================================
+2025-07-05 23:35:16,431 - __main__ - INFO - 🔍 Running pre-flight checks...
+2025-07-05 23:35:16,432 - __main__ - INFO - ✅ Directory ensured: shared_uploads
+2025-07-05 23:35:16,432 - __main__ - INFO - ✅ Directory ensured: index_store
+2025-07-05 23:35:16,432 - __main__ - INFO - ✅ Directory ensured: index_store/overviews
+2025-07-05 23:35:16,432 - __main__ - INFO - 🔧 Configuration:
+2025-07-05 23:35:16,432 - __main__ - INFO -    Port: 8000
+2025-07-05 23:35:16,432 - __main__ - INFO -    RAG Mode: default
+2025-07-05 23:35:16,432 - __main__ - INFO -    Log Level: INFO
+2025-07-05 23:35:16,840 - numexpr.utils - INFO - Note: NumExpr detected 12 cores but "NUMEXPR_MAX_THREADS" not set, so enforcing safe limit of 8.
+2025-07-05 23:35:16,840 - numexpr.utils - INFO - NumExpr defaulting to 8 threads.
+2025-07-05 23:35:19,507 - datasets - INFO - PyTorch version 2.4.1 available.
+2025-07-05 23:35:20,376 - consolidated_server - INFO - Initializing RAG Agent in mode: default
+2025-07-05 23:35:21,797 - rag_system.indexing.contextualizer - INFO - Initialized ContextualEnricher with Ollama model 'qwen3:0.6b' (batch_size=10).
+2025-07-05 23:35:21,797 - consolidated_server - INFO - ✅ RAG Agent initialized successfully
+2025-07-05 23:35:21,797 - __main__ - INFO - ✅ Consolidated server module imported successfully
+2025-07-05 23:35:21,799 - __main__ - INFO - ✅ Database connection established
+2025-07-05 23:35:21,799 - __main__ - INFO - ✅ RAG agent initialized successfully
+2025-07-05 23:35:21,799 - __main__ - INFO - ✅ All pre-flight checks passed
+2025-07-05 23:35:21,799 - __main__ - INFO - ============================================================
+2025-07-05 23:35:21,799 - __main__ - INFO - 🌟 Starting consolidated server...
+2025-07-05 23:35:21,799 - consolidated_server - INFO - ✅ Database initialized successfully
+2025-07-05 23:35:21,799 - consolidated_server - INFO - 📄 Initializing simple PDF processing...
+2025-07-05 23:35:21,799 - consolidated_server - INFO - ✅ Simple PDF processor initialized
+2025-07-05 23:35:21,799 - consolidated_server - INFO - ✅ Global PDF processor initialized
+2025-07-05 23:35:21,799 - consolidated_server - INFO - 🧹 Cleaning up empty sessions...
+2025-07-05 23:35:21,800 - consolidated_server - INFO - ✨ No empty sessions to clean up
+2025-07-05 23:35:21,800 - consolidated_server - INFO - 🚀 Starting Consolidated RAG System Server on port 8000
+2025-07-05 23:35:21,800 - consolidated_server - INFO - 📍 Legacy chat endpoint: http://localhost:8000/chat
+2025-07-05 23:35:21,800 - consolidated_server - INFO - 📍 Session chat endpoint: http://localhost:8000/sessions/{id}/messages
+2025-07-05 23:35:21,800 - consolidated_server - INFO - 📍 Advanced chat endpoint: http://localhost:8000/chat/advanced
+2025-07-05 23:35:21,800 - consolidated_server - INFO - 📍 Streaming chat endpoint: http://localhost:8000/chat/stream
+2025-07-05 23:35:21,800 - consolidated_server - INFO - 📍 Advanced indexing endpoint: http://localhost:8000/index
+2025-07-05 23:35:21,800 - consolidated_server - INFO - 🔍 Health check: http://localhost:8000/health
+2025-07-05 23:35:21,829 - consolidated_server - INFO - ✅ Ollama is running with 26 models
+2025-07-05 23:35:21,829 - consolidated_server - INFO - 📋 Available models: gemma3n:e4b-it-q8_0, gemma3n:e4b, gemma3n:e2b...
+2025-07-05 23:35:21,829 - consolidated_server - INFO - 
+🌐 Frontend should connect to: http://localhost:8000
+2025-07-05 23:35:21,829 - consolidated_server - INFO - 💬 Consolidated RAG System Ready!
+2025-07-05 23:35:21,829 - consolidated_server - INFO - 
+🎯 Available Features:
+2025-07-05 23:35:21,829 - consolidated_server - INFO -    • Session Management
+2025-07-05 23:35:21,829 - consolidated_server - INFO -    • File Upload & Indexing
+2025-07-05 23:35:21,829 - consolidated_server - INFO -    • Smart Routing (Direct LLM vs RAG)
+2025-07-05 23:35:21,829 - consolidated_server - INFO -    • Advanced RAG with full parameter control
+2025-07-05 23:35:21,829 - consolidated_server - INFO -    • Streaming responses
+2025-07-05 23:35:21,829 - consolidated_server - INFO -    • Index Management
+2025-07-05 23:35:21,829 - consolidated_server - INFO -    • Health Monitoring
+
+2025-07-05 23:36:37,624 - __main__ - INFO - 🚀 Starting Consolidated RAG System Server Deployment
+2025-07-05 23:36:37,624 - __main__ - INFO - ============================================================
+2025-07-05 23:36:37,624 - __main__ - INFO - 🔍 Running pre-flight checks...
+2025-07-05 23:36:37,624 - __main__ - INFO - ✅ Directory ensured: shared_uploads
+2025-07-05 23:36:37,624 - __main__ - INFO - ✅ Directory ensured: index_store
+2025-07-05 23:36:37,624 - __main__ - INFO - ✅ Directory ensured: index_store/overviews
+2025-07-05 23:36:37,624 - __main__ - INFO - 🔧 Configuration:
+2025-07-05 23:36:37,624 - __main__ - INFO -    Port: 8000
+2025-07-05 23:36:37,624 - __main__ - INFO -    RAG Mode: default
+2025-07-05 23:36:37,624 - __main__ - INFO -    Log Level: INFO
+2025-07-05 23:36:38,085 - numexpr.utils - INFO - Note: NumExpr detected 12 cores but "NUMEXPR_MAX_THREADS" not set, so enforcing safe limit of 8.
+2025-07-05 23:36:38,085 - numexpr.utils - INFO - NumExpr defaulting to 8 threads.
+2025-07-05 23:36:40,960 - datasets - INFO - PyTorch version 2.4.1 available.
+2025-07-05 23:36:41,835 - consolidated_server - INFO - Initializing RAG Agent in mode: default
+2025-07-05 23:36:43,238 - rag_system.indexing.contextualizer - INFO - Initialized ContextualEnricher with Ollama model 'qwen3:0.6b' (batch_size=10).
+2025-07-05 23:36:43,238 - consolidated_server - INFO - ✅ RAG Agent initialized successfully
+2025-07-05 23:36:43,239 - __main__ - INFO - ✅ Consolidated server module imported successfully
+2025-07-05 23:36:43,240 - __main__ - INFO - ✅ Database connection established
+2025-07-05 23:36:43,240 - __main__ - INFO - ✅ RAG agent initialized successfully
+2025-07-05 23:36:43,240 - __main__ - INFO - ✅ All pre-flight checks passed
+2025-07-05 23:36:43,240 - __main__ - INFO - ============================================================
+2025-07-05 23:36:43,240 - __main__ - INFO - 🌟 Starting consolidated server...
+2025-07-05 23:36:43,240 - consolidated_server - INFO - ✅ Database initialized successfully
+2025-07-05 23:36:43,240 - consolidated_server - INFO - 📄 Initializing simple PDF processing...
+2025-07-05 23:36:43,240 - consolidated_server - INFO - ✅ Simple PDF processor initialized
+2025-07-05 23:36:43,240 - consolidated_server - INFO - ✅ Global PDF processor initialized
+2025-07-05 23:36:43,240 - consolidated_server - INFO - 🧹 Cleaning up empty sessions...
+2025-07-05 23:36:43,241 - consolidated_server - INFO - ✨ No empty sessions to clean up
+2025-07-05 23:36:43,241 - consolidated_server - ERROR - ❌ Server startup failed: [Errno 48] Address already in use
+2025-07-05 23:36:43,870 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:36:43 GMT] "GET /health HTTP/1.1" 200 -
+2025-07-05 23:37:13,731 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:37:13 GMT] "GET /health HTTP/1.1" 200 -
+2025-07-05 23:37:17,444 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:37:17 GMT] "GET /indexes HTTP/1.1" 200 -
+2025-07-05 23:37:17,449 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:37:17 GMT] "GET /indexes HTTP/1.1" 200 -
+2025-07-05 23:37:19,403 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:37:19 GMT] "OPTIONS /sessions HTTP/1.1" 200 -
+2025-07-05 23:37:19,415 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:37:19 GMT] "POST /sessions HTTP/1.1" 201 -
+2025-07-05 23:37:19,422 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:37:19 GMT] "POST /sessions/73b28ba4-4156-450d-8d00-60c4d1ef2fd3/indexes/1e7323c3-2ac3-4edc-b844-686f41e12002 HTTP/1.1" 200 -
+2025-07-05 23:37:19,445 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:37:19 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-05 23:37:19,448 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:37:19 GMT] "GET /sessions/73b28ba4-4156-450d-8d00-60c4d1ef2fd3 HTTP/1.1" 200 -
+2025-07-05 23:37:19,465 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:37:19 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-05 23:37:19,466 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:37:19 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-05 23:37:19,467 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:37:19 GMT] "GET /sessions/73b28ba4-4156-450d-8d00-60c4d1ef2fd3 HTTP/1.1" 200 -
+2025-07-05 23:37:19,467 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:37:19 GMT] "GET /sessions/73b28ba4-4156-450d-8d00-60c4d1ef2fd3/indexes HTTP/1.1" 200 -
+2025-07-05 23:37:19,483 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:37:19 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-05 23:37:19,484 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:37:19 GMT] "GET /sessions/73b28ba4-4156-450d-8d00-60c4d1ef2fd3 HTTP/1.1" 200 -
+2025-07-05 23:37:19,485 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:37:19 GMT] "GET /sessions/73b28ba4-4156-450d-8d00-60c4d1ef2fd3/indexes HTTP/1.1" 200 -
+2025-07-05 23:37:19,488 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:37:19 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-05 23:37:19,490 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:37:19 GMT] "GET /sessions/73b28ba4-4156-450d-8d00-60c4d1ef2fd3/indexes HTTP/1.1" 200 -
+2025-07-05 23:38:00,926 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:38:00 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-05 23:38:12,369 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:38:12 GMT] "GET /sessions/73b28ba4-4156-450d-8d00-60c4d1ef2fd3/indexes HTTP/1.1" 200 -
+2025-07-05 23:38:12,370 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:38:12 GMT] "GET /sessions/73b28ba4-4156-450d-8d00-60c4d1ef2fd3/indexes HTTP/1.1" 200 -
+2025-07-05 23:38:44,994 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:38:44 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-05 23:39:04,793 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:04 GMT] "GET /health HTTP/1.1" 200 -
+2025-07-05 23:39:10,921 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:10 GMT] "POST /chat/stream HTTP/1.1" 200 -
+2025-07-05 23:39:19,596 - consolidated_server - INFO - Client disconnected from SSE stream.
+2025-07-05 23:39:19,613 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:19 GMT] "GET /health HTTP/1.1" 200 -
+2025-07-05 23:39:33,301 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:33 GMT] "GET /indexes HTTP/1.1" 200 -
+2025-07-05 23:39:33,305 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:33 GMT] "GET /indexes HTTP/1.1" 200 -
+2025-07-05 23:39:35,317 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:35 GMT] "OPTIONS /sessions HTTP/1.1" 200 -
+2025-07-05 23:39:35,324 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:35 GMT] "POST /sessions HTTP/1.1" 201 -
+2025-07-05 23:39:35,332 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:35 GMT] "POST /sessions/25f891e1-995d-4d6f-9693-9696b6076f37/indexes/1e7323c3-2ac3-4edc-b844-686f41e12002 HTTP/1.1" 200 -
+2025-07-05 23:39:35,357 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:35 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-05 23:39:35,359 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:35 GMT] "GET /sessions/25f891e1-995d-4d6f-9693-9696b6076f37 HTTP/1.1" 200 -
+2025-07-05 23:39:35,374 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:35 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-05 23:39:35,374 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:35 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-05 23:39:35,377 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:35 GMT] "GET /sessions/25f891e1-995d-4d6f-9693-9696b6076f37 HTTP/1.1" 200 -
+2025-07-05 23:39:35,391 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:35 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-05 23:39:35,392 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:35 GMT] "GET /sessions/25f891e1-995d-4d6f-9693-9696b6076f37/indexes HTTP/1.1" 200 -
+2025-07-05 23:39:35,393 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:35 GMT] "GET /sessions/25f891e1-995d-4d6f-9693-9696b6076f37 HTTP/1.1" 200 -
+2025-07-05 23:39:35,393 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:35 GMT] "GET /sessions/25f891e1-995d-4d6f-9693-9696b6076f37/indexes HTTP/1.1" 200 -
+2025-07-05 23:39:35,396 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:35 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-05 23:39:35,398 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:35 GMT] "GET /sessions/25f891e1-995d-4d6f-9693-9696b6076f37/indexes HTTP/1.1" 200 -
+2025-07-05 23:39:46,285 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:46 GMT] "OPTIONS /chat/stream HTTP/1.1" 200 -
+2025-07-05 23:39:46,291 - consolidated_server - INFO - Updated session title to: What is the training cost of deepseek?
+2025-07-05 23:39:46,298 - consolidated_server - INFO - Stored user message: 360891cb-b784-451d-9492-6794b63114f0
+2025-07-05 23:39:46,298 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:39:46 GMT] "POST /chat/stream HTTP/1.1" 200 -
+2025-07-05 23:39:50,614 - rag-system - INFO - Top 20 results:
+2025-07-05 23:39:50,614 - rag-system - INFO - chunk_id       score   preview
+2025-07-05 23:39:50,614 - rag-system - INFO - ------------------------------
+2025-07-05 23:39:50,614 - rag-system - INFO - 14bd10d5-738 0.000   Context: The chunk summarizes the total training cost of…
+2025-07-05 23:39:50,614 - rag-system - INFO - 14bd10d5-738 0.000   Context: The DeepSeek-V3 Technical Report opens with the…
+2025-07-05 23:39:50,615 - rag-system - INFO - 14bd10d5-738 0.000   Context: The economical training costs of DeepSeek-V3,…
+2025-07-05 23:39:50,615 - rag-system - INFO - 14bd10d5-738 0.000   Context: Maintaining BF16 or FP32 for embedding, output…
+2025-07-05 23:39:50,615 - rag-system - INFO - 14bd10d5-738 0.000   Context: DeepSeek-V3's architecture, optimized for…
+2025-07-05 23:39:50,615 - rag-system - INFO - 14bd10d5-738 0.000   Context: The chunk discusses a Token Prediction Evaluation…
+2025-07-05 23:39:50,615 - rag-system - INFO - 14bd10d5-738 0.000   Context: DeepSeek-V3’s load balancing strategy (auxiliary-…
+2025-07-05 23:39:50,616 - rag-system - INFO - 14bd10d5-738 0.000   Context: The context summarizes that Distillation from…
+2025-07-05 23:39:50,616 - rag-system - INFO - 14bd10d5-738 0.000   Context: The chunk summarizes that DeepSeekV3's training…
+2025-07-05 23:39:50,616 - rag-system - INFO - 14bd10d5-738 0.000   Context: DeepSeek-V3's evaluation on benchmarks highlights…
+2025-07-05 23:39:50,616 - rag-system - INFO - 14bd10d5-738 242.884 Context: DeepSeek-V3, a large MoE language model with 671B…
+2025-07-05 23:39:50,616 - rag-system - INFO - 14bd10d5-738 246.843 Context: DeepSeek-V3's distilling of reasoning from its…
+2025-07-05 23:39:50,616 - rag-system - INFO - 14bd10d5-738 289.375 Context: DeepSeek-V3-Base outperforms previous models in…
+2025-07-05 23:39:50,616 - rag-system - INFO - 14bd10d5-738 291.935 Context: Storing master weights, gradients, and optimizer…
+2025-07-05 23:39:50,617 - rag-system - INFO - 14bd10d5-738 292.708 Context: DeepSeek-V3 comprises 671B total parameters, with…
+2025-07-05 23:39:50,617 - rag-system - INFO - 14bd10d5-738 295.388 Context: DeepSeek-V3's future research focuses on enhancing…
+2025-07-05 23:39:50,617 - rag-system - INFO - 14bd10d5-738 298.231 Context: DeepSeek-V3's chunk emphasizes its focus on…
+2025-07-05 23:39:50,617 - rag-system - INFO - 14bd10d5-738 307.745 Context: The context summary is: "DeepSeek-V3's…
+2025-07-05 23:39:50,617 - rag-system - INFO - 14bd10d5-738 310.287 Context: DeepSeek-V3 achieves a groundbreaking milestone as…
+2025-07-05 23:39:50,617 - rag-system - INFO - 14bd10d5-738 342.705 Context: DeepSeek-V3's MTP objective extends prediction…
+2025-07-05 23:39:51,331 - httpx - INFO - HTTP Request: GET https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json "HTTP/1.1 200 OK"
+2025-07-05 23:40:22,669 - httpx - INFO - HTTP Request: POST http://localhost:11434/api/generate "HTTP/1.1 200 OK"
+2025-07-05 23:40:22,674 - consolidated_server - INFO - Stored AI response: 36ed74dd-163a-4f6f-88fe-32015b033471
+2025-07-05 23:40:22,685 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:40:22 GMT] "GET /health HTTP/1.1" 200 -
+2025-07-05 23:40:22,685 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:40:22 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-05 23:40:22,687 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:40:22 GMT] "POST /chat/stream HTTP/1.1" 200 -
+2025-07-05 23:40:23,619 - consolidated_server - INFO - Client disconnected from SSE stream.
+2025-07-05 23:40:23,620 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:40:23 GMT] "GET /sessions/25f891e1-995d-4d6f-9693-9696b6076f37 HTTP/1.1" 200 -
+2025-07-05 23:40:23,624 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:40:23 GMT] "GET /sessions/25f891e1-995d-4d6f-9693-9696b6076f37 HTTP/1.1" 200 -
+2025-07-05 23:40:23,627 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:40:23 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-05 23:40:23,648 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:40:23 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-05 23:40:30,744 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:40:30 GMT] "GET /health HTTP/1.1" 200 -
+2025-07-05 23:41:00,292 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:41:00 GMT] "GET /health HTTP/1.1" 200 -
+2025-07-05 23:41:01,589 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:41:01 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-05 23:41:01,604 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:41:01 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-05 23:41:01,617 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:41:01 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-05 23:41:01,629 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:41:01 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-05 23:41:01,644 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:41:01 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-05 23:41:01,658 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:41:01 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-05 23:41:37,530 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:41:37 GMT] "OPTIONS /indexes HTTP/1.1" 200 -
+2025-07-05 23:41:37,533 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:41:37 GMT] "POST /indexes HTTP/1.1" 201 -
+2025-07-05 23:41:37,594 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:41:37 GMT] "POST /indexes/8a7fe2a7-6b3b-4baf-b957-010b8ae24c73/upload HTTP/1.1" 200 -
+2025-07-05 23:41:37,597 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:41:37 GMT] "OPTIONS /indexes/8a7fe2a7-6b3b-4baf-b957-010b8ae24c73/build HTTP/1.1" 200 -
+2025-07-05 23:41:37,996 - rag_system.indexing.contextualizer - INFO - Initialized ContextualEnricher with Ollama model 'qwen3:0.6b' (batch_size=64).
+2025-07-05 23:41:38,923 - docling.document_converter - INFO - Going to convert document batch...
+2025-07-05 23:41:38,923 - docling.document_converter - INFO - Initializing pipeline for StandardPdfPipeline with options hash a6199fbf72cfc8f691d8f6329c854161
+2025-07-05 23:41:38,969 - docling.models.factories.base_factory - INFO - Loading plugin 'docling_defaults'
+2025-07-05 23:41:38,969 - docling.models.factories - INFO - Registered ocr engines: ['easyocr', 'ocrmac', 'rapidocr', 'tesserocr', 'tesseract']
+2025-07-05 23:41:38,969 - docling.utils.accelerator_utils - INFO - Accelerator device: 'mps'
+2025-07-05 23:41:40,091 - docling.utils.accelerator_utils - INFO - Accelerator device: 'mps'
+2025-07-05 23:41:40,680 - docling.models.factories.base_factory - INFO - Loading plugin 'docling_defaults'
+2025-07-05 23:41:40,680 - docling.models.factories - INFO - Registered picture descriptions: ['vlm', 'api']
+2025-07-05 23:41:40,680 - docling.pipeline.base_pipeline - INFO - Processing document 7286ac1c-25b5-4878-943a-4c3e9d979d8f_invoice_2001.pdf
+2025-07-05 23:41:42,244 - docling.document_converter - INFO - Finished converting document 7286ac1c-25b5-4878-943a-4c3e9d979d8f_invoice_2001.pdf in 3.36 sec.
+2025-07-05 23:41:46,244 - rag_system.indexing.overview_builder - INFO - 📄 Overview generated for 7286ac1c-25b5-4878-943a-4c3e9d979d8f_invoice_2001.pdf (stored in index_store/overviews/8a7fe2a7-6b3b-4baf-b957-010b8ae24c73.jsonl)
+2025-07-05 23:41:46,247 - docling.document_converter - INFO - Going to convert document batch...
+2025-07-05 23:41:46,247 - docling.pipeline.base_pipeline - INFO - Processing document 9de1859f-485e-458a-9177-e6787016ec75_invoice_2002.pdf
+2025-07-05 23:41:46,917 - docling.document_converter - INFO - Finished converting document 9de1859f-485e-458a-9177-e6787016ec75_invoice_2002.pdf in 0.67 sec.
+2025-07-05 23:41:48,981 - rag_system.indexing.overview_builder - INFO - 📄 Overview generated for 9de1859f-485e-458a-9177-e6787016ec75_invoice_2002.pdf (stored in index_store/overviews/8a7fe2a7-6b3b-4baf-b957-010b8ae24c73.jsonl)
+2025-07-05 23:41:48,982 - rag_system.utils.batch_processor - INFO - Document Processing: 2/12 (16.7%) - 0.20 items/sec - ETA: 0.8min - Errors: 0
+2025-07-05 23:41:48,989 - docling.document_converter - INFO - Going to convert document batch...
+2025-07-05 23:41:48,989 - docling.pipeline.base_pipeline - INFO - Processing document 27ffa004-e581-4ef7-ac50-7681e3957801_invoice_2003.pdf
+2025-07-05 23:41:49,635 - docling.document_converter - INFO - Finished converting document 27ffa004-e581-4ef7-ac50-7681e3957801_invoice_2003.pdf in 0.65 sec.
+2025-07-05 23:41:51,996 - rag_system.indexing.overview_builder - INFO - 📄 Overview generated for 27ffa004-e581-4ef7-ac50-7681e3957801_invoice_2003.pdf (stored in index_store/overviews/8a7fe2a7-6b3b-4baf-b957-010b8ae24c73.jsonl)
+2025-07-05 23:41:52,002 - docling.document_converter - INFO - Going to convert document batch...
+2025-07-05 23:41:52,002 - docling.pipeline.base_pipeline - INFO - Processing document d37cce58-23ed-4493-b43d-0d3afc487c48_invoice_2004.pdf
+2025-07-05 23:41:52,650 - docling.document_converter - INFO - Finished converting document d37cce58-23ed-4493-b43d-0d3afc487c48_invoice_2004.pdf in 0.65 sec.
+2025-07-05 23:41:55,424 - rag_system.indexing.overview_builder - INFO - 📄 Overview generated for d37cce58-23ed-4493-b43d-0d3afc487c48_invoice_2004.pdf (stored in index_store/overviews/8a7fe2a7-6b3b-4baf-b957-010b8ae24c73.jsonl)
+2025-07-05 23:41:55,429 - docling.document_converter - INFO - Going to convert document batch...
+2025-07-05 23:41:55,429 - docling.pipeline.base_pipeline - INFO - Processing document 64030a7c-616e-403c-87fc-3f277d2ad348_invoice_2005.pdf
+2025-07-05 23:41:56,044 - docling.document_converter - INFO - Finished converting document 64030a7c-616e-403c-87fc-3f277d2ad348_invoice_2005.pdf in 0.62 sec.
+2025-07-05 23:41:59,154 - rag_system.indexing.overview_builder - INFO - 📄 Overview generated for 64030a7c-616e-403c-87fc-3f277d2ad348_invoice_2005.pdf (stored in index_store/overviews/8a7fe2a7-6b3b-4baf-b957-010b8ae24c73.jsonl)
+2025-07-05 23:41:59,154 - rag_system.utils.batch_processor - INFO - Document Processing: 5/12 (41.7%) - 0.25 items/sec - ETA: 0.5min - Errors: 0
+2025-07-05 23:41:59,160 - docling.document_converter - INFO - Going to convert document batch...
+2025-07-05 23:41:59,160 - docling.pipeline.base_pipeline - INFO - Processing document d94402b6-7ecb-42b0-9555-37f4c119f06b_invoice_2006.pdf
+2025-07-05 23:41:59,770 - docling.document_converter - INFO - Finished converting document d94402b6-7ecb-42b0-9555-37f4c119f06b_invoice_2006.pdf in 0.61 sec.
+2025-07-05 23:42:02,946 - rag_system.indexing.overview_builder - INFO - 📄 Overview generated for d94402b6-7ecb-42b0-9555-37f4c119f06b_invoice_2006.pdf (stored in index_store/overviews/8a7fe2a7-6b3b-4baf-b957-010b8ae24c73.jsonl)
+2025-07-05 23:42:02,949 - docling.document_converter - INFO - Going to convert document batch...
+2025-07-05 23:42:02,950 - docling.pipeline.base_pipeline - INFO - Processing document 093a8b6d-9671-43e6-8423-4733ae176d5b_invoice_2007.pdf
+2025-07-05 23:42:03,539 - docling.document_converter - INFO - Finished converting document 093a8b6d-9671-43e6-8423-4733ae176d5b_invoice_2007.pdf in 0.59 sec.
+2025-07-05 23:42:06,487 - rag_system.indexing.overview_builder - INFO - 📄 Overview generated for 093a8b6d-9671-43e6-8423-4733ae176d5b_invoice_2007.pdf (stored in index_store/overviews/8a7fe2a7-6b3b-4baf-b957-010b8ae24c73.jsonl)
+2025-07-05 23:42:06,493 - docling.document_converter - INFO - Going to convert document batch...
+2025-07-05 23:42:06,494 - docling.pipeline.base_pipeline - INFO - Processing document 447309f8-cd21-4cf6-905d-9377b91cb9bd_invoice_2009 (1).pdf
+2025-07-05 23:42:07,097 - docling.document_converter - INFO - Finished converting document 447309f8-cd21-4cf6-905d-9377b91cb9bd_invoice_2009 (1).pdf in 0.61 sec.
+2025-07-05 23:42:10,258 - rag_system.indexing.overview_builder - INFO - 📄 Overview generated for 447309f8-cd21-4cf6-905d-9377b91cb9bd_invoice_2009 (1).pdf (stored in index_store/overviews/8a7fe2a7-6b3b-4baf-b957-010b8ae24c73.jsonl)
+2025-07-05 23:42:10,259 - rag_system.utils.batch_processor - INFO - Document Processing: 8/12 (66.7%) - 0.25 items/sec - ETA: 0.3min - Errors: 0
+2025-07-05 23:42:10,267 - docling.document_converter - INFO - Going to convert document batch...
+2025-07-05 23:42:10,267 - docling.pipeline.base_pipeline - INFO - Processing document 43c845b9-ce73-41e9-8f97-41bc772d9811_invoice_2009.pdf
+2025-07-05 23:42:10,898 - docling.document_converter - INFO - Finished converting document 43c845b9-ce73-41e9-8f97-41bc772d9811_invoice_2009.pdf in 0.63 sec.
+2025-07-05 23:42:13,677 - rag_system.indexing.overview_builder - INFO - 📄 Overview generated for 43c845b9-ce73-41e9-8f97-41bc772d9811_invoice_2009.pdf (stored in index_store/overviews/8a7fe2a7-6b3b-4baf-b957-010b8ae24c73.jsonl)
+2025-07-05 23:42:13,681 - docling.document_converter - INFO - Going to convert document batch...
+2025-07-05 23:42:13,681 - docling.pipeline.base_pipeline - INFO - Processing document 1b989f9a-bb89-4239-9658-52ac4b7069cb_invoice_2010.pdf
+2025-07-05 23:42:14,288 - docling.document_converter - INFO - Finished converting document 1b989f9a-bb89-4239-9658-52ac4b7069cb_invoice_2010.pdf in 0.61 sec.
+2025-07-05 23:42:16,611 - rag_system.indexing.overview_builder - INFO - 📄 Overview generated for 1b989f9a-bb89-4239-9658-52ac4b7069cb_invoice_2010.pdf (stored in index_store/overviews/8a7fe2a7-6b3b-4baf-b957-010b8ae24c73.jsonl)
+2025-07-05 23:42:16,620 - docling.document_converter - INFO - Going to convert document batch...
+2025-07-05 23:42:16,620 - docling.pipeline.base_pipeline - INFO - Processing document e5ba5d48-cce6-4ac1-aa02-c9a49f040ec8_invoice_2011.pdf
+2025-07-05 23:42:17,255 - docling.document_converter - INFO - Finished converting document e5ba5d48-cce6-4ac1-aa02-c9a49f040ec8_invoice_2011.pdf in 0.64 sec.
+2025-07-05 23:42:20,316 - rag_system.indexing.overview_builder - INFO - 📄 Overview generated for e5ba5d48-cce6-4ac1-aa02-c9a49f040ec8_invoice_2011.pdf (stored in index_store/overviews/8a7fe2a7-6b3b-4baf-b957-010b8ae24c73.jsonl)
+2025-07-05 23:42:20,316 - rag_system.utils.batch_processor - INFO - Document Processing: 11/12 (91.7%) - 0.27 items/sec - ETA: 0.1min - Errors: 0
+2025-07-05 23:42:20,326 - docling.document_converter - INFO - Going to convert document batch...
+2025-07-05 23:42:20,326 - docling.pipeline.base_pipeline - INFO - Processing document 92044872-b2bf-46c1-b1e7-7cffc4e27434_invoice_2012.pdf
+2025-07-05 23:42:20,924 - docling.document_converter - INFO - Finished converting document 92044872-b2bf-46c1-b1e7-7cffc4e27434_invoice_2012.pdf in 0.60 sec.
+2025-07-05 23:42:23,615 - rag_system.indexing.overview_builder - INFO - 📄 Overview generated for 92044872-b2bf-46c1-b1e7-7cffc4e27434_invoice_2012.pdf (stored in index_store/overviews/8a7fe2a7-6b3b-4baf-b957-010b8ae24c73.jsonl)
+2025-07-05 23:42:23,615 - rag_system.utils.batch_processor - INFO - Document Processing completed: 12/12 items in 44.74s (0.27 items/sec) - 0 errors
+2025-07-05 23:42:23,615 - rag_system.utils.batch_processor - INFO - Document Processing & Chunking completed in 44.74s
+2025-07-05 23:42:23,615 - rag_system.indexing.contextualizer - INFO - Enriching 24 chunks with contextual summaries (window_size=5) using Ollama...
+2025-07-05 23:42:23,615 - rag_system.indexing.contextualizer - INFO - Estimated memory usage for contextual enrichment: 0.0MB
+2025-07-05 23:42:23,615 - rag_system.utils.batch_processor - INFO - Starting Contextual Enrichment for 24 items in batches of 64
+2025-07-05 23:43:23,089 - rag_system.utils.batch_processor - INFO - Batch 1/1 completed in 59.47s
+2025-07-05 23:43:23,089 - rag_system.utils.batch_processor - INFO - Contextual Enrichment: 24/24 (100.0%) - 0.40 items/sec - ETA: 0.0min - Errors: 0
+2025-07-05 23:43:23,089 - rag_system.utils.batch_processor - INFO - Contextual Enrichment (total) completed in 59.47s
+2025-07-05 23:43:23,089 - rag_system.utils.batch_processor - INFO - Contextual Enrichment completed: 24/24 items in 59.47s (0.40 items/sec) - 0 errors
+2025-07-05 23:43:23,089 - rag_system.utils.batch_processor - INFO - Contextual Enrichment completed in 59.47s
+2025-07-05 23:43:23,089 - rag_system.utils.batch_processor - INFO - Starting Embedding Generation for 24 items in batches of 64
+2025-07-05 23:43:24,664 - rag_system.utils.batch_processor - INFO - Batch 1/1 completed in 1.57s
+2025-07-05 23:43:24,664 - rag_system.utils.batch_processor - INFO - Embedding Generation (total) completed in 1.57s
+2025-07-05 23:43:24,664 - rag_system.utils.batch_processor - INFO - Embedding Generation completed: 24/24 items in 1.57s (15.24 items/sec) - 0 errors
+2025-07-05 23:43:25,553 - rag_system.utils.batch_processor - INFO - Late-Chunk Embedding & Indexing completed in 0.85s
+2025-07-05 23:43:25,553 - rag_system.utils.batch_processor - INFO - Vector Embedding & Indexing completed in 2.46s
+2025-07-05 23:43:25,553 - rag_system.utils.batch_processor - INFO - Complete Indexing Pipeline completed in 106.68s
+2025-07-05 23:43:25,553 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:43:25 GMT] "POST /indexes/8a7fe2a7-6b3b-4baf-b957-010b8ae24c73/build HTTP/1.1" 200 -
+2025-07-05 23:43:25,556 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:43:25 GMT] "OPTIONS /sessions HTTP/1.1" 200 -
+2025-07-05 23:43:25,558 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:43:25 GMT] "POST /sessions HTTP/1.1" 201 -
+2025-07-05 23:43:25,561 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:43:25 GMT] "POST /sessions/0ea98038-4792-490d-b7c5-fc39b13be0e9/indexes/8a7fe2a7-6b3b-4baf-b957-010b8ae24c73 HTTP/1.1" 200 -
+2025-07-05 23:43:25,577 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:43:25 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-05 23:43:25,579 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:43:25 GMT] "GET /sessions/0ea98038-4792-490d-b7c5-fc39b13be0e9 HTTP/1.1" 200 -
+2025-07-05 23:43:25,686 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:43:25 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-05 23:43:25,687 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:43:25 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-05 23:43:25,689 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:43:25 GMT] "GET /sessions/0ea98038-4792-490d-b7c5-fc39b13be0e9 HTTP/1.1" 200 -
+2025-07-05 23:43:25,690 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:43:25 GMT] "GET /sessions/0ea98038-4792-490d-b7c5-fc39b13be0e9/indexes HTTP/1.1" 200 -
+2025-07-05 23:43:25,705 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:43:25 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-05 23:43:25,707 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:43:25 GMT] "GET /sessions/0ea98038-4792-490d-b7c5-fc39b13be0e9 HTTP/1.1" 200 -
+2025-07-05 23:43:25,709 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:43:25 GMT] "GET /sessions/0ea98038-4792-490d-b7c5-fc39b13be0e9/indexes HTTP/1.1" 200 -
+2025-07-05 23:43:25,710 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:43:25 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-05 23:43:25,711 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:43:25 GMT] "GET /sessions/0ea98038-4792-490d-b7c5-fc39b13be0e9/indexes HTTP/1.1" 200 -
+2025-07-05 23:43:40,574 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:43:40 GMT] "GET /sessions/0ea98038-4792-490d-b7c5-fc39b13be0e9/indexes HTTP/1.1" 200 -
+2025-07-05 23:43:40,579 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:43:40 GMT] "GET /sessions/0ea98038-4792-490d-b7c5-fc39b13be0e9/indexes HTTP/1.1" 200 -
+2025-07-05 23:44:23,083 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:44:23 GMT] "OPTIONS /chat/stream HTTP/1.1" 200 -
+2025-07-05 23:44:23,087 - consolidated_server - INFO - Updated session title to: , what's up?
+2025-07-05 23:44:23,091 - consolidated_server - INFO - Stored user message: b70fab39-b788-4af9-a206-ce23b12c2827
+2025-07-05 23:44:23,091 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:44:23 GMT] "POST /chat/stream HTTP/1.1" 200 -
+2025-07-05 23:44:26,031 - consolidated_server - INFO - Stored AI response: 08c79e4d-b77c-41d9-b430-3ad11b207881
+2025-07-05 23:44:26,135 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:44:26 GMT] "GET /sessions/0ea98038-4792-490d-b7c5-fc39b13be0e9 HTTP/1.1" 200 -
+2025-07-05 23:44:26,137 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:44:26 GMT] "GET /sessions/0ea98038-4792-490d-b7c5-fc39b13be0e9 HTTP/1.1" 200 -
+2025-07-05 23:44:26,138 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:44:26 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-05 23:44:26,160 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:44:26 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-05 23:45:03,683 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:45:03 GMT] "OPTIONS /chat/stream HTTP/1.1" 200 -
+2025-07-05 23:45:03,690 - consolidated_server - INFO - Stored user message: e19b94c5-f3ab-4f77-828f-cb5089e11a07
+2025-07-05 23:45:03,691 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:45:03 GMT] "POST /chat/stream HTTP/1.1" 200 -
+2025-07-05 23:45:08,959 - consolidated_server - INFO - Stored AI response: 59573d9f-d5b3-4951-a8b6-8769719f5716
+2025-07-05 23:45:09,063 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:45:09 GMT] "GET /sessions/0ea98038-4792-490d-b7c5-fc39b13be0e9 HTTP/1.1" 200 -
+2025-07-05 23:45:09,067 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:45:09 GMT] "GET /sessions/0ea98038-4792-490d-b7c5-fc39b13be0e9 HTTP/1.1" 200 -
+2025-07-05 23:45:09,068 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:45:09 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-05 23:45:09,094 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:45:09 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-05 23:45:32,403 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:45:32 GMT] "OPTIONS /chat/stream HTTP/1.1" 200 -
+2025-07-05 23:45:32,408 - consolidated_server - INFO - Stored user message: 234f5eb9-dc60-4a83-b324-876ebe94cbc2
+2025-07-05 23:45:32,408 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:45:32 GMT] "POST /chat/stream HTTP/1.1" 200 -
+2025-07-05 23:45:35,973 - consolidated_server - INFO - Stored AI response: d55efa6a-801f-4316-a4d2-a37d087c37f3
+2025-07-05 23:45:36,087 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:45:36 GMT] "GET /sessions/0ea98038-4792-490d-b7c5-fc39b13be0e9 HTTP/1.1" 200 -
+2025-07-05 23:45:36,089 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:45:36 GMT] "GET /sessions/0ea98038-4792-490d-b7c5-fc39b13be0e9 HTTP/1.1" 200 -
+2025-07-05 23:45:36,091 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:45:36 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-05 23:45:36,114 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:45:36 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-05 23:50:23,379 - consolidated_server - INFO - [Sun, 06 Jul 2025 06:50:23 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-05 23:51:06,547 - __main__ - INFO - 
+🛑 Received signal 2, shutting down gracefully...
