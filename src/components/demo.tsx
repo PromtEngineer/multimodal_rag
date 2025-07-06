@@ -92,6 +92,9 @@ export function Demo() {
                 <button onClick={()=>setSidebarOpen(o=>!o)} className="absolute left-4 p-1 rounded hover:bg-gray-800 text-gray-200 focus:outline-none" title="Toggle sidebar">
                     {sidebarOpen ? <span className="text-xl leading-none">◀</span> : <span className="text-xl leading-none">▶</span>}
                 </button>
+                {homeMode !== 'HOME' && (
+                    <h1 className="text-lg font-semibold text-white">localGPT</h1>
+                )}
             </header>
             {/* Main content row */}
             <div className="flex flex-1 flex-row min-h-0">
