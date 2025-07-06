@@ -626,21 +626,7 @@ Respond with JSON: {{"category": "<your_choice>"}}
         overviews_snip = self.doc_overviews[:40]
         overviews_block = "\n".join(f"[{i+1}] {ov}" for i, ov in enumerate(overviews_snip))
 
-        router_prompt = f"""Task: Route query to correct system.
-
-Documents available: Invoices, DeepSeek-V3 research papers
-
-Query: "{query}"
-
-Is this query asking about:
-A) Greetings/social: "Hi", "Hello", "Thanks", "What's up", "How are you"
-B) General knowledge: "CEO of Tesla", "capital of France", "what is 2+2"  
-C) Document content: invoice amounts, DeepSeek-V3 details, companies mentioned
-
-If A or B → {{"category": "direct_answer"}}
-If C → {{"category": "rag_query"}}
-
-Response:"""
+        router_prompt = fmt("query_router", query=query, overviews_block=overviews_block)
         
         resp = self.llm_client.generate_completion(
             model=self.ollama_config["generation_model"], prompt=router_prompt, format="json"

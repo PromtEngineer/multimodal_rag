@@ -254,10 +254,10 @@ User Query: "{query}"
                             sub_evidence = "\n---\n".join(
                                 [f"Source {i+1}:\n{d['text']}" for i, d in enumerate(sdocs)]
                             )
-                            sub_prompt = (
-                                "You are a helpful assistant. Using only the evidence given, answer the sub-question in one or two concise sentences.\n\n"
-                                f"Evidence:\n{sub_evidence}\n\n"
-                                f"Sub-Question: {sq}\nAnswer:"
+                            sub_prompt = fmt(
+                                "answer_sub_question",
+                                evidence=sub_evidence,
+                                sub_question=sq,
                             )
                             sub_resp = self.llm_client.generate_completion(
                                 model=self.ollama_config["generation_model"],
@@ -287,10 +287,10 @@ User Query: "{query}"
                         aggregated_evidence = "\n---\n".join(
                             [f"Source {i+1}:\n{d['text']}" for i, d in enumerate(aggregated_docs)]
                         ) or "(No relevant snippets found.)"
-                        answer_prompt = (
-                            "You are a helpful assistant. Using only the evidence given, answer the user question in one or two concise sentences.\n\n"
-                            f"Evidence:\n{aggregated_evidence}\n\n"
-                            f"User Question: {query}\nAnswer:"
+                        answer_prompt = fmt(
+                            "answer_from_evidence",
+                            evidence=aggregated_evidence,
+                            question=query,
                         )
                         resp = self.llm_client.generate_completion(
                             model=self.ollama_config["generation_model"],
@@ -312,11 +312,7 @@ User Query: "{query}"
                 [f"Source {i+1}:\n{d['text']}" for i, d in enumerate(docs)]
             ) or "(No relevant snippets found.)"
 
-            answer_prompt = (
-                "You are a helpful assistant. Using only the evidence given, answer the user question in one or two concise sentences.\n\n"
-                f"Evidence:\n{evidence}\n\n"
-                f"User Question: {query}\nAnswer:"
-            )
+            answer_prompt = fmt("answer_from_evidence", evidence=evidence, question=query)
 
             resp = self.llm_client.generate_completion(
                 model=self.ollama_config["generation_model"],

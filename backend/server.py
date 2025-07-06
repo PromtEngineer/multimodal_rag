@@ -4,6 +4,12 @@ import socketserver
 import cgi
 import os
 import uuid
+import sys
+# Ensure project root is in path before importing rag_system
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
 from urllib.parse import urlparse, parse_qs
 import requests  # 🆕 Import requests for making HTTP calls
 from ollama_client import OllamaClient
@@ -12,6 +18,7 @@ import simple_pdf_processor as pdf_module
 from simple_pdf_processor import initialize_simple_pdf_processor
 from typing import List, Dict, Any
 import re
+from rag_system.prompts import fmt
 
 # 🆕 Reusable TCPServer with address reuse enabled
 class ReusableTCPServer(socketserver.TCPServer):
@@ -433,39 +440,8 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
         # Format overviews for the routing prompt
         overviews_block = "\n".join(f"[{i+1}] {ov}" for i, ov in enumerate(overviews))
         
-        # Use a prompt registry instead of a hardcoded prompt
-        prompt_registry = {
-            "use_rag": "USE_RAG",
-            "direct_llm": "DIRECT_LLM"
-        }
-        
-        router_prompt = f"""You are an AI router deciding whether a user question should be answered via:
-• "USE_RAG" – search the user's private documents (described below)  
-• "DIRECT_LLM" – reply from general knowledge (greetings, public facts, unrelated topics)
-
-CRITICAL PRINCIPLE: When documents exist in the KB, strongly prefer USE_RAG unless the query is purely conversational or completely unrelated to any possible document content.
-
-RULES:
-1. If ANY overview clearly relates to the question (entities, numbers, addresses, dates, amounts, companies, technical terms) → USE_RAG
-2. For document operations (summarize, analyze, explain, extract, find) → USE_RAG  
-3. For greetings only ("Hi", "Hello", "Thanks") → DIRECT_LLM
-4. For pure math/world knowledge clearly unrelated to documents → DIRECT_LLM
-5. When in doubt → USE_RAG
-
-DOCUMENT OVERVIEWS:
-{overviews_block}
-
-DECISION EXAMPLES:
-• "What invoice amounts are mentioned?" → USE_RAG (document-specific)
-• "Who is PromptX AI LLC?" → USE_RAG (entity in documents)  
-• "What is the DeepSeek model?" → USE_RAG (mentioned in documents)
-• "Summarize the research paper" → USE_RAG (document operation)
-• "What is 2+2?" → DIRECT_LLM (pure math)
-• "Hi there" → DIRECT_LLM (greeting only)
-
-USER QUERY: "{query}"
-
-Respond with exactly one word: USE_RAG or DIRECT_LLM"""
+        from rag_system.prompts import fmt
+        router_prompt = fmt("query_router", query=query, overviews_block=overviews_block)
 
         try:
             # Use Ollama to make the routing decision
@@ -479,7 +455,7 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
             decision = response.strip().upper()
             
             # Parse decision
-            if decision in prompt_registry:
+            if decision in {"USE_RAG", "DIRECT_LLM"}:
                 print(f"🎯 Overview-based routing: {decision} for query: '{query[:50]}...'")
                 return decision == "USE_RAG"
             else:

@@ -74,12 +74,12 @@ fact_check_verifier: |
   
   OUTPUT FORMAT (very strict!)
     Reply **only** with a single line JSON object, no markdown, no extra keys:
-    {
+    {{
       "verdict": "SUPPORTED" | "NOT_SUPPORTED" | "NEEDS_CLARIFICATION",
       "is_grounded": true | false,
       "reasoning": "< concise reasoning >",
       "confidence_score": <integer 0-100>
-    }
+    }}
   
   Guidelines
     • If any part of the answer is not in the context, verdict = "NOT_SUPPORTED".
@@ -100,11 +100,17 @@ query_router: |
   # Source: backend/server.py & rag_system/agent/loop.py
   # Purpose: Decide whether to answer via RAG, direct LLM, or other.
   You are an AI router deciding whether a user question should be answered via:
-  1. Retrieval-Augmented Generation using the user's documents.
-  2. Direct LLM generation without retrieval.
-  ...
-  Question: "{query}"
-  Respond with JSON: {"route": "rag" | "direct"}
+  • "USE_RAG" – search the user's private documents (described below)
+  • "DIRECT_LLM" – reply from general knowledge (greetings, public facts, unrelated topics)
+  
+  CRITICAL PRINCIPLE: When documents exist in the KB, strongly prefer USE_RAG unless the query is purely conversational or completely unrelated to any possible document content.
+  
+  DOCUMENT OVERVIEWS:
+  {overviews_block}
+  
+  USER QUERY: "{query}"
+  
+  Respond with exactly one word: USE_RAG or DIRECT_LLM
 
 # ----------------------------------------------------------
 # Document Overview (indexing)
@@ -118,3 +124,139 @@ overview_builder_summary: |
   {text}
   
   OVERVIEW: 
+
+# ----------------------------------------------------------
+# Contextual Enrichment (indexing/contextualizer)
+# ----------------------------------------------------------
+contextualizer_system: |
+  # Source: rag_system/indexing/contextualizer.py::SYSTEM_PROMPT
+  # Purpose: System role for summarising local context around a chunk.
+  You are an expert at summarizing and providing context for document sections based on their local surroundings.
+
+contextualizer_local_context: |
+  # Source: rag_system/indexing/contextualizer.py::LOCAL_CONTEXT_PROMPT_TEMPLATE
+  # Purpose: Wrapper for local context text.
+  <local_context>
+  {local_context_text}
+  </local_context>
+
+contextualizer_chunk_template: |
+  # Source: rag_system/indexing/contextualizer.py::CHUNK_PROMPT_TEMPLATE
+  # Purpose: Instructions for generating summary for a chunk.
+  Here is the specific chunk we want to situate within the local context provided:
+  <chunk>
+  {chunk_content}
+  </chunk>
+  
+  Based *only* on the local context provided, give a very short (2-5 sentence) context summary to situate this specific chunk. 
+  Focus on the chunk's topic and its relation to the immediately surrounding text shown in the local context. 
+  Focus on the overall theme of the context, include topics, concepts, and other relevant information.
+  Answer *only* with the succinct context and nothing else.
+
+# ----------------------------------------------------------
+# Entity & Relationship Extraction (graph_extractor)
+# ----------------------------------------------------------
+entity_extraction: |
+  # Source: rag_system/indexing/graph_extractor.py::entity_prompt
+  # Purpose: Extract entities from text for knowledge graph.
+  Extract all DISTINCT entities (people, organizations, products, places, dates) mentioned in the following text. List them as a JSON array of strings. Do not include duplicates.
+  
+  TEXT:
+  {doc_text}
+
+relationship_extraction: |
+  # Source: rag_system/indexing/graph_extractor.py::relationship_prompt
+  # Purpose: Extract relationships between entities.
+  Identify direct relationships (subject ➝ predicate ➝ object) present in the text below. Return a JSON array of objects with keys "subject", "predicate", "object".
+  
+  TEXT:
+  {doc_text}
+
+# ----------------------------------------------------------
+# Query Transformation (HyDE & Graph)
+# ----------------------------------------------------------
+hyde_generator: |
+  # Source: rag_system/retrieval/query_transformer.py::HyDEGenerator
+  # Purpose: Generate hypothetical document for HyDE augmentation.
+  Generate a short, hypothetical document that answers the following question. The document should be dense with keywords and concepts related to the query.
+  
+  Query: {query}
+  
+  Hypothetical Document:
+
+graph_translation: |
+  # Source: rag_system/retrieval/query_transformer.py::GraphQueryTranslator
+  # Purpose: Translate natural language question into JSON graph query.
+  You are an expert query planner. Convert the user's question into a structured JSON query for a knowledge graph.
+  The JSON should contain a 'start_node' (the known entity in the query) and an 'edge_label' (the relationship being asked about).
+  The graph has nodes (entities) and directed edges (relationships). For example, (Tim Cook) -[IS_CEO_OF]-> (Apple).
+  Return ONLY the JSON object.
+  
+  User Question: "{query}"
+  
+  JSON Output:
+
+# ----------------------------------------------------------
+# Query Decomposition
+# ----------------------------------------------------------
+query_decompose: |
+  # Source: rag_system/retrieval/query_transformer.py::QueryDecomposer.decompose
+  # Purpose: Break down a complex query into simpler sub-queries for parallel retrieval.
+  You are an expert at query decomposition for a Retrieval-Augmented Generation (RAG) system. Your goal is to break down a complex user query into a series of simpler, standalone sub-queries. Each sub-query will be used to retrieve relevant documents independently.
+  
+  First, analyse the user's query to decide if decomposition is needed.
+  
+  • **Decompose** when the query is multi-part, comparative, or temporal.
+  • **Do NOT decompose** simple factual requests.
+  
+  Return JSON with keys "reasoning" and "sub_queries".
+  
+  QUERY: "{query}"
+  
+  JSON Output:
+
+# ----------------------------------------------------------
+# Evidence-based answering
+# ----------------------------------------------------------
+answer_sub_question: |
+  # Source: rag_system/agent/react_agent.py::_answer_sub_question
+  # Purpose: Craft a short answer to one sub-question using provided evidence.
+  You are a helpful assistant. Using only the evidence given, answer the sub-question in one or two concise sentences.
+  
+  Evidence:
+  {evidence}
+  
+  Sub-Question: {sub_question}
+  Answer:
+
+answer_from_evidence: |
+  # Source: rag_system/agent/react_agent.py & rag_system/agent/loop.py
+  # Purpose: Answer user question using retrieved evidence snippets.
+  You are a helpful assistant. Using only the evidence given, answer the user question in one or two concise sentences.
+  
+  Evidence:
+  {evidence}
+  
+  User Question: {question}
+  Answer:
+
+# ----------------------------------------------------------
+# Router prompt (overviews)
+# ----------------------------------------------------------
+query_router: |
+  # Source: backend/server.py & rag_system/agent/loop.py::_route_using_overviews
+  # Purpose: Decide whether to use RAG or direct LLM based on document overviews.
+  You are an AI router deciding whether a user question should be answered via:
+  • "USE_RAG" – search the user's private documents (described below)
+  • "DIRECT_LLM" – reply from general knowledge (greetings, public facts, unrelated topics)
+  
+  CRITICAL PRINCIPLE: When documents exist in the KB, strongly prefer USE_RAG unless the query is purely conversational or completely unrelated to any possible document content.
+  
+  DOCUMENT OVERVIEWS:
+  {overviews_block}
+  
+  USER QUERY: "{query}"
+  
+  Respond with exactly one word: USE_RAG or DIRECT_LLM
+  
+  Respond with exactly one word: USE_RAG or DIRECT_LLM 

@@ -1,6 +1,7 @@
 from typing import List, Dict, Any
 import json
 from rag_system.utils.ollama_client import OllamaClient
+from rag_system.prompts import fmt
 
 class GraphExtractor:
     """
@@ -18,13 +19,7 @@ class GraphExtractor:
         print(f"Extracting graph from {len(chunks)} chunks with Ollama...")
         for i, chunk in enumerate(chunks):
             # Step 1: Extract Entities
-            entity_prompt = f"""
-            From the following text, extract key entities (people, companies, locations).
-            Return the answer as a JSON object with a single key 'entities', which is a list of strings.
-            Each entity should be a short, specific name, not a long string of text.
-
-            Text: "{chunk['text']}"
-            """
+            entity_prompt = fmt("entity_extraction", doc_text=chunk["text"])
             
             entity_response = self.llm_client.generate_completion(
                 self.llm_model, 
@@ -51,12 +46,7 @@ class GraphExtractor:
                     continue
 
                 # Step 2: Extract Relationships
-                relationship_prompt = f"""
-                Given the following entities: {cleaned_entities}
-                And the following text: "{chunk['text']}"
-                Extract the relationships between the entities.
-                Return the answer as a JSON object with a single key 'relationships', which is a list of objects, each with 'source', 'target', and 'label'.
-                """
+                relationship_prompt = fmt("relationship_extraction", doc_text=chunk["text"])
 
                 relationship_response = self.llm_client.generate_completion(
                     self.llm_model,

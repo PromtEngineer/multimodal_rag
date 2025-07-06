@@ -3,27 +3,16 @@ from rag_system.utils.ollama_client import OllamaClient
 from rag_system.ingestion.chunking import create_contextual_window
 import logging
 import re
+from rag_system.prompts import fmt, get
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Define the structured prompt templates, adapted from the example
-SYSTEM_PROMPT = "You are an expert at summarizing and providing context for document sections based on their local surroundings."
-
-LOCAL_CONTEXT_PROMPT_TEMPLATE = """<local_context>
-{local_context_text}
-</local_context>"""
-
-CHUNK_PROMPT_TEMPLATE = """Here is the specific chunk we want to situate within the local context provided:
-<chunk>
-{chunk_content}
-</chunk>
-
-Based *only* on the local context provided, give a very short (2-5 sentence) context summary to situate this specific chunk. 
-Focus on the chunk's topic and its relation to the immediately surrounding text shown in the local context. 
-Focus on the the overall theme of the context, make sure to include topics, concepts, and other relevant information.
-Answer *only* with the succinct context and nothing else."""
+# Load prompt templates from registry
+SYSTEM_PROMPT = fmt("contextualizer_system")
+LOCAL_CONTEXT_PROMPT_TEMPLATE = get("contextualizer_local_context")
+CHUNK_PROMPT_TEMPLATE = get("contextualizer_chunk_template")
 
 class ContextualEnricher:
     """
