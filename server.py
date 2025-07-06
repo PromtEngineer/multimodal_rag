@@ -724,6 +724,528 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
     # Additional session and index management methods would go here...
     # (Abbreviated for space - would include all remaining methods from original servers)
 
+    # Missing handler methods - adding them now
+    def handle_get_session(self, session_id: str):
+        """Get a specific session with its messages"""
+        try:
+            session = db.get_session(session_id)
+            if not session:
+                self.send_json_response({
+                    "error": "Session not found"
+                }, status_code=404)
+                return
+            
+            messages = db.get_messages(session_id)
+            
+            self.send_json_response({
+                "session": session,
+                "messages": messages
+            })
+        except Exception as e:
+            self.send_json_response({
+                "error": f"Failed to get session: {str(e)}"
+            }, status_code=500)
+
+    def handle_get_session_documents(self, session_id: str):
+        """Return documents and basic info for a session."""
+        try:
+            session = db.get_session(session_id)
+            if not session:
+                self.send_json_response({"error": "Session not found"}, status_code=404)
+                return
+
+            docs = db.get_documents_for_session(session_id)
+            filenames = [os.path.basename(p).split('_', 1)[-1] if '_' in os.path.basename(p) else os.path.basename(p) for p in docs]
+
+            self.send_json_response({
+                "session": session,
+                "files": filenames,
+                "file_count": len(docs)
+            })
+        except Exception as e:
+            self.send_json_response({"error": f"Failed to get documents: {str(e)}"}, status_code=500)
+
+    def handle_cleanup_sessions(self):
+        """Clean up empty sessions"""
+        try:
+            cleanup_count = db.cleanup_empty_sessions()
+            self.send_json_response({
+                "message": f"Cleaned up {cleanup_count} empty sessions",
+                "cleanup_count": cleanup_count
+            })
+        except Exception as e:
+            self.send_json_response({
+                "error": f"Failed to cleanup sessions: {str(e)}"
+            }, status_code=500)
+
+    def handle_delete_session(self, session_id: str):
+        """Delete a session and its messages"""
+        try:
+            deleted = db.delete_session(session_id)
+            if deleted:
+                self.send_json_response({'deleted': deleted})
+            else:
+                self.send_json_response({'error': 'Session not found'}, status_code=404)
+        except Exception as e:
+            self.send_json_response({'error': str(e)}, status_code=500)
+
+    def handle_rename_session(self, session_id: str):
+        """Rename an existing session title"""
+        try:
+            session = db.get_session(session_id)
+            if not session:
+                self.send_json_response({"error": "Session not found"}, status_code=404)
+                return
+
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                self.send_json_response({"error": "Request body required"}, status_code=400)
+                return
+
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            new_title: str = data.get('title', '').strip()
+
+            if not new_title:
+                self.send_json_response({"error": "Title cannot be empty"}, status_code=400)
+                return
+
+            db.update_session_title(session_id, new_title)
+            updated_session = db.get_session(session_id)
+
+            self.send_json_response({
+                "message": "Session renamed successfully",
+                "session": updated_session
+            })
+
+        except json.JSONDecodeError:
+            self.send_json_response({"error": "Invalid JSON"}, status_code=400)
+        except Exception as e:
+            self.send_json_response({"error": f"Failed to rename session: {str(e)}"}, status_code=500)
+
+    # Index management methods
+    def handle_get_indexes(self):
+        """Get all indexes"""
+        try:
+            data = db.list_indexes()
+            self.send_json_response({'indexes': data, 'total': len(data)})
+        except Exception as e:
+            self.send_json_response({'error': str(e)}, status_code=500)
+
+    def handle_get_index(self, index_id: str):
+        """Get a specific index"""
+        try:
+            data = db.get_index(index_id)
+            if not data:
+                self.send_json_response({'error': 'Index not found'}, status_code=404)
+                return
+            self.send_json_response(data)
+        except Exception as e:
+            self.send_json_response({'error': str(e)}, status_code=500)
+
+    def handle_create_index(self):
+        """Create a new index"""
+        try:
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            name = data.get('name')
+            description = data.get('description')
+            metadata = data.get('metadata', {})
+            if not name:
+                self.send_json_response({'error': 'Name required'}, status_code=400)
+                return
+            idx_id = db.create_index(name, description, metadata)
+            self.send_json_response({'index_id': idx_id}, status_code=201)
+        except Exception as e:
+            self.send_json_response({'error': str(e)}, status_code=500)
+
+    def handle_index_file_upload(self, index_id: str):
+        """Handle file upload for an index"""
+        form = cgi.FieldStorage(
+            fp=self.rfile, 
+            headers=self.headers, 
+            environ={'REQUEST_METHOD':'POST', 'CONTENT_TYPE': self.headers['Content-Type']}
+        )
+        uploaded_files = []
+        if 'files' in form:
+            files = form['files']
+            if not isinstance(files, list):
+                files = [files]
+            upload_dir = 'shared_uploads'
+            os.makedirs(upload_dir, exist_ok=True)
+            for f in files:
+                if f.filename:
+                    unique = f"{uuid.uuid4()}_{f.filename}"
+                    path = os.path.join(upload_dir, unique)
+                    with open(path,'wb') as out: 
+                        out.write(f.file.read())
+                    db.add_document_to_index(index_id, f.filename, os.path.abspath(path))
+                    uploaded_files.append({'filename':f.filename,'stored_path':os.path.abspath(path)})
+        if not uploaded_files:
+            self.send_json_response({'error':'No files uploaded'}, status_code=400)
+            return
+        self.send_json_response({'message':f"Uploaded {len(uploaded_files)} files","uploaded_files":uploaded_files})
+
+    def handle_build_index(self, index_id: str):
+        """Build/index documents for a specific index"""
+        try:
+            index = db.get_index(index_id)
+            if not index:
+                self.send_json_response({'error':'Index not found'}, status_code=404)
+                return
+            file_paths = [d['stored_path'] for d in index.get('documents',[])]
+            if not file_paths:
+                self.send_json_response({'error':'No documents to index'}, status_code=400)
+                return
+
+            # Parse request body for optional configuration
+            latechunk = False
+            docling_chunk = False
+            chunk_size = 512
+            chunk_overlap = 64
+            retrieval_mode = 'hybrid'
+            window_size = 2
+            enable_enrich = True
+            embedding_model = None
+            enrich_model = None
+            batch_size_embed = 50
+            batch_size_enrich = 25
+            overview_model = None
+            
+            if 'Content-Length' in self.headers and int(self.headers['Content-Length']) > 0:
+                try:
+                    length = int(self.headers['Content-Length'])
+                    body = self.rfile.read(length)
+                    opts = json.loads(body.decode('utf-8'))
+                    latechunk = bool(opts.get('latechunk', False))
+                    docling_chunk = bool(opts.get('doclingChunk', False))
+                    chunk_size = int(opts.get('chunkSize', 512))
+                    chunk_overlap = int(opts.get('chunkOverlap', 64))
+                    retrieval_mode = str(opts.get('retrievalMode', 'hybrid'))
+                    window_size = int(opts.get('windowSize', 2))
+                    enable_enrich = bool(opts.get('enableEnrich', True))
+                    embedding_model = opts.get('embeddingModel')
+                    enrich_model = opts.get('enrichModel')
+                    batch_size_embed = int(opts.get('batchSizeEmbed', 50))
+                    batch_size_enrich = int(opts.get('batchSizeEnrich', 25))
+                    overview_model = opts.get('overviewModel')
+                except Exception:
+                    pass  # Keep defaults on parse error
+
+            # Use internal indexing pipeline
+            table_name = f"text_pages_{index_id}"
+            
+            # Configure indexing pipeline
+            import copy
+            config_override = copy.deepcopy(INDEXING_PIPELINE.config)
+            config_override["storage"]["text_table_name"] = table_name
+            config_override.setdefault("retrievers", {}).setdefault("dense", {})["lancedb_table_name"] = table_name
+            config_override["overview_path"] = f"index_store/overviews/{index_id}.jsonl"
+            
+            # Configure options
+            if latechunk:
+                config_override.setdefault("retrievers", {}).setdefault("latechunk", {})["enabled"] = True
+            if docling_chunk:
+                config_override["chunker_mode"] = "docling"
+            
+            config_override.setdefault("contextual_enricher", {})
+            config_override["contextual_enricher"]["enabled"] = enable_enrich
+            config_override["contextual_enricher"]["window_size"] = window_size
+            
+            config_override.setdefault("indexing", {})
+            config_override["indexing"]["embedding_batch_size"] = batch_size_embed
+            config_override["indexing"]["enrichment_batch_size"] = batch_size_enrich
+            
+            config_override.setdefault("chunking", {})
+            config_override["chunking"]["chunk_size"] = chunk_size
+            config_override["chunking"]["chunk_overlap"] = chunk_overlap
+            
+            if embedding_model:
+                config_override["embedding_model_name"] = embedding_model
+            if enrich_model:
+                config_override["enrich_model"] = enrich_model
+            if overview_model:
+                config_override["overview_model_name"] = overview_model
+
+            # Create temporary pipeline with overridden config
+            temp_pipeline = INDEXING_PIPELINE.__class__(
+                config_override, 
+                INDEXING_PIPELINE.llm_client, 
+                INDEXING_PIPELINE.ollama_config
+            )
+            temp_pipeline.run(file_paths)
+
+            # Update metadata
+            meta_updates = {
+                "chunk_size": chunk_size,
+                "chunk_overlap": chunk_overlap,
+                "retrieval_mode": retrieval_mode,
+                "window_size": window_size,
+                "enable_enrich": enable_enrich,
+                "latechunk": latechunk,
+                "docling_chunk": docling_chunk,
+            }
+            if embedding_model:
+                meta_updates["embedding_model"] = embedding_model
+            if enrich_model:
+                meta_updates["enrich_model"] = enrich_model
+            if overview_model:
+                meta_updates["overview_model"] = overview_model
+            
+            try:
+                db.update_index_metadata(index_id, meta_updates)
+            except Exception as e:
+                logger.warning(f"Failed to update index metadata: {e}")
+
+            self.send_json_response({
+                "message": f"Successfully indexed {len(file_paths)} documents",
+                "table_name": table_name,
+                **meta_updates
+            })
+
+        except Exception as e:
+            logger.error(f"Index building error: {e}")
+            self.send_json_response({"error": f"Index building failed: {str(e)}"}, status_code=500)
+
+    def handle_link_index_to_session(self, session_id: str, index_id: str):
+        """Link an index to a session"""
+        try:
+            db.link_index_to_session(session_id, index_id)
+            self.send_json_response({'message':'Index linked to session'})
+        except Exception as e:
+            self.send_json_response({'error':str(e)}, status_code=500)
+
+    def handle_get_session_indexes(self, session_id: str):
+        """Get indexes linked to a session"""
+        try:
+            idx_ids = db.get_indexes_for_session(session_id)
+            indexes = [db.get_index(i) for i in idx_ids if db.get_index(i)]
+            self.send_json_response({'indexes': indexes, 'total': len(indexes)})
+        except Exception as e:
+            self.send_json_response({'error': str(e)}, status_code=500)
+
+    def handle_delete_index(self, index_id: str):
+        """Delete an index"""
+        try:
+            deleted = db.delete_index(index_id)
+            if deleted:
+                self.send_json_response({'message': 'Index deleted successfully', 'index_id': index_id})
+            else:
+                self.send_json_response({'error': 'Index not found'}, status_code=404)
+        except Exception as e:
+            self.send_json_response({'error': str(e)}, status_code=500)
+
+    # RAG-specific endpoints
+    def handle_rag_chat_stream(self):
+        """Handle streaming RAG chat"""
+        try:
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            
+            query = data.get('query')
+            session_id = data.get('session_id')
+            
+            if not query:
+                self.send_json_response({"error": "Query is required"}, status_code=400)
+                return
+
+            # Prepare response headers for SSE
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.send_header('Cache-Control', 'no-cache')
+            self.send_header('Connection', 'keep-alive')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+
+            def emit(event_type: str, payload):
+                """Send a single SSE event."""
+                try:
+                    data_str = json.dumps({"type": event_type, "data": payload})
+                    self.wfile.write(f"data: {data_str}\n\n".encode('utf-8'))
+                    self.wfile.flush()
+                except BrokenPipeError:
+                    raise
+
+            # Configure and run RAG with streaming
+            table_name = data.get('table_name')
+            if not table_name and session_id:
+                table_name = f"text_pages_{session_id}"
+
+            try:
+                if session_id:
+                    idx_ids = db.get_indexes_for_session(session_id)
+                    self._apply_index_embedding_model(idx_ids)
+                    RAG_AGENT.load_overviews_for_indexes(idx_ids)
+
+                # Configure pipeline
+                rp_cfg = RAG_AGENT.retrieval_pipeline.config
+                if session_id:
+                    rp_cfg["overview_path"] = f"index_store/overviews/{session_id}.jsonl"
+                rp_cfg.setdefault("retrievers", {}).setdefault("latechunk", {})["enabled"] = True
+
+                # Run with streaming
+                final_result = RAG_AGENT.run(
+                    query,
+                    table_name=table_name,
+                    session_id=session_id,
+                    event_callback=emit
+                )
+
+                emit("complete", final_result)
+                
+            except BrokenPipeError:
+                logger.info("Client disconnected from SSE stream.")
+            except Exception as e:
+                try:
+                    emit("error", {"error": str(e)})
+                finally:
+                    logger.error(f"Stream error: {e}")
+
+        except Exception as e:
+            self.send_json_response({"error": f"Server error: {str(e)}"}, status_code=500)
+
+    def handle_rag_index(self):
+        """Handle RAG indexing endpoint"""
+        try:
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            
+            file_paths = data.get('file_paths')
+            session_id = data.get('session_id')
+            
+            if not file_paths or not isinstance(file_paths, list):
+                self.send_json_response({
+                    "error": "A 'file_paths' list is required."
+                }, status_code=400)
+                return
+
+            # Extract configuration
+            enable_latechunk = bool(data.get("enable_latechunk", False))
+            enable_docling_chunk = bool(data.get("enable_docling_chunk", False))
+            chunk_size = int(data.get("chunk_size", 512))
+            chunk_overlap = int(data.get("chunk_overlap", 64))
+            retrieval_mode = data.get("retrieval_mode", "hybrid")
+            window_size = int(data.get("window_size", 2))
+            enable_enrich = bool(data.get("enable_enrich", True))
+            embedding_model = data.get('embedding_model')
+            enrich_model = data.get('enrich_model')
+            overview_model = data.get('overview_model_name')
+            batch_size_embed = int(data.get("batch_size_embed", 50))
+            batch_size_enrich = int(data.get("batch_size_enrich", 25))
+
+            # Configure table name
+            table_name = data.get('table_name')
+            if not table_name and session_id:
+                table_name = f"text_pages_{session_id}"
+
+            # Configure indexing pipeline
+            import copy
+            config_override = copy.deepcopy(INDEXING_PIPELINE.config)
+            if table_name:
+                config_override["storage"]["text_table_name"] = table_name
+                config_override.setdefault("retrievers", {}).setdefault("dense", {})["lancedb_table_name"] = table_name
+            
+            # Apply configuration options
+            if enable_latechunk:
+                config_override.setdefault("retrievers", {}).setdefault("latechunk", {})["enabled"] = True
+            if enable_docling_chunk:
+                config_override["chunker_mode"] = "docling"
+            
+            config_override.setdefault("contextual_enricher", {})
+            config_override["contextual_enricher"]["enabled"] = enable_enrich
+            config_override["contextual_enricher"]["window_size"] = window_size
+            
+            config_override.setdefault("indexing", {})
+            config_override["indexing"]["embedding_batch_size"] = batch_size_embed
+            config_override["indexing"]["enrichment_batch_size"] = batch_size_enrich
+            
+            config_override.setdefault("chunking", {})
+            config_override["chunking"]["chunk_size"] = chunk_size
+            config_override["chunking"]["chunk_overlap"] = chunk_overlap
+            
+            if embedding_model:
+                config_override["embedding_model_name"] = embedding_model
+            if enrich_model:
+                config_override["enrich_model"] = enrich_model
+            if overview_model:
+                config_override["overview_model_name"] = overview_model
+            
+            if session_id:
+                config_override["overview_path"] = f"index_store/overviews/{session_id}.jsonl"
+
+            # Create temporary pipeline and run indexing
+            temp_pipeline = INDEXING_PIPELINE.__class__(
+                config_override, 
+                INDEXING_PIPELINE.llm_client, 
+                INDEXING_PIPELINE.ollama_config
+            )
+            temp_pipeline.run(file_paths)
+
+            self.send_json_response({
+                "message": f"Indexing process for {len(file_paths)} file(s) completed successfully.",
+                "table_name": table_name or "default_text_table",
+                "indexing_config": {
+                    "chunk_size": chunk_size,
+                    "chunk_overlap": chunk_overlap,
+                    "retrieval_mode": retrieval_mode,
+                    "window_size": window_size,
+                    "enable_enrich": enable_enrich,
+                    "embedding_model": embedding_model,
+                    "enrich_model": enrich_model,
+                    "batch_size_embed": batch_size_embed,
+                    "batch_size_enrich": batch_size_enrich
+                }
+            })
+
+        except Exception as e:
+            logger.error(f"RAG indexing error: {e}")
+            self.send_json_response({"error": f"Failed to start indexing: {str(e)}"}, status_code=500)
+
+    def handle_legacy_chat(self):
+        """Handle legacy chat requests (without sessions)"""
+        try:
+            content_length = int(self.headers['Content-Length'])
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            
+            message = data.get('message', '')
+            model = data.get('model', 'qwen3:8b')
+            conversation_history = data.get('conversation_history', [])
+            
+            if not message:
+                self.send_json_response({
+                    "error": "Message is required"
+                }, status_code=400)
+                return
+            
+            # Check if Ollama is running
+            if not ollama_client.is_ollama_running():
+                self.send_json_response({
+                    "error": "Ollama is not running. Please start Ollama first."
+                }, status_code=503)
+                return
+            
+            # Get response from Ollama
+            response = ollama_client.chat(message, model, conversation_history)
+            
+            self.send_json_response({
+                "response": response,
+                "model": model,
+                "message_count": len(conversation_history) + 1
+            })
+            
+        except json.JSONDecodeError:
+            self.send_json_response({
+                "error": "Invalid JSON"
+            }, status_code=400)
+        except Exception as e:
+            self.send_json_response({
+                "error": f"Server error: {str(e)}"
+            }, status_code=500)
+
 def main():
     """Main function to start the consolidated server"""
     PORT = int(os.getenv("PORT", 8000))
