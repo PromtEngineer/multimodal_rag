@@ -1,0 +1,10 @@
+2025-07-06 00:07:15,252 | INFO     | numexpr.utils | Note: NumExpr detected 12 cores but "NUMEXPR_MAX_THREADS" not set, so enforcing safe limit of 8.
+2025-07-06 00:07:15,252 | INFO     | numexpr.utils | NumExpr defaulting to 8 threads.
+/Users/prompt/anaconda3/lib/python3.11/site-packages/pandas/core/arrays/masked.py:60: UserWarning: Pandas requires version '1.3.6' or newer of 'bottleneck' (version '1.3.5' currently installed).
+  from pandas.core import (
+2025-07-06 00:07:17,924 | INFO     | datasets | PyTorch version 2.4.1 available.
+2025-07-06 00:07:20,372 | INFO     | rag_system.indexing.contextualizer | Initialized ContextualEnricher with Ollama model 'qwen3:0.6b' (batch_size=10).
+127.0.0.1 - - [06/Jul/2025 00:07:20] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Jul/2025 00:07:25] "GET /models HTTP/1.1" 200 -
+127.0.0.1 - - [06/Jul/2025 00:08:23] "OPTIONS /chat/stream HTTP/1.1" 200 -
+127.0.0.1 - - [06/Jul/2025 00:08:23] "POST /chat/stream HTTP/1.1" 200 -

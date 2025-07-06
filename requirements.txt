@@ -15,5 +15,4 @@ torchaudio
 sentencepiece
 accelerate
 docling
-ocrmac
-psutil 
+ocrmac 

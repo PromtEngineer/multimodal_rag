@@ -1,0 +1,22 @@
+
+> multimodal_rag@0.1.0 dev
+> next dev
+
+   ▲ Next.js 15.3.3
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.1.146:3000
+   - Environments: .env
+
+ ✓ Starting...
+ ✓ Ready in 1220ms
+ ○ Compiling / ...
+ ✓ Compiled / in 1105ms (1381 modules)
+Demo component rendering...
+ GET / 200 in 1349ms
+ ✓ Compiled in 271ms (657 modules)
+Demo component rendering...
+ GET / 200 in 19ms
+Demo component rendering...
+ GET / 200 in 30ms
+ ✓ Compiled in 166ms (657 modules)
+ GET / 200 in 9ms

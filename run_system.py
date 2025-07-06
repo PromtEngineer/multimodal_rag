@@ -23,13 +23,13 @@ import signal
 import sys
 import os
 import json
-import psutil
 import requests
 from pathlib import Path
 from typing import List, Dict, Optional
 import threading
 import queue
 import atexit
+import socket
 
 class ServiceManager:
     def __init__(self):
@@ -89,14 +89,21 @@ class ServiceManager:
 
     def cleanup(self):
         """Cleanup function called on exit"""
-        self.stop_all()
+        # Only cleanup if we actually started services
+        if any(service["process"] for service in self.services.values()):
+            self.stop_all()
 
     def is_port_in_use(self, port: int) -> bool:
-        """Check if a port is already in use"""
-        for conn in psutil.net_connections():
-            if conn.laddr.port == port and conn.status == psutil.CONN_LISTEN:
-                return True
-        return False
+        """Check if a port is already in use using socket connection test"""
+        try:
+            # Try to connect to the port
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(1)
+                result = sock.connect_ex(('localhost', port))
+                return result == 0  # Port is in use if connection succeeds
+        except Exception:
+            # If we can't check, assume port is free
+            return False
 
     def check_dependencies(self) -> Dict[str, bool]:
         """Check if required dependencies are available"""
@@ -195,19 +202,16 @@ class ServiceManager:
         """Check if a service is healthy"""
         service = self.services[service_name]
         
-        # Check if process is running
-        if service["process"] and service["process"].poll() is not None:
-            return False
-            
-        # Check HTTP endpoint if available
+        # Check HTTP endpoint if available (primary check)
         if service["health_url"]:
             try:
-                response = requests.get(service["health_url"], timeout=2)
+                response = requests.get(service["health_url"], timeout=5)
                 return response.status_code == 200
             except:
                 return False
-                
-        return True
+        
+        # For services without health endpoints, check if port is in use
+        return self.is_port_in_use(service["port"])
 
     def stop_service(self, service_name: str):
         """Stop a single service"""
@@ -301,12 +305,23 @@ class ServiceManager:
             is_healthy = self.check_service_health(service_name)
             is_port_open = self.is_port_in_use(service["port"])
             
+            # Get PID safely
+            pid = None
+            if service["process"]:
+                try:
+                    pid = service["process"].pid
+                    # Check if process is still running
+                    if service["process"].poll() is not None:
+                        pid = None
+                except Exception:
+                    pid = None
+            
             status[service_name] = {
                 "name": service["name"],
                 "port": service["port"],
                 "healthy": is_healthy,
                 "port_open": is_port_open,
-                "pid": service["process"].pid if service["process"] else None
+                "pid": pid
             }
             
         return status
@@ -321,7 +336,13 @@ class ServiceManager:
         for service_name, info in status.items():
             status_icon = "✅" if info["healthy"] else "❌"
             port_status = "🟢" if info["port_open"] else "🔴"
-            pid_info = f"(PID: {info['pid']})" if info['pid'] else "(Not running)"
+            
+            if info['pid']:
+                pid_info = f"(PID: {info['pid']})"
+            elif info["healthy"]:
+                pid_info = "(Running externally)"
+            else:
+                pid_info = "(Not running)"
             
             print(f"{status_icon} {info['name']:<20} {port_status} Port {info['port']:<5} {pid_info}")
             
