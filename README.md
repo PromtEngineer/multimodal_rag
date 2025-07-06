@@ -1,352 +1,428 @@
-# RAG System - Unified Deployment & Management
+# 🤖 Advanced RAG System
 
-A comprehensive Retrieval-Augmented Generation (RAG) system with intelligent document processing, multi-modal capabilities, and smart query routing.
+A sophisticated **Retrieval-Augmented Generation (RAG)** system with intelligent routing, multimodal processing, and containerized deployment.
+
+[![Docker](https://img.shields.io/badge/Docker-Ready-blue?logo=docker)](https://www.docker.com/)
+[![Python](https://img.shields.io/badge/Python-3.11+-green?logo=python)](https://python.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+---
 
 ## 🚀 Quick Start
 
-### Single Command Startup
-```bash
-# Development mode (recommended for local development)
-python run_system.py
+**Get up and running in 5 minutes:**
 
-# Or using Make
-make dev
+```bash
+# Clone and setup everything automatically
+git clone https://github.com/your-org/rag-system.git
+cd rag-system
+./setup_rag_system.sh
 ```
 
-### Production Deployment
-```bash
-# Docker deployment (recommended for production)
-make deploy
+**Then open:** http://localhost:3000
 
-# Or manual production mode
-make prod
+> **New to Docker?** Run `./install_docker.sh` first to install Docker on your system.
+
+---
+
+## ✨ Key Features
+
+### 🧠 **Intelligent Dual-Layer Routing**
+- **Speed Optimization**: Route simple queries to Direct LLM (~1.3s) vs complex queries to RAG Pipeline (~20s)
+- **Intelligence Optimization**: Smart query classification within RAG pipeline
+- **Context Awareness**: Session-based routing with conversation history
+
+### 📚 **Advanced Document Processing**
+- **Multimodal Support**: Process text and images from PDF documents
+- **Intelligent Chunking**: Configurable chunking strategies with context preservation
+- **Hybrid Retrieval**: Combines dense vector search with BM25 keyword matching
+- **AI Reranking**: Cross-encoder reranking for improved relevance
+
+### 🔄 **Sophisticated Query Processing**
+- **Query Decomposition**: Complex queries broken into sub-queries for parallel processing
+- **Contextual Enrichment**: Conversation history integration and context expansion
+- **Answer Verification**: Grounding checks with confidence scoring
+- **Source Attribution**: Complete citation and source tracking
+
+### 🐳 **Production-Ready Deployment**
+- **Containerized Architecture**: 4-service Docker setup with health checks
+- **Scalable Design**: Microservices architecture with clear separation of concerns
+- **Monitoring & Logging**: Comprehensive logging with structured output
+- **Backup & Recovery**: Automated backup procedures and recovery scripts
+
+---
+
+## 🏗️ Architecture Overview
+
+```mermaid
+graph TB
+    subgraph "Client Layer"
+        UI[Next.js Frontend<br/>React/TypeScript<br/>:3000]
+    end
+    
+    subgraph "API Gateway"
+        Backend[Backend Server<br/>Python HTTP<br/>:8000]
+    end
+    
+    subgraph "Processing Layer"
+        RAG[RAG API Server<br/>Document Processing<br/>:8001]
+    end
+    
+    subgraph "LLM Service"
+        Ollama[Ollama Server<br/>Local LLM Inference<br/>:11434]
+    end
+    
+    subgraph "Storage"
+        SQLite[(SQLite<br/>Sessions & Metadata)]
+        LanceDB[(LanceDB<br/>Vector Embeddings)]
+        Files[File System<br/>Documents & Indexes]
+    end
+    
+    UI --> Backend
+    Backend --> RAG
+    RAG --> Ollama
+    Backend --> SQLite
+    RAG --> LanceDB
+    RAG --> Files
 ```
 
-## 📋 System Architecture
+### Component Breakdown
 
-The system consists of four main components:
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| **Frontend** | Next.js 15, React 19, TypeScript | User interface, chat interactions |
+| **Backend** | Python 3.11, HTTP Server | API gateway, session management, intelligent routing |
+| **RAG API** | Python 3.11, Advanced NLP | Document processing, retrieval, generation |
+| **Ollama** | Go-based LLM server | Local LLM inference (embedding, generation) |
+| **SQLite** | Embedded database | Sessions, messages, index metadata |
+| **LanceDB** | Vector database | Document embeddings, similarity search |
 
-1. **Ollama Server** (Port 11434) - LLM inference engine
-2. **RAG API Server** (Port 8001) - Advanced RAG pipeline
-3. **Backend Server** (Port 8000) - Session management and routing
-4. **Frontend** (Port 3000) - Next.js web interface
+---
 
-## 🛠️ Installation
+## 📋 System Requirements
 
-### Prerequisites
-- Python 3.11+
-- Node.js 18+
-- Ollama ([install here](https://ollama.ai))
-- Docker (optional, for containerized deployment)
+### **Minimum Requirements**
+- **CPU**: 4 cores, 2.5GHz+
+- **RAM**: 8GB (16GB recommended)
+- **Storage**: 50GB free space
+- **OS**: macOS 10.15+, Ubuntu 20.04+, Windows 10+
 
-### Setup
+### **Recommended Requirements**
+- **CPU**: 8+ cores, 3.0GHz+
+- **RAM**: 32GB+ (for large models)
+- **Storage**: 200GB+ SSD
+- **GPU**: NVIDIA GPU with 8GB+ VRAM (optional)
+
+---
+
+## 📖 Documentation
+
+### **Getting Started**
+- 📄 **[Quick Start Guide](Documentation/quick_start.md)** - Get running in 5 minutes
+- 📄 **[Installation Guide](Documentation/installation_guide.md)** - Detailed setup instructions
+- 📄 **[Docker Usage Guide](Documentation/docker_usage.md)** - Docker commands and management
+
+### **System Documentation**
+- 📄 **[System Overview](Documentation/system_overview.md)** - Complete architecture and functionality
+- 📄 **[Deployment Guide](Documentation/deployment_guide.md)** - Production deployment procedures
+- 📄 **[API Reference](Documentation/api_reference.md)** - Complete API documentation
+
+### **Component Documentation**
+- 📄 **[Architecture Overview](Documentation/architecture_overview.md)** - High-level system design
+- 📄 **[Retrieval Pipeline](Documentation/retrieval_pipeline.md)** - Document retrieval and processing
+- 📄 **[Indexing Pipeline](Documentation/indexing_pipeline.md)** - Document indexing and storage
+- 📄 **[React Agent](Documentation/react_agent.md)** - Intelligent agent system
+- 📄 **[Triage System](Documentation/triage_system.md)** - Query routing and classification
+
+---
+
+## 🛠️ Installation & Setup
+
+### **Option 1: Automated Setup (Recommended)**
 ```bash
-# Clone repository
-git clone <repository-url>
-cd rag_system_old
-
-# Install dependencies
-make install
-
-# Start system
-make dev
+git clone https://github.com/your-org/rag-system.git
+cd rag-system
+./setup_rag_system.sh
 ```
 
-## 📖 Usage Guide
-
-### Development Commands
+### **Option 2: Manual Setup**
 ```bash
-# Start in development mode with hot reload
-make dev
+# 1. Install Docker (if not installed)
+./install_docker.sh
 
-# Start without frontend (backend only)
-make dev-no-frontend
+# 2. Clone repository
+git clone https://github.com/your-org/rag-system.git
+cd rag-system
 
-# View aggregated logs from all services
-make logs
+# 3. Start services
+docker compose up -d
 
-# Check system health
-make health
+# 4. Install AI models
+docker compose exec ollama ollama pull qwen2.5:7b
+docker compose exec ollama ollama pull qwen2.5:0.5b
 
-# Stop all services
-make stop
+# 5. Access system
+open http://localhost:3000
 ```
 
-### Production Commands
+### **Option 3: Development Setup**
 ```bash
-# Start in production mode
-make prod
+# Setup for local development
+python3.11 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+npm install
 
-# Docker deployment
-make docker-build    # Build images
-make docker-up       # Start containers
-make docker-down     # Stop containers
-make docker-logs     # View container logs
+# Start infrastructure only
+docker compose up -d ollama
+
+# Run services locally
+cd backend && python server.py &
+cd rag_system && python -m api_server &
+npm run dev
 ```
 
-### Maintenance Commands
+---
+
+## 🎯 Usage Examples
+
+### **Basic Chat**
 ```bash
-# Clean temporary files and logs
-make clean
-
-# Update system
-make update
-
-# Create backup
-make backup
-
-# Monitor system resources
-make monitor
+# Simple conversation
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"query": "Hello, how are you?", "session_id": "demo"}' \
+  http://localhost:8000/sessions/demo/chat
 ```
+
+### **Document Upload**
+```bash
+# Upload PDF document
+curl -X POST -F "file=@document.pdf" \
+  http://localhost:8000/upload
+```
+
+### **Document Query**
+```bash
+# Ask about uploaded documents
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"query": "What are the key findings in the document?", "session_id": "demo"}' \
+  http://localhost:8000/sessions/demo/chat
+```
+
+### **Advanced Features**
+```bash
+# Query with advanced options
+curl -X POST -H "Content-Type: application/json" \
+  -d '{
+    "query": "Summarize the main points",
+    "session_id": "demo",
+    "query_decompose": true,
+    "ai_rerank": true,
+    "verify": true
+  }' \
+  http://localhost:8001/chat/stream
+```
+
+---
 
 ## 🔧 Configuration
 
-### Environment Variables
+### **Model Configuration**
+```python
+# Edit rag_system/main.py
+EXTERNAL_MODELS = {
+    "embedding_model": "sentence-transformers/all-mpnet-base-v2",
+    "reranker_model": "BAAI/bge-reranker-base",
+}
+
+OLLAMA_CONFIG = {
+    "generation_model": "qwen2.5:7b",
+    "enrichment_model": "qwen2.5:0.5b",
+}
+```
+
+### **Pipeline Configuration**
+```python
+# Edit rag_system/main.py
+PIPELINE_CONFIGS = {
+    "query_decomposition": {"enabled": True},
+    "contextual_enricher": {"enabled": True},
+    "verification": {"enabled": True},
+    "retrieval": {
+        "search_type": "hybrid",
+        "fusion": {"dense_weight": 0.7, "sparse_weight": 0.3}
+    }
+}
+```
+
+### **Environment Configuration**
 ```bash
-# RAG API Configuration
-OLLAMA_HOST=http://localhost:11434
-NODE_ENV=development
-
-# Backend Configuration
-RAG_API_URL=http://localhost:8001
-
-# Frontend Configuration
-NEXT_PUBLIC_API_URL=http://localhost:8000
+# Edit .env file
+NODE_ENV=production
+DEFAULT_EMBEDDING_MODEL=sentence-transformers/all-mpnet-base-v2
+DEFAULT_GENERATION_MODEL=qwen2.5:7b
+MAX_CONCURRENT_REQUESTS=5
+REQUEST_TIMEOUT=300
 ```
 
-### Service Configuration
-The unified launcher (`run_system.py`) supports various options:
+---
+
+## 📊 Performance Characteristics
+
+| Operation | Typical Time | Factors |
+|-----------|-------------|---------|
+| **Direct LLM** | 1-3 seconds | Model size, query complexity |
+| **RAG Query** | 15-30 seconds | Document corpus size, retrieval depth |
+| **Document Upload** | 2-5 seconds/MB | File size, processing complexity |
+| **Index Creation** | 1-2 minutes/100 pages | Document count, embedding model |
+
+### **Scalability**
+- **Concurrent Users**: 10-20 (Direct LLM), 3-5 (RAG Pipeline)
+- **Document Limits**: Up to 10,000 documents per index
+- **Query Performance**: Sub-second search up to 100,000 chunks
+
+---
+
+## 🛡️ Security & Privacy
+
+- **🔒 Local Processing**: All data processed locally, no external API calls
+- **🏠 Data Isolation**: Documents stored in isolated directories
+- **🔐 Session Security**: Session-based access control
+- **📋 Audit Trail**: Complete logging of all operations
+- **🔄 Data Retention**: Configurable message and document retention
+
+---
+
+## 🚀 Management Scripts
+
+The system includes helpful management scripts:
 
 ```bash
-# Development mode with frontend
-python run_system.py --mode dev
+# System Management
+./start_rag_system.sh      # Start the system
+./stop_rag_system.sh       # Stop the system
+./status_rag_system.sh     # Check system status
+./backup_rag_system.sh     # Backup system data
+./update_rag_system.sh     # Update the system
 
-# Production mode
-python run_system.py --mode prod
-
-# Skip frontend startup
-python run_system.py --no-frontend
-
-# View logs only (don't start services)
-python run_system.py --logs-only
-
-# Health check
-python run_system.py --health
+# Docker Management
+docker compose up -d       # Start services
+docker compose down        # Stop services
+docker compose ps          # Check status
+docker compose logs -f     # View logs
 ```
 
-## 📊 Features
+---
 
-### Smart Query Routing
-- **Direct LLM**: Fast responses for general queries (~1.3s)
-- **RAG Pipeline**: Document-aware responses for specific queries
-- **Automatic Detection**: Uses document overviews for intelligent routing
+## 🔍 Monitoring & Troubleshooting
 
-### Document Processing
-- **Multi-format Support**: PDF, text, markdown
-- **Intelligent Chunking**: Recursive markdown chunking with overlap
-- **Contextual Enrichment**: LLM-based content enhancement
-- **Vector Indexing**: Dense embeddings with LanceDB
-
-### Advanced Retrieval
-- **Hybrid Search**: Combines dense and sparse (BM25) retrieval
-- **AI Reranking**: ColBERT-based relevance scoring
-- **Late-chunk Merging**: Expands context while maintaining precision
-- **Graph Extraction**: Entity-relationship knowledge graphs
-
-### User Interface
-- **Modern Design**: Glass-morphism UI with responsive layout
-- **Real-time Chat**: Streaming responses with typing indicators
-- **Session Management**: Persistent conversation history
-- **Index Management**: Document upload and indexing interface
-
-## 📁 Project Structure
-
-```
-rag_system_old/
-├── run_system.py              # Unified system launcher
-├── Makefile                   # Development and deployment commands
-├── docker-compose.yml         # Container orchestration
-├── requirements.txt           # Python dependencies
-├── package.json              # Node.js dependencies
-│
-├── rag_system/               # Core RAG implementation
-│   ├── main.py              # Agent factory and configuration
-│   ├── api_server.py        # RAG API server
-│   ├── pipelines/           # Indexing and retrieval pipelines
-│   ├── agent/               # ReAct agent implementation
-│   ├── indexing/            # Document processing
-│   ├── retrieval/           # Search and retrieval
-│   └── rerankers/           # AI-based reranking
-│
-├── backend/                  # Backend API server
-│   ├── server.py            # Main server with smart routing
-│   ├── database.py          # Session and document management
-│   └── ollama_client.py     # Ollama integration
-│
-├── src/                     # Frontend Next.js application
-│   ├── app/                 # App router pages
-│   ├── components/          # React components
-│   └── lib/                 # Utilities and API client
-│
-├── Documentation/           # Technical documentation
-├── logs/                   # Runtime logs
-├── lancedb/               # Vector database
-├── index_store/           # Document indexes
-└── shared_uploads/        # Uploaded files
-```
-
-## 🐳 Docker Deployment
-
-### Quick Deploy
+### **Health Checks**
 ```bash
-# Build and start all services
-make deploy
+# Check all services
+./status_rag_system.sh
+
+# Individual service checks
+curl -f http://localhost:3000 && echo "Frontend OK"
+curl -f http://localhost:8000/health && echo "Backend OK"
+curl -f http://localhost:8001/models && echo "RAG API OK"
+curl -f http://localhost:11434/api/tags && echo "Ollama OK"
 ```
 
-### Manual Docker Commands
+### **Common Issues**
+- **Port Conflicts**: Check `sudo lsof -i :3000` and kill conflicting processes
+- **Memory Issues**: Increase Docker memory in Docker Desktop settings
+- **Model Loading**: Verify models with `docker compose exec ollama ollama list`
+- **Database Issues**: Check database file permissions and connectivity
+
+### **Logs & Debugging**
 ```bash
-# Build images
-docker-compose build
+# View service logs
+docker compose logs frontend
+docker compose logs backend
+docker compose logs rag-api
+docker compose logs ollama
 
-# Start services
-docker-compose up -d
+# Follow logs in real-time
+docker compose logs -f
 
-# View logs
-docker-compose logs -f
-
-# Stop services
-docker-compose down
+# Check resource usage
+docker stats
 ```
 
-### Service Health Monitoring
-All services include health checks:
-- **Ollama**: API endpoint availability
-- **RAG API**: Model listing endpoint
-- **Backend**: Health endpoint
-- **Frontend**: Homepage accessibility
+---
 
-## 🔍 Monitoring & Debugging
+## 🔄 Updates & Maintenance
 
-### Log Files
+### **Regular Updates**
 ```bash
-# View all logs
-tail -f logs/*.log
+# Update system
+./update_rag_system.sh
 
-# Specific service logs
-tail -f logs/rag-api.log
-tail -f logs/backend.log
-tail -f logs/frontend.log
-tail -f logs/ollama.log
+# Update models
+docker compose exec ollama ollama pull qwen2.5:7b
+docker compose restart rag-api
 ```
 
-### Health Checks
+### **Backup & Recovery**
 ```bash
-# System health overview
-make health
+# Create backup
+./backup_rag_system.sh
 
-# Individual service health
-curl http://localhost:11434/api/tags  # Ollama
-curl http://localhost:8001/models     # RAG API
-curl http://localhost:8000/health     # Backend
-curl http://localhost:3000            # Frontend
+# Restore from backup
+./restore_rag_system.sh backup_20250102_143000.tar.gz
 ```
 
-### Performance Monitoring
-```bash
-# Resource usage
-make monitor
-
-# Process information
-ps aux | grep -E "(python|node|ollama)"
-
-# Port usage
-netstat -tlnp | grep -E "(3000|8000|8001|11434)"
-```
-
-## 🚨 Troubleshooting
-
-### Common Issues
-
-**Port Already in Use**
-```bash
-# Check what's using the port
-lsof -ti:8000
-
-# Kill process using port
-kill $(lsof -ti:8000)
-```
-
-**Ollama Not Starting**
-```bash
-# Check Ollama installation
-ollama --version
-
-# Manual start
-ollama serve
-```
-
-**Frontend Build Errors**
-```bash
-# Clear cache and rebuild
-rm -rf .next node_modules
-npm install
-npm run build
-```
-
-**RAG API Errors**
-```bash
-# Check Python dependencies
-pip install -r requirements.txt
-
-# Verify model availability
-ollama list
-```
-
-### Getting Help
-1. Check logs: `make logs`
-2. Verify health: `make health`
-3. Review documentation in `Documentation/`
-4. Check GitHub issues
-
-## 🔄 Development Workflow
-
-### Local Development
-1. `make dev` - Start all services
-2. Edit code (hot reload enabled)
-3. `make logs` - Monitor changes
-4. `make stop` - Stop when done
-
-### Production Testing
-1. `make prod` - Test production mode
-2. `make docker-build` - Build containers
-3. `make docker-up` - Test containerized deployment
-
-### Deployment
-1. `make deploy` - Full production deployment
-2. `make monitor` - Monitor resources
-3. `make backup` - Regular backups
-
-## 📈 Performance
-
-### Typical Response Times
-- **General Queries**: ~1.3s (direct LLM)
-- **Document Queries**: ~3-5s (full RAG pipeline)
-- **Index Building**: ~30s per document
-
-### Resource Requirements
-- **RAM**: 8GB+ (16GB recommended)
-- **Storage**: 10GB+ for models and indexes
-- **CPU**: 4+ cores recommended
-- **GPU**: Optional, improves performance
+---
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create feature branch: `git checkout -b feature-name`
-3. Make changes and test: `make dev`
-4. Commit changes: `git commit -m "Description"`
-5. Push and create pull request
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
-## 📄 License
+### **Development Setup**
+```bash
+# Clone repository
+git clone https://github.com/your-org/rag-system.git
+cd rag-system
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+# Setup development environment
+python3.11 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+npm install
+
+# Start development servers
+docker compose up -d ollama
+cd backend && python server.py &
+cd rag_system && python -m api_server &
+npm run dev
+```
+
+---
+
+## 📜 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🙏 Acknowledgments
+
+- **[Ollama](https://ollama.ai/)** - Local LLM inference
+- **[LanceDB](https://lancedb.com/)** - Vector database
+- **[Sentence Transformers](https://www.sbert.net/)** - Embedding models
+- **[Next.js](https://nextjs.org/)** - Frontend framework
+- **[Docker](https://www.docker.com/)** - Containerization
+
+---
+
+## 📞 Support
+
+- 📖 **Documentation**: Check the `Documentation/` folder
+- 🐛 **Issues**: Report issues on GitHub
+- 💬 **Discussions**: Join our community discussions
+- 📧 **Contact**: [your-email@domain.com](mailto:your-email@domain.com)
+
+---
+
+**Built with ❤️ for the AI community**

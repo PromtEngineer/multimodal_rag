@@ -6,6 +6,7 @@ import os
 import requests
 import sys
 import functools
+import logging
 
 # Add backend directory to path for database imports
 backend_dir = os.path.join(os.path.dirname(__file__), '..', 'backend')
@@ -17,7 +18,7 @@ from rag_system.main import get_agent
 from rag_system.factory import get_indexing_pipeline
 
 # Initialize database connection once at module level
-db = ChatDatabase()
+db = ChatDatabase("backend/chat_history.db")
 
 # Get the desired agent mode from environment variables, defaulting to 'default'
 # This allows us to easily switch between 'default', 'fast', 'react', etc.
@@ -40,16 +41,64 @@ print("✅ RAG Agent initialized successfully with MAXIMUM ACCURACY.")
 
 def _apply_index_embedding_model(idx_ids):
     """Ensure retrieval pipeline uses the embedding model stored with the first index."""
+    debug_info = f"🔧 _apply_index_embedding_model called with idx_ids: {idx_ids}\n"
+    
     if not idx_ids:
+        debug_info += "⚠️ No index IDs provided\n"
+        with open("logs/embedding_debug.log", "a") as f:
+            f.write(debug_info)
         return
     try:
         idx = db.get_index(idx_ids[0])
+        debug_info += f"🔧 Retrieved index: {idx.get('id')} with metadata: {idx.get('metadata', {})}\n"
         model = (idx.get("metadata") or {}).get("embedding_model")
+        debug_info += f"🔧 Embedding model from metadata: {model}\n"
         if model:
             rp = RAG_AGENT.retrieval_pipeline
+            current_model = rp.config.get("embedding_model_name")
+            debug_info += f"🔧 Current embedding model: {current_model}\n"
             rp.update_embedding_model(model)
+            debug_info += f"🔧 Updated embedding model to: {model}\n"
+        else:
+            debug_info += "⚠️ No embedding model found in metadata\n"
     except Exception as e:
-        print(f"⚠️ Could not apply index embedding model: {e}")
+        debug_info += f"⚠️ Could not apply index embedding model: {e}\n"
+    
+    # Write debug info to file
+    with open("logs/embedding_debug.log", "a") as f:
+        f.write(debug_info)
+
+def _get_table_name_for_session(session_id):
+    """Get the correct vector table name for a session by looking up its linked indexes."""
+    logger = logging.getLogger(__name__)
+    
+    if not session_id:
+        logger.info("❌ No session_id provided")
+        return None
+    
+    try:
+        # Get indexes linked to this session
+        idx_ids = db.get_indexes_for_session(session_id)
+        logger.info(f"🔍 Session {session_id[:8]}... has {len(idx_ids)} indexes: {idx_ids}")
+        
+        if not idx_ids:
+            logger.warning(f"⚠️ No indexes found for session {session_id}")
+            return f"text_pages_{session_id}"  # Fallback to old behavior
+        
+        # Use the first index's vector table name
+        idx = db.get_index(idx_ids[0])
+        if idx and idx.get('vector_table_name'):
+            table_name = idx['vector_table_name']
+            logger.info(f"📊 Using table '{table_name}' for session {session_id[:8]}...")
+            print(f"📊 RAG API: Using table '{table_name}' for session {session_id[:8]}...")
+            return table_name
+        else:
+            logger.warning(f"⚠️ Index found but no vector table name for session {session_id}")
+            return f"text_pages_{session_id}"  # Fallback
+            
+    except Exception as e:
+        logger.error(f"❌ Error getting table name for session {session_id}: {e}")
+        return f"text_pages_{session_id}"  # Fallback
 
 class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -152,9 +201,10 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             # Allow explicit table_name override
             table_name = data.get('table_name')
             if not table_name and session_id:
-                table_name = f"text_pages_{session_id}"
+                table_name = _get_table_name_for_session(session_id)
 
             # Decide execution path
+            print(f"🔧 Force RAG flag: {force_rag}")
             if force_rag:
                 # --- Apply runtime overrides manually because we skip Agent.run()
                 rp_cfg = RAG_AGENT.retrieval_pipeline.config
@@ -172,6 +222,11 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                     rp_cfg.setdefault("provence", {})["enabled"] = bool(provence_prune)
                 if provence_threshold is not None:
                     rp_cfg.setdefault("provence", {})["threshold"] = float(provence_threshold)
+
+                # 🔄 Apply embedding model for this session (same as in agent path)
+                if session_id:
+                    idx_ids = db.get_indexes_for_session(session_id)
+                    _apply_index_embedding_model(idx_ids)
 
                 # Directly invoke retrieval pipeline to bypass triage
                 result = RAG_AGENT.retrieval_pipeline.run(
@@ -305,7 +360,7 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             # Allow explicit table_name override
             table_name = data.get('table_name')
             if not table_name and session_id:
-                table_name = f"text_pages_{session_id}"
+                table_name = _get_table_name_for_session(session_id)
 
             # Prepare response headers for SSE
             self.send_response(200)
@@ -346,6 +401,11 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                         rp_cfg.setdefault("provence", {})["enabled"] = bool(provence_prune)
                     if provence_threshold is not None:
                         rp_cfg.setdefault("provence", {})["threshold"] = float(provence_threshold)
+
+                    # 🔄 Apply embedding model for this session (same as in agent path)
+                    if session_id:
+                        idx_ids = db.get_indexes_for_session(session_id)
+                        _apply_index_embedding_model(idx_ids)
 
                     # 🔧 Set index-specific overview path so each index writes separate file
                     if session_id:
@@ -463,7 +523,7 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             # Allow explicit table_name override
             table_name = data.get('table_name')
             if not table_name and session_id:
-                table_name = f"text_pages_{session_id}"
+                table_name = _get_table_name_for_session(session_id)
 
             # The INDEXING_PIPELINE is already initialized. We just need to use it.
             # If a session-specific table is needed, we can override the config for this run.

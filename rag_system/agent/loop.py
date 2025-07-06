@@ -2,6 +2,7 @@ from typing import Dict, Any, Optional
 import json
 import time, asyncio, os
 import numpy as np
+import concurrent.futures
 from cachetools import TTLCache, LRUCache
 from rag_system.utils.ollama_client import OllamaClient
 from rag_system.pipelines.retrieval_pipeline import RetrievalPipeline

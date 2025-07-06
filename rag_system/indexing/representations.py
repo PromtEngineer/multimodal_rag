@@ -8,12 +8,16 @@ import os
 class EmbeddingModel(Protocol):
     def create_embeddings(self, texts: List[str]) -> np.ndarray: ...
 
+# Global cache for models - use dict to cache by model name
+_MODEL_CACHE = {}
+
 # --- New Ollama Embedder ---
 class QwenEmbedder(EmbeddingModel):
     """
     An embedding model that uses a local Hugging Face transformer model.
     """
     def __init__(self, model_name: str = "Qwen/Qwen3-Embedding-0.6B"):
+        self.model_name = model_name
         # Auto-select the best available device: CUDA > MPS > CPU
         if torch.cuda.is_available():
             self.device = "cuda"
@@ -22,24 +26,24 @@ class QwenEmbedder(EmbeddingModel):
         else:
             self.device = "cpu"
 
-        # Global cache so the HF model loads only once per process
-        global _TOKENIZER, _MODEL
-        if _TOKENIZER is None or _MODEL is None:
+        # Use model-specific cache
+        if model_name not in _MODEL_CACHE:
             print(f"Initializing HF Embedder with model '{model_name}' on device '{self.device}'. (first load)")
-            _TOKENIZER = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True, padding_side="left")
-            _MODEL = AutoModel.from_pretrained(
+            tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True, padding_side="left")
+            model = AutoModel.from_pretrained(
                 model_name,
                 trust_remote_code=True,
                 torch_dtype=torch.float16 if self.device != "cpu" else None,
             ).to(self.device).eval()
-            print("QwenEmbedder weights loaded and cached.")
+            _MODEL_CACHE[model_name] = (tokenizer, model)
+            print(f"QwenEmbedder weights loaded and cached for {model_name}.")
         else:
-            print("Reusing cached QwenEmbedder weights.")
-        self.tokenizer = _TOKENIZER
-        self.model = _MODEL
+            print(f"Reusing cached QwenEmbedder weights for {model_name}.")
+        
+        self.tokenizer, self.model = _MODEL_CACHE[model_name]
 
     def create_embeddings(self, texts: List[str]) -> np.ndarray:
-        print(f"Generating {len(texts)} embeddings with Qwen model...")
+        print(f"Generating {len(texts)} embeddings with {self.model_name} model...")
         inputs = self.tokenizer(texts, padding=True, truncation=True, return_tensors="pt").to(self.device)
         with torch.no_grad():
             outputs = self.model(**inputs)
@@ -113,9 +117,6 @@ def select_embedder(model_name: str, ollama_host: str | None = None):
         return QwenEmbedder(model_name=model_name)
     # Otherwise assume it's an Ollama tag
     return OllamaEmbedder(model_name=model_name, host=ollama_host)
-
-_TOKENIZER = None  # Will hold the shared HF tokenizer instance
-_MODEL = None      # Will hold the shared HF model instance
 
 if __name__ == '__main__':
     print("representations.py cleaned up.")

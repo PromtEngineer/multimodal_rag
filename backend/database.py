@@ -432,6 +432,202 @@ class ChatDatabase:
         conn.commit()
         conn.close()
 
+    def inspect_and_populate_index_metadata(self, index_id: str) -> dict:
+        """
+        Inspect LanceDB table to extract metadata for older indexes.
+        Returns the inferred metadata or empty dict if inspection fails.
+        """
+        try:
+            # Get index info
+            index_info = self.get_index(index_id)
+            if not index_info:
+                return {}
+            
+            # Check if metadata is already populated
+            if index_info.get('metadata') and len(index_info['metadata']) > 0:
+                return index_info['metadata']
+            
+            # Try to inspect the LanceDB table
+            vector_table_name = index_info.get('vector_table_name')
+            if not vector_table_name:
+                return {}
+            
+            try:
+                # Try to import the RAG system modules
+                try:
+                    from rag_system.indexing.embedders import LanceDBManager
+                    import os
+                    
+                    # Use the same path as the system
+                    db_path = os.getenv('LANCEDB_PATH') or './rag_system/index_store/lancedb'
+                    ldb = LanceDBManager(db_path)
+                    
+                    # Check if table exists
+                    if not hasattr(ldb.db, 'table_names') or vector_table_name not in ldb.db.table_names():
+                        # Table doesn't exist - this means the index was never properly built
+                        inferred_metadata = {
+                            'status': 'incomplete',
+                            'issue': 'Vector table not found - index may not have been built properly',
+                            'vector_table_expected': vector_table_name,
+                            'available_tables': list(ldb.db.table_names()) if hasattr(ldb.db, 'table_names') else [],
+                            'metadata_inferred_at': datetime.now().isoformat(),
+                            'metadata_source': 'lancedb_inspection'
+                        }
+                        self.update_index_metadata(index_id, inferred_metadata)
+                        print(f"⚠️ Index {index_id[:8]}... appears incomplete - vector table missing")
+                        return inferred_metadata
+                    
+                    # Get table and inspect schema/data
+                    table = ldb.db.open_table(vector_table_name)
+                    
+                    # Get a sample record to inspect - use correct LanceDB API
+                    try:
+                        # Try to get sample data using proper LanceDB methods
+                        sample_df = table.to_pandas()
+                        if len(sample_df) == 0:
+                            inferred_metadata = {
+                                'status': 'empty',
+                                'issue': 'Vector table exists but contains no data',
+                                'metadata_inferred_at': datetime.now().isoformat(),
+                                'metadata_source': 'lancedb_inspection'
+                            }
+                            self.update_index_metadata(index_id, inferred_metadata)
+                            return inferred_metadata
+                        
+                        # Take only first row for inspection
+                        sample_df = sample_df.head(1)
+                    except Exception as e:
+                        print(f"⚠️ Could not read data from table {vector_table_name}: {e}")
+                        return {}
+                    
+                    # Infer metadata from table structure
+                    inferred_metadata = {
+                        'status': 'functional',
+                        'total_chunks': len(table.to_pandas()),  # Get total count
+                    }
+                    
+                    # Check vector dimensions
+                    if 'vector' in sample_df.columns:
+                        vector_data = sample_df['vector'].iloc[0]
+                        if isinstance(vector_data, list):
+                            inferred_metadata['vector_dimensions'] = len(vector_data)
+                            
+                            # Try to infer embedding model from vector dimensions
+                            dim_to_model = {
+                                384: 'BAAI/bge-small-en-v1.5 (or similar)',
+                                512: 'sentence-transformers/all-MiniLM-L6-v2 (or similar)',
+                                768: 'BAAI/bge-base-en-v1.5 (or similar)', 
+                                1024: 'Qwen/Qwen3-Embedding-0.6B (or similar)',
+                                1536: 'text-embedding-ada-002 (or similar)'
+                            }
+                            if len(vector_data) in dim_to_model:
+                                inferred_metadata['embedding_model_inferred'] = dim_to_model[len(vector_data)]
+                    
+                    # Try to parse metadata from sample record
+                    if 'metadata' in sample_df.columns:
+                        try:
+                            sample_metadata = json.loads(sample_df['metadata'].iloc[0])
+                            # Look for common metadata fields that might give us clues
+                            if 'document_id' in sample_metadata:
+                                inferred_metadata['has_document_structure'] = True
+                            if 'chunk_index' in sample_metadata:
+                                inferred_metadata['has_chunk_indexing'] = True
+                            if 'original_text' in sample_metadata:
+                                inferred_metadata['has_contextual_enrichment'] = True
+                                inferred_metadata['retrieval_mode_inferred'] = 'hybrid (contextual enrichment detected)'
+                            
+                            # Check for chunk size patterns
+                            if 'text' in sample_df.columns:
+                                text_length = len(sample_df['text'].iloc[0])
+                                if text_length > 0:
+                                    inferred_metadata['sample_chunk_length'] = text_length
+                                    # Rough chunk size estimation
+                                    estimated_tokens = text_length // 4  # rough estimate: 4 chars per token
+                                    if estimated_tokens < 300:
+                                        inferred_metadata['chunk_size_inferred'] = '256 tokens (estimated)'
+                                    elif estimated_tokens < 600:
+                                        inferred_metadata['chunk_size_inferred'] = '512 tokens (estimated)'
+                                    else:
+                                        inferred_metadata['chunk_size_inferred'] = '1024+ tokens (estimated)'
+                                        
+                        except (json.JSONDecodeError, KeyError):
+                            pass
+                    
+                    # Check if FTS index exists
+                    try:
+                        indices = table.list_indices()
+                        fts_exists = any('fts' in idx.name.lower() for idx in indices)
+                        if fts_exists:
+                            inferred_metadata['has_fts_index'] = True
+                            inferred_metadata['retrieval_mode_inferred'] = 'hybrid (FTS + vector)'
+                        else:
+                            inferred_metadata['retrieval_mode_inferred'] = 'vector-only'
+                    except:
+                        pass
+                    
+                    # Add inspection timestamp
+                    inferred_metadata['metadata_inferred_at'] = datetime.now().isoformat()
+                    inferred_metadata['metadata_source'] = 'lancedb_inspection'
+                    
+                    # Update the database with inferred metadata
+                    if inferred_metadata:
+                        self.update_index_metadata(index_id, inferred_metadata)
+                        print(f"🔍 Inferred metadata for index {index_id[:8]}...: {len(inferred_metadata)} fields")
+                    
+                    return inferred_metadata
+                    
+                except ImportError as import_error:
+                    # RAG system modules not available - provide basic fallback metadata
+                    print(f"⚠️ RAG system modules not available for inspection: {import_error}")
+                    
+                    # Check if this is actually a legacy index by looking at creation date
+                    created_at = index_info.get('created_at', '')
+                    is_recent = False
+                    if created_at:
+                        try:
+                            from datetime import datetime, timedelta
+                            created_date = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                            # Consider indexes created in the last 30 days as "recent"
+                            is_recent = created_date > datetime.now().replace(tzinfo=created_date.tzinfo) - timedelta(days=30)
+                        except:
+                            pass
+                    
+                    # Provide basic fallback metadata with better status detection
+                    if is_recent:
+                        status = 'functional'
+                        issue = 'Detailed configuration inspection requires RAG system modules, but index appears functional'
+                    else:
+                        status = 'legacy'
+                        issue = 'This index was created before metadata tracking was implemented. Configuration details are not available.'
+                    
+                    fallback_metadata = {
+                        'status': status,
+                        'issue': issue,
+                        'metadata_inferred_at': datetime.now().isoformat(),
+                        'metadata_source': 'fallback_inspection',
+                        'documents_count': len(index_info.get('documents', [])),
+                        'created_at': index_info.get('created_at', 'unknown'),
+                        'inspection_limitation': 'Backend server cannot access full RAG system modules for detailed inspection'
+                    }
+                    
+                    # Try to infer some basic info from the vector table name
+                    if vector_table_name:
+                        fallback_metadata['vector_table_name'] = vector_table_name
+                        fallback_metadata['note'] = 'Vector table exists but detailed inspection requires RAG system modules'
+                    
+                    self.update_index_metadata(index_id, fallback_metadata)
+                    status_msg = "recent but limited inspection" if is_recent else "legacy"
+                    print(f"📝 Added fallback metadata for {status_msg} index {index_id[:8]}...")
+                    return fallback_metadata
+                    
+            except Exception as e:
+                print(f"⚠️ Could not inspect LanceDB table for index {index_id[:8]}...: {e}")
+                return {}
+                
+        except Exception as e:
+            print(f"⚠️ Failed to inspect index metadata for {index_id[:8]}...: {e}")
+            return {}
+
 def generate_session_title(first_message: str, max_length: int = 50) -> str:
     """Generate a session title from the first message"""
     # Clean up the message

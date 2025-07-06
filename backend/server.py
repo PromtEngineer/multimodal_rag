@@ -951,7 +951,18 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
     def handle_get_session_indexes(self, session_id: str):
         try:
             idx_ids = db.get_indexes_for_session(session_id)
-            indexes = [db.get_index(i) for i in idx_ids if db.get_index(i)]
+            indexes = []
+            for idx_id in idx_ids:
+                idx = db.get_index(idx_id)
+                if idx:
+                    # Try to populate metadata for older indexes that have empty metadata
+                    if not idx.get('metadata') or len(idx['metadata']) == 0:
+                        print(f"🔍 Attempting to infer metadata for index {idx_id[:8]}...")
+                        inferred_metadata = db.inspect_and_populate_index_metadata(idx_id)
+                        if inferred_metadata:
+                            # Refresh the index data with the new metadata
+                            idx = db.get_index(idx_id)
+                    indexes.append(idx)
             self.send_json_response({'indexes': indexes, 'total': len(indexes)})
         except Exception as e:
             self.send_json_response({'error': str(e)}, status_code=500)
