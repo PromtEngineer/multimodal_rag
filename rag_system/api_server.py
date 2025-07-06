@@ -4,9 +4,20 @@ import socketserver
 from urllib.parse import urlparse, parse_qs
 import os
 import requests
+import sys
+import functools
 
-# Import the core logic from the new factory script
-from rag_system.factory import get_agent, get_indexing_pipeline
+# Add backend directory to path for database imports
+backend_dir = os.path.join(os.path.dirname(__file__), '..', 'backend')
+if backend_dir not in sys.path:
+    sys.path.append(backend_dir)
+
+from backend.database import ChatDatabase, generate_session_title
+from rag_system.main import get_agent
+from rag_system.factory import get_indexing_pipeline
+
+# Initialize database connection once at module level
+db = ChatDatabase()
 
 # Get the desired agent mode from environment variables, defaulting to 'default'
 # This allows us to easily switch between 'default', 'fast', 'react', etc.
@@ -23,6 +34,22 @@ if RAG_AGENT is None:
     exit(1)
 print("✅ RAG Agent initialized successfully with MAXIMUM ACCURACY.")
 # ---
+
+# Add helper near top after db & agent init
+# -------------- Helper ----------------
+
+def _apply_index_embedding_model(idx_ids):
+    """Ensure retrieval pipeline uses the embedding model stored with the first index."""
+    if not idx_ids:
+        return
+    try:
+        idx = db.get_index(idx_ids[0])
+        model = (idx.get("metadata") or {}).get("embedding_model")
+        if model:
+            rp = RAG_AGENT.retrieval_pipeline
+            rp.update_embedding_model(model)
+    except Exception as e:
+        print(f"⚠️ Could not apply index embedding model: {e}")
 
 class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
     def do_OPTIONS(self):
@@ -92,6 +119,36 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 self.send_json_response({"error": "Query is required"}, status_code=400)
                 return
 
+            # 🔄 UPDATE SESSION TITLE: If this is the first message in the session, update the title
+            if session_id:
+                try:
+                    # Check if this is the first message by calling the backend server
+                    backend_url = f"http://localhost:8000/sessions/{session_id}"
+                    session_resp = requests.get(backend_url)
+                    if session_resp.status_code == 200:
+                        session_data = session_resp.json()
+                        session = session_data.get('session', {})
+                        # If message_count is 0, this is the first message
+                        if session.get('message_count', 0) == 0:
+                            # Generate a title from the first message
+                            title = generate_session_title(query)
+                            # Update the session title via backend API
+                            # We'll need to add this endpoint to the backend, for now let's make a direct database call
+                            # This is a temporary solution until we add a proper API endpoint
+                            db.update_session_title(session_id, title)
+                            print(f"📝 Updated session title to: {title}")
+                            
+                            # 💾 STORE USER MESSAGE: Add the user message to the database
+                            user_message_id = db.add_message(session_id, query, "user")
+                            print(f"💾 Stored user message: {user_message_id}")
+                        else:
+                            # Not the first message, but still store the user message
+                            user_message_id = db.add_message(session_id, query, "user")
+                            print(f"💾 Stored user message: {user_message_id}")
+                except Exception as e:
+                    print(f"⚠️ Failed to update session title or store user message: {e}")
+                    # Continue with the request even if title update fails
+
             # Allow explicit table_name override
             table_name = data.get('table_name')
             if not table_name and session_id:
@@ -131,6 +188,19 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 if provence_threshold is not None:
                     rp_cfg.setdefault("provence", {})["threshold"] = float(provence_threshold)
 
+                # 🔄 Refresh document overviews for this session
+                if session_id:
+                    idx_ids = db.get_indexes_for_session(session_id)
+                    _apply_index_embedding_model(idx_ids)
+                    RAG_AGENT.load_overviews_for_indexes(idx_ids)
+
+                # 🔧 Set index-specific overview path
+                if session_id:
+                    rp_cfg["overview_path"] = f"index_store/overviews/{session_id}.jsonl"
+
+                # 🔧 Configure late chunking
+                rp_cfg.setdefault("retrievers", {}).setdefault("latechunk", {})["enabled"] = True
+
                 result = RAG_AGENT.run(
                     query,
                     table_name=table_name,
@@ -149,6 +219,15 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             
             # The result is a dict, so we need to dump it to a JSON string
             self.send_json_response(result)
+            
+            # 💾 STORE AI RESPONSE: Add the AI response to the database
+            if session_id and result and result.get("answer"):
+                try:
+                    ai_message_id = db.add_message(session_id, result["answer"], "assistant")
+                    print(f"💾 Stored AI response: {ai_message_id}")
+                except Exception as e:
+                    print(f"⚠️ Failed to store AI response: {e}")
+                    # Continue even if storage fails
 
         except json.JSONDecodeError:
             self.send_json_response({"error": "Invalid JSON"}, status_code=400)
@@ -192,6 +271,36 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             if not query:
                 self.send_json_response({"error": "Query is required"}, status_code=400)
                 return
+
+            # 🔄 UPDATE SESSION TITLE: If this is the first message in the session, update the title
+            if session_id:
+                try:
+                    # Check if this is the first message by calling the backend server
+                    backend_url = f"http://localhost:8000/sessions/{session_id}"
+                    session_resp = requests.get(backend_url)
+                    if session_resp.status_code == 200:
+                        session_data = session_resp.json()
+                        session = session_data.get('session', {})
+                        # If message_count is 0, this is the first message
+                        if session.get('message_count', 0) == 0:
+                            # Generate a title from the first message
+                            title = generate_session_title(query)
+                            # Update the session title via backend API
+                            # We'll need to add this endpoint to the backend, for now let's make a direct database call
+                            # This is a temporary solution until we add a proper API endpoint
+                            db.update_session_title(session_id, title)
+                            print(f"📝 Updated session title to: {title}")
+                            
+                            # 💾 STORE USER MESSAGE: Add the user message to the database
+                            user_message_id = db.add_message(session_id, query, "user")
+                            print(f"💾 Stored user message: {user_message_id}")
+                        else:
+                            # Not the first message, but still store the user message
+                            user_message_id = db.add_message(session_id, query, "user")
+                            print(f"💾 Stored user message: {user_message_id}")
+                except Exception as e:
+                    print(f"⚠️ Failed to update session title or store user message: {e}")
+                    # Continue with the request even if title update fails
 
             # Allow explicit table_name override
             table_name = data.get('table_name')
@@ -238,6 +347,13 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                     if provence_threshold is not None:
                         rp_cfg.setdefault("provence", {})["threshold"] = float(provence_threshold)
 
+                    # 🔧 Set index-specific overview path so each index writes separate file
+                    if session_id:
+                        rp_cfg["overview_path"] = f"index_store/overviews/{session_id}.jsonl"
+
+                    # 🔧 Configure late chunking
+                    rp_cfg.setdefault("retrievers", {}).setdefault("latechunk", {})["enabled"] = True
+
                     # Straight retrieval pipeline with streaming events
                     final_result = RAG_AGENT.retrieval_pipeline.run(
                         query,
@@ -252,6 +368,19 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                         rp_cfg.setdefault("provence", {})["enabled"] = bool(provence_prune)
                     if provence_threshold is not None:
                         rp_cfg.setdefault("provence", {})["threshold"] = float(provence_threshold)
+
+                    # 🔄 Refresh overviews for this session
+                    if session_id:
+                        idx_ids = db.get_indexes_for_session(session_id)
+                        _apply_index_embedding_model(idx_ids)
+                        RAG_AGENT.load_overviews_for_indexes(idx_ids)
+
+                    # 🔧 Set index-specific overview path
+                    if session_id:
+                        rp_cfg["overview_path"] = f"index_store/overviews/{session_id}.jsonl"
+
+                    # 🔧 Configure late chunking
+                    rp_cfg.setdefault("retrievers", {}).setdefault("latechunk", {})["enabled"] = True
 
                     final_result = RAG_AGENT.run(
                         query,
@@ -273,6 +402,15 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
 
                 # Ensure the final answer is sent (in case callback missed it)
                 emit("complete", final_result)
+                
+                # 💾 STORE AI RESPONSE: Add the AI response to the database
+                if session_id and final_result and final_result.get("answer"):
+                    try:
+                        ai_message_id = db.add_message(session_id, final_result["answer"], "assistant")
+                        print(f"💾 Stored AI response: {ai_message_id}")
+                    except Exception as e:
+                        print(f"⚠️ Failed to store AI response: {e}")
+                        # Continue even if storage fails
             except BrokenPipeError:
                 print("🔌 Client disconnected from SSE stream.")
             except Exception as e:
@@ -310,8 +448,9 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             retrieval_mode = data.get("retrieval_mode", "hybrid")
             window_size = int(data.get("window_size", 2))
             enable_enrich = bool(data.get("enable_enrich", True))
-            embedding_model = data.get("embedding_model")
-            enrich_model = data.get("enrich_model")
+            embedding_model = data.get('embeddingModel')
+            enrich_model = data.get('enrichModel')
+            overview_model = data.get('overviewModel') or data.get('overview_model_name')
             batch_size_embed = int(data.get("batch_size_embed", 50))
             batch_size_enrich = int(data.get("batch_size_enrich", 25))
             
@@ -368,10 +507,21 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 if enrich_model:
                     config_override["enrich_model"] = enrich_model
                 
+                # 🔧 Overview model (can differ from enrichment)
+                if overview_model:
+                    config_override["overview_model_name"] = overview_model
+                
                 print(f"🔧 INDEXING CONFIG: Contextual Enrichment: {enable_enrich}, Window Size: {window_size}")
                 print(f"🔧 CHUNKING CONFIG: Size: {chunk_size}, Overlap: {chunk_overlap}")
                 print(f"🔧 MODEL CONFIG: Embedding: {embedding_model or 'default'}, Enrichment: {enrich_model or 'default'}")
                 
+                # 🔧 Set index-specific overview path so each index writes separate file
+                if session_id:
+                    config_override["overview_path"] = f"index_store/overviews/{session_id}.jsonl"
+
+                # 🔧 Configure late chunking
+                config_override.setdefault("retrievers", {}).setdefault("latechunk", {})["enabled"] = True
+
                 # Create a temporary pipeline instance with the overridden config
                 temp_pipeline = INDEXING_PIPELINE.__class__(
                     config_override, 
@@ -415,10 +565,21 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                 if enrich_model:
                     config_override["enrich_model"] = enrich_model
                 
+                # 🔧 Overview model (can differ from enrichment)
+                if overview_model:
+                    config_override["overview_model_name"] = overview_model
+                
                 print(f"🔧 INDEXING CONFIG: Contextual Enrichment: {enable_enrich}, Window Size: {window_size}")
                 print(f"🔧 CHUNKING CONFIG: Size: {chunk_size}, Overlap: {chunk_overlap}")
                 print(f"🔧 MODEL CONFIG: Embedding: {embedding_model or 'default'}, Enrichment: {enrich_model or 'default'}")
                 
+                # 🔧 Set index-specific overview path so each index writes separate file
+                if session_id:
+                    config_override["overview_path"] = f"index_store/overviews/{session_id}.jsonl"
+
+                # 🔧 Configure late chunking
+                config_override.setdefault("retrievers", {}).setdefault("latechunk", {})["enabled"] = True
+
                 # Create temporary pipeline with overridden config
                 temp_pipeline = INDEXING_PIPELINE.__class__(
                     config_override, 
@@ -444,6 +605,13 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                     "batch_size_enrich": batch_size_enrich
                 }
             })
+
+            if embedding_model:
+                try:
+                    db.update_index_metadata(session_id, {"embedding_model": embedding_model})
+                except Exception as e:
+                    print(f"⚠️ Could not update embedding_model metadata: {e}")
+
         except json.JSONDecodeError:
             self.send_json_response({"error": "Invalid JSON"}, status_code=400)
         except Exception as e:

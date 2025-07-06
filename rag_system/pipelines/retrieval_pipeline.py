@@ -13,7 +13,7 @@ from threading import Lock
 from rag_system.utils.ollama_client import OllamaClient
 from rag_system.retrieval.retrievers import MultiVectorRetriever, GraphRetriever
 from rag_system.indexing.multimodal import LocalVisionModel
-from rag_system.indexing.representations import QwenEmbedder
+from rag_system.indexing.representations import select_embedder
 from rag_system.indexing.embedders import LanceDBManager
 from rag_system.rerankers.reranker import QwenReranker
 from rag_system.rerankers.sentence_pruner import SentencePruner
@@ -74,8 +74,10 @@ class RetrievalPipeline:
 
     def _get_text_embedder(self):
         if self.text_embedder is None:
-            self.text_embedder = QwenEmbedder(
-                model_name=self.config.get("embedding_model_name", "BAAI/bge-small-en-v1.5")
+            from rag_system.indexing.representations import select_embedder
+            self.text_embedder = select_embedder(
+                self.config.get("embedding_model_name", "BAAI/bge-small-en-v1.5"),
+                self.ollama_config.get("host") if isinstance(self.ollama_config, dict) else None,
             )
         return self.text_embedder
 
@@ -304,6 +306,36 @@ ORIGINAL QUESTION: "{query}"
         retrieval_time = time.time() - start_time
         logger.debug("Retrieved %s chunks in %.2fs", len(retrieved_docs), retrieval_time)
 
+        # -----------------------------------------------------------
+        #  LATE-CHUNK MERGING (merge ±1 sub-vector into central hit)
+        # -----------------------------------------------------------
+        if self.retriever_configs.get("latechunk", {}).get("enabled") and retrieved_docs:
+            merged_count = 0
+            for doc in retrieved_docs:
+                try:
+                    cid = doc.get("chunk_id")
+                    meta = doc.get("metadata", {})
+                    if meta.get("latechunk_merged"):
+                        continue  # already processed
+                    doc_id = doc.get("document_id")
+                    cidx = doc.get("chunk_index")
+                    if doc_id is None or cidx is None or cidx == -1:
+                        continue
+                    # Fetch neighbouring late-chunks inside same document (±1)
+                    siblings = self._get_surrounding_chunks_lancedb(doc, window_size=1)
+                    # Keep only same document_id and ordered by chunk_index
+                    siblings = [s for s in siblings if s.get("document_id") == doc_id]
+                    siblings.sort(key=lambda s: s.get("chunk_index", 0))
+                    merged_text = " \n".join(s.get("text", "") for s in siblings)
+                    if merged_text:
+                        doc["text"] = merged_text
+                        meta["latechunk_merged"] = True
+                        merged_count += 1
+                except Exception as e:
+                    print(f"⚠️  Late-chunk merge failed for chunk {doc.get('chunk_id')}: {e}")
+            if merged_count:
+                print(f"🪄 Late-chunk merging applied to {merged_count} retrieved chunks.")
+
         # --- AI Reranking Step ---
         ai_reranker = self._get_ai_reranker()
         if ai_reranker and retrieved_docs:
@@ -529,3 +561,13 @@ ORIGINAL QUESTION: "{query}"
         reaching into private helpers. If the retriever has not yet been
         instantiated, it is created on first access via `_get_dense_retriever`."""
         return self._get_dense_retriever()
+
+    def update_embedding_model(self, model_name: str):
+        """Switch embedding model at runtime and clear cached objects so they re-initialize."""
+        if self.config.get("embedding_model_name") == model_name:
+            return  # nothing to do
+        print(f"🔧 RetrievalPipeline switching embedding model to '{model_name}' (was '{self.config.get('embedding_model_name')}')")
+        self.config["embedding_model_name"] = model_name
+        # Reset caches so new instances are built on demand
+        self.text_embedder = None
+        self.dense_retriever = None

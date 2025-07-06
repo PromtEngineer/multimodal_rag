@@ -13,6 +13,7 @@ interface ChatInputProps {
   className?: string
   onOpenSettings?: () => void
   onAddIndex?: () => void
+  leftExtras?: React.ReactNode
 }
 
 export function ChatInput({ 
@@ -21,7 +22,8 @@ export function ChatInput({
   placeholder = "Message localGPT...",
   className = "",
   onOpenSettings,
-  onAddIndex
+  onAddIndex,
+  leftExtras
 }: ChatInputProps) {
   const [message, setMessage] = useState("")
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
@@ -122,7 +124,7 @@ export function ChatInput({
   }
 
   return (
-    <div className={`border-t border-gray-800 bg-black p-4 ${className}`}>
+    <div className={`border-t border-white/10 bg-black/60 backdrop-blur-sm p-4 ${className}`}>
       <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
         {/* Attached Files Display */}
         {attachedFiles.length > 0 && (
@@ -149,7 +151,7 @@ export function ChatInput({
           </div>
         )}
 
-        <div className="bg-gray-900 border border-gray-700 rounded-2xl px-5 pt-4 pb-3">
+        <div className="bg-white/5 backdrop-blur border border-white/10 rounded-2xl px-5 pt-4 pb-3 space-y-2">
           {/* Hidden file input (kept for future use) */}
           <input ref={fileInputRef} type="file" accept=".pdf" multiple onChange={handleFileChange} className="hidden" />
 
@@ -179,6 +181,7 @@ export function ChatInput({
                 <SettingsIcon className="w-5 h-5" />
                 <span className="text-xs hidden sm:inline">Settings</span>
               </button>
+              {leftExtras}
             </div>
             <Button
               type="submit"

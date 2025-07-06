@@ -6,11 +6,13 @@ import { ChatInput } from "./chat-input"
 import { EmptyChatState } from "./empty-chat-state"
 import { ChatMessage, ChatSession, chatAPI, generateUUID } from "@/lib/api"
 import { AttachedFile } from "@/lib/types"
-import { useEffect, useState, forwardRef, useImperativeHandle } from "react"
+import { useEffect, useState, forwardRef, useImperativeHandle, useCallback } from "react"
 import { Button } from "./button"
 import type { Step } from '@/lib/api'
 import { ChatSettingsModal } from '@/components/ui/chat-settings-modal'
 import { IndexForm } from '@/components/IndexForm'
+import SessionIndexInfo from '@/components/SessionIndexInfo'
+import { Database } from 'lucide-react'
 
 interface SessionChatProps {
   sessionId?: string
@@ -24,6 +26,9 @@ export interface SessionChatRef {
   sendMessage: (content: string, attachedFiles?: AttachedFile[]) => Promise<void>
   currentSession: ChatSession | null
 }
+
+// Helper to shorten long titles
+const truncate = (str: string, n: number = 18) => str.length > n ? str.slice(0, n) + '…' : str;
 
 export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({ 
   sessionId,
@@ -53,46 +58,18 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
   const [contextWindowSize, setContextWindowSize] = useState<number>(1)
   const [rerankerTopK, setRerankerTopK] = useState<number>(10)
   const [searchType, setSearchType] = useState<string>('hybrid')
-  const [denseWeight, setDenseWeight] = useState<number>(0.7)
   const [generationModels,setGenerationModels]=useState<string[]>([])
-  const [selectedModel,setSelectedModel]=useState<string>('')
+  const [selectedModel,setSelectedModel]=useState<string>('qwen3:8b')
   const [currentIndexId, setCurrentIndexId] = useState<string | null>(null)
+  const [currentIndexName, setCurrentIndexName] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [showIndexForm, setShowIndexForm] = useState(false)
+  const [showIndexInfo, setShowIndexInfo] = useState(false)
   
   const apiService = chatAPI
 
-  // Expose functions to parent component (moved after sendMessage definition)
-
-  // Load session when sessionId changes
-  useEffect(() => {
-    if (sessionId) {
-      // Only load session if we don't already have the current session
-      // This prevents overriding messages when a new session is created
-      if (!currentSession || currentSession.id !== sessionId) {
-        loadSession(sessionId)
-      }
-    } else {
-      // Clear messages if no session
-      setMessages([])
-      setCurrentSession(null)
-    }
-  }, [sessionId, currentSession]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Fetch available models on mount
-  useEffect(()=>{
-    (async()=>{
-      try{
-        const resp=await apiService.getModels();
-        setGenerationModels(resp.generation_models||[])
-        if(resp.generation_models&&resp.generation_models.length>0){
-          setSelectedModel(resp.generation_models[0])
-        }
-      }catch(e){console.warn('Failed to load models',e)}
-    })()
-  },[])
-
-  const loadSession = async (id: string) => {
+  // Define loadSession with useCallback before useEffect
+  const loadSession = useCallback(async (id: string) => {
     try {
       setError(null)
       const { session, messages: sessionMessages } = await apiService.getSession(id)
@@ -112,13 +89,43 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
           const lastIdxObj = idxResp.indexes[idxResp.indexes.length - 1] as any
           const idxId = (lastIdxObj.index_id ?? lastIdxObj.id) as string
           setCurrentIndexId(idxId ?? null)
+          setCurrentIndexName(lastIdxObj.name ?? lastIdxObj.title ?? idxId.slice(0,8))
         }
       } catch {}
     } catch (error) {
       console.error('Failed to load session:', error)
       setError('Failed to load session')
     }
-  }
+  }, [apiService, onSessionChange])
+
+  // Load session when sessionId changes
+  useEffect(() => {
+    if (sessionId) {
+      // Only load session if we don't already have the current session
+      // This prevents overriding messages when a new session is created
+      if (!currentSession || currentSession.id !== sessionId) {
+        loadSession(sessionId)
+      }
+    } else {
+      // Clear messages if no session
+      setMessages([])
+      setCurrentSession(null)
+    }
+  }, [sessionId, currentSession, loadSession]) // Added missing dependencies
+
+  // Fetch available models on mount
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const resp=await apiService.getModels();
+        setGenerationModels(resp.generation_models||[])
+        if(resp.generation_models&&resp.generation_models.length>0){
+          const def = resp.generation_models.find((m:string)=>m==='qwen3:8b');
+          setSelectedModel(def || resp.generation_models[0])
+        }
+      }catch(e){console.warn('Failed to load models',e)}
+    })()
+  },[apiService])
 
   const sendMessage = async (content: string, attachedFiles?: AttachedFile[]) => {
     // --- Guard Clauses ---
@@ -139,7 +146,9 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
           const newSession = await apiService.createSession()
           activeSessionId = newSession.id
           setCurrentSession(newSession)
-          if (onSessionChange) onSessionChange(newSession)
+          if (onSessionChange) {
+            onSessionChange(newSession)
+          }
         } catch (error) {
           console.error('Failed to create session:', error)
           setError('Failed to create session')
@@ -193,6 +202,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             const lastIdxObj = idxResp.indexes[idxResp.indexes.length - 1] as any;
             idxId = (lastIdxObj.index_id ?? lastIdxObj.id) as string;
             setCurrentIndexId(idxId ?? null);
+            setCurrentIndexName(lastIdxObj.name ?? lastIdxObj.title ?? idxId.slice(0,8));
           }
         } catch {}
       }
@@ -239,7 +249,6 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             contextWindowSize,
             rerankerTopK,
             searchType,
-            denseWeight,
             forceRag: forceDocs,
             provencePrune,
           },
@@ -410,6 +419,23 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
                 steps.forEach(s => {
                   if (s.status !== 'done') s.status = 'done';
                 });
+                
+                // 🔄 REFRESH SESSION: After completion, refresh session data to get updated title
+                if (activeSessionId) {
+                  // Always refresh session data so updated title & message count are reflected in the UI
+                  setTimeout(async () => {
+                    try {
+                      const { session } = await apiService.getSession(activeSessionId as string);
+                      setCurrentSession(session);
+                      if (onSessionChange) {
+                        onSessionChange(session);
+                      }
+                    } catch (error) {
+                      console.error('Failed to refresh session after completion:', error);
+                    }
+                  }, 100); // Small delay to ensure backend has processed the title update
+                }
+                
                 return { ...m, content: { steps }, metadata: { message_type: 'complete' } };
               }
               if (evt.type === 'direct_answer') {
@@ -435,7 +461,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
           contextWindowSize,
           rerankerTopK,
           searchType,
-          denseWeight,
+          forceRag: forceDocs,
           provencePrune,
         })
       
@@ -547,6 +573,17 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
               placeholder="Ask anything"
               onOpenSettings={()=>setShowSettings(true)}
               onAddIndex={()=>setShowIndexForm(true)}
+              leftExtras={currentIndexId && currentIndexName ? (
+                <button
+                  type="button"
+                  onClick={()=>setShowIndexInfo(true)}
+                  title="View index info"
+                  className="flex items-center gap-1 p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-full transition-colors"
+                >
+                  <Database className="w-5 h-5" />
+                  <span className="text-xs hidden sm:inline">{truncate(currentIndexName,12)}</span>
+                </button>
+              ) : undefined}
             />
           </div>
         </div>
@@ -574,6 +611,17 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
               placeholder="Message localGPT..."
               onOpenSettings={()=>setShowSettings(true)}
               onAddIndex={()=>setShowIndexForm(true)}
+              leftExtras={currentIndexId && currentIndexName ? (
+                <button
+                  type="button"
+                  onClick={()=>setShowIndexInfo(true)}
+                  title="View index info"
+                  className="flex items-center gap-1 p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-full transition-colors"
+                >
+                  <Database className="w-5 h-5" />
+                  <span className="text-xs hidden sm:inline">{truncate(currentIndexName,12)}</span>
+                </button>
+              ) : undefined}
             />
           </div>
         </>
@@ -592,12 +640,11 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             // Retrieval Settings
             {type: 'dropdown', label:'LLM model', value: selectedModel, setter: setSelectedModel, options: generationModels.map(m=>({value:m,label:m}))},
             {type: 'dropdown', label:'Search type', value: searchType, setter: setSearchType, options: [
-              {value: 'hybrid', label: 'Hybrid (Vector + BM25)'},
+              {value: 'hybrid', label: 'Hybrid (Vector + FTS)'},
               {value: 'vector_only', label: 'Vector Only'},
-              {value: 'bm25_only', label: 'BM25 Only'}
+              {value: 'bm25_only', label: 'FTS Only'}
             ]},
             {type: 'slider', label:'Retrieval chunks', value: retrievalK, setter: setRetrievalK, min: 5, max: 50, unit: ' chunks'},
-            {type: 'slider', label:'Dense search weight', value: denseWeight, setter: setDenseWeight, min: 0.1, max: 0.9, step: 0.1},
             
             // Reranking & Context
             {type: 'toggle', label:'AI reranker', checked: enableAiRerank, setter: setEnableAiRerank},
@@ -619,6 +666,11 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             if(onSessionChange) onSessionChange(s);
           }}
         />
+      )}
+
+      {/* Index info modal */}
+      {showIndexInfo && currentSession && (
+        <SessionIndexInfo sessionId={currentSession.id} onClose={()=>setShowIndexInfo(false)} />
       )}
     </div>
   )

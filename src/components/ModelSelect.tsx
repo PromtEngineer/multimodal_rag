@@ -22,6 +22,10 @@ export function ModelSelect({ value, onChange, type, className, placeholder }: P
         if (!mounted) return;
         const list = type === 'generation' ? res.generation_models : res.embedding_models;
         setModels(list);
+        // Auto-select default qwen3:0.6b if available and not chosen yet
+        if(!value && list.includes('qwen3:0.6b')){
+          onChange('qwen3:0.6b');
+        }
         setLoading(false);
       })
       .catch((e) => {
@@ -51,7 +55,7 @@ export function ModelSelect({ value, onChange, type, className, placeholder }: P
 
   return (
     <select
-      className={`px-2 py-1 bg-gray-800 text-white rounded ${className || ''}`}
+      className={`w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${className || ''}`}
       value={value || ''}
       onChange={(e) => onChange(e.target.value)}
     >

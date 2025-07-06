@@ -255,6 +255,28 @@ class ChatAPI {
     }
   }
 
+  async renameSession(sessionId: string, newTitle: string): Promise<{ message: string; session: ChatSession }> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/sessions/${sessionId}/rename`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ title: newTitle }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(`Rename session error: ${errorData.error || response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Rename session failed:', error);
+      throw error;
+    }
+  }
+
   async cleanupEmptySessions(): Promise<{ message: string; cleanup_count: number }> {
     try {
       const response = await fetch(`${API_BASE_URL}/sessions/cleanup`);
@@ -449,6 +471,7 @@ class ChatAPI {
     enableEnrich?: boolean;
     embeddingModel?: string;
     enrichModel?: string;
+    overviewModel?: string;
     batchSizeEmbed?: number;
     batchSizeEnrich?: number;
   } = {}): Promise<{ message: string }> {
@@ -468,6 +491,7 @@ class ChatAPI {
           enableEnrich: opts.enableEnrich ?? true,
           embeddingModel: opts.embeddingModel,
           enrichModel: opts.enrichModel,
+          overviewModel: opts.overviewModel,
           batchSizeEmbed: opts.batchSizeEmbed ?? 50,
           batchSizeEnrich: opts.batchSizeEnrich ?? 25,
         }),

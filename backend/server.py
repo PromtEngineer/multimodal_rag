@@ -95,6 +95,9 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
         elif parsed_path.path.startswith('/sessions/') and parsed_path.path.endswith('/index'):
             session_id = parsed_path.path.split('/')[-2]
             self.handle_index_documents(session_id)
+        elif parsed_path.path.startswith('/sessions/') and parsed_path.path.endswith('/rename'):
+            session_id = parsed_path.path.split('/')[-2]
+            self.handle_rename_session(session_id)
         else:
             self.send_response(404)
             self.end_headers()
@@ -278,7 +281,7 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
                 db.update_session_title(session_id, title)
             
             # 🎯 SMART ROUTING: Decide between direct LLM vs RAG
-            idx_ids = db.get_indexes_for_session(session_id)
+                idx_ids = db.get_indexes_for_session(session_id)
             force_rag = bool(data.get("force_rag", False))
             use_rag = True if force_rag else self._should_use_rag(message, idx_ids)
             
@@ -337,7 +340,7 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
 
         # Load document overviews for intelligent routing
         try:
-            doc_overviews = self._load_document_overviews()
+            doc_overviews = self._load_document_overviews(idx_ids)
             if doc_overviews:
                 return self._route_using_overviews(message, doc_overviews)
         except Exception as e:
@@ -346,48 +349,77 @@ class ChatHandler(http.server.BaseHTTPRequestHandler):
         # Fallback to simple pattern matching if overviews unavailable
         return self._simple_pattern_routing(message, idx_ids)
 
-    def _load_document_overviews(self) -> List[str]:
-        """Load document overviews from the index store."""
-        import json
-        import os
+    def _load_document_overviews(self, idx_ids: List[str]) -> List[str]:
+        """Load and aggregate overviews for the given index IDs.
         
-        # Fix path: backend server runs from backend/ directory, so we need to go up one level
-        overviews_path = "../index_store/overviews/overviews.jsonl"
-        if not os.path.exists(overviews_path):
-            # Try alternative paths
-            alt_paths = [
-                "index_store/overviews/overviews.jsonl",  # If running from project root
-                "./index_store/overviews/overviews.jsonl",
-                "../index_store/overviews/overviews.jsonl"
+        Strategy:
+        1. Attempt to load each index's dedicated overview file.
+        2. Aggregate all overviews found across available files (deduplicated).
+        3. If none of the index files exist, fall back to the legacy global overview file.
+        """
+        import os, json
+
+        aggregated: list[str] = []
+
+        # 1️⃣  Collect overviews from per-index files
+        for idx in idx_ids:
+            candidate_paths = [
+                f"../index_store/overviews/{idx}.jsonl",
+                f"index_store/overviews/{idx}.jsonl",
+                f"./index_store/overviews/{idx}.jsonl",
             ]
-            
-            for path in alt_paths:
-                if os.path.exists(path):
-                    overviews_path = path
+            for p in candidate_paths:
+                if os.path.exists(p):
+                    print(f"📖 Loading overviews from: {p}")
+                    try:
+                        with open(p, "r", encoding="utf-8") as f:
+                            for line in f:
+                                if not line.strip():
+                                    continue
+                                try:
+                                    record = json.loads(line)
+                                    overview = record.get("overview", "").strip()
+                                    if overview:
+                                        aggregated.append(overview)
+                                except json.JSONDecodeError:
+                                    continue  # skip malformed lines
+                        break  # Stop after the first existing path for this idx
+                    except Exception as e:
+                        print(f"⚠️ Error reading {p}: {e}")
+                        break  # Don't keep trying other paths for this idx if read failed
+
+        # 2️⃣  Fall back to legacy global file if no per-index overviews found
+        if not aggregated:
+            legacy_paths = [
+                "../index_store/overviews/overviews.jsonl",
+                "index_store/overviews/overviews.jsonl",
+                "./index_store/overviews/overviews.jsonl",
+            ]
+            for p in legacy_paths:
+                if os.path.exists(p):
+                    print(f"⚠️ Falling back to legacy overviews file: {p}")
+                    try:
+                        with open(p, "r", encoding="utf-8") as f:
+                            for line in f:
+                                if not line.strip():
+                                    continue
+                                try:
+                                    record = json.loads(line)
+                                    overview = record.get("overview", "").strip()
+                                    if overview:
+                                        aggregated.append(overview)
+                                except json.JSONDecodeError:
+                                    continue
+                    except Exception as e:
+                        print(f"⚠️ Error reading legacy overviews file {p}: {e}")
                     break
-            else:
-                print(f"⚠️ Could not find overviews.jsonl in any of: {alt_paths}")
-                return []
-        
-        print(f"📖 Loading overviews from: {overviews_path}")
-        
-        overviews = []
-        try:
-            with open(overviews_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    if line.strip():
-                        data = json.loads(line)
-                        overview = data.get('overview', '').strip()
-                        if overview:
-                            overviews.append(overview)
-            
-            print(f"✅ Loaded {len(overviews)} document overviews")
-            
-        except Exception as e:
-            print(f"⚠️ Error loading overviews: {e}")
-            return []
-        
-        return overviews[:40]  # Limit to first 40 for performance
+
+        # Limit for performance
+        if aggregated:
+            print(f"✅ Loaded {len(aggregated)} document overviews from {len(idx_ids)} index(es)")
+        else:
+            print(f"⚠️ No overviews found for indices {idx_ids}")
+        return aggregated[:40]
 
     def _route_using_overviews(self, query: str, overviews: List[str]) -> bool:
         """
@@ -533,98 +565,66 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
     
     def _handle_rag_query(self, session_id: str, message: str, data: dict, idx_ids: List[str]):
         """
-        Handle query using the full RAG pipeline.
-        
+        Handle query using the full RAG pipeline (delegates to the advanced RAG API running on port 8001).
+
         Returns:
-            tuple: (response_text, source_documents)
+            tuple[str, List[dict]]: (response_text, source_documents)
         """
+        # Defaults
         response_text = ""
         source_docs: List[dict] = []
 
+        # Build payload for RAG API
+        rag_api_url = "http://localhost:8001/chat"
+        table_name = f"text_pages_{idx_ids[-1]}" if idx_ids else None
+        payload: Dict[str, Any] = {
+            "query": message,
+            "session_id": session_id,
+        }
+        if table_name:
+            payload["table_name"] = table_name
+
+        # Copy optional parameters from the incoming request
+        optional_params: Dict[str, tuple[type, str]] = {
+            "compose_sub_answers": (bool, "compose_sub_answers"),
+            "query_decompose": (bool, "query_decompose"),
+            "ai_rerank": (bool, "ai_rerank"),
+            "context_expand": (bool, "context_expand"),
+            "verify": (bool, "verify"),
+            "retrieval_k": (int, "retrieval_k"),
+            "context_window_size": (int, "context_window_size"),
+            "reranker_top_k": (int, "reranker_top_k"),
+            "search_type": (str, "search_type"),
+            "dense_weight": (float, "dense_weight"),
+            "provence_prune": (bool, "provence_prune"),
+            "provence_threshold": (float, "provence_threshold"),
+        }
+        for key, (caster, payload_key) in optional_params.items():
+            val = data.get(key)
+            if val is not None:
+                try:
+                    payload[payload_key] = caster(val)  # type: ignore[arg-type]
+                except Exception:
+                    payload[payload_key] = val
+
         try:
-            # The advanced RAG server runs on port 8001
-            rag_api_url = "http://localhost:8001/chat"
-
-            # Determine vector table: prefer last linked index if exists
-            table_name = None
-            if idx_ids:
-                table_name = f"text_pages_{idx_ids[-1]}"
-
-            payload: Dict[str, Any] = {"query": message, "session_id": session_id}
-            if table_name:
-                payload["table_name"] = table_name
-
-            # Extract RAG configuration parameters from the incoming data
-            compose_flag = data.get("compose_sub_answers")
-            decomp_flag = data.get("query_decompose")
-            ai_rerank_flag = data.get("ai_rerank")
-            ctx_expand_flag = data.get("context_expand")
-            verify_flag = data.get("verify")
-
-            # ✨ NEW RETRIEVAL PARAMETERS (all optional)
-            retrieval_k = data.get("retrieval_k")
-            context_window_size = data.get("context_window_size")
-            reranker_top_k = data.get("reranker_top_k")
-            search_type = data.get("search_type")
-            dense_weight = data.get("dense_weight")
-            provence_prune = data.get("provence_prune")
-            provence_threshold = data.get("provence_threshold")
-
-            # Add feature flags to payload if provided
-            if compose_flag is not None:
-                payload["compose_sub_answers"] = bool(compose_flag)
-            if decomp_flag is not None:
-                payload["query_decompose"] = bool(decomp_flag)
-            if ai_rerank_flag is not None:
-                payload["ai_rerank"] = bool(ai_rerank_flag)
-            if ctx_expand_flag is not None:
-                payload["context_expand"] = bool(ctx_expand_flag)
-            if verify_flag is not None:
-                payload["verify"] = bool(verify_flag)
-
-            # Add retrieval parameters if provided
-            if retrieval_k is not None:
-                payload["retrieval_k"] = int(retrieval_k)
-            if context_window_size is not None:
-                payload["context_window_size"] = int(context_window_size)
-            if reranker_top_k is not None:
-                payload["reranker_top_k"] = int(reranker_top_k)
-            if search_type is not None:
-                payload["search_type"] = str(search_type)
-            if dense_weight is not None:
-                payload["dense_weight"] = float(dense_weight)
-
-            # 🌿 Provence pruning
-            if provence_prune is not None:
-                payload["provence_prune"] = bool(provence_prune)
-            if provence_threshold is not None:
-                payload["provence_threshold"] = float(provence_threshold)
-
             rag_response = requests.post(rag_api_url, json=payload)
-
             if rag_response.status_code == 200:
                 rag_data = rag_response.json()
-                response_text = rag_data.get("answer", "No answer found in RAG response.")
+                response_text = rag_data.get("answer", "No answer found.")
                 source_docs = rag_data.get("source_documents", [])
             else:
-                error_info = rag_response.text
-                response_text = f"Error from RAG API: {error_info}"
-                print(f"❌ RAG API error ({rag_response.status_code}): {error_info}")
-
-            # 🧹 Clean up any thinking markers that might sneak through
-            response_text = re.sub(r'<think>.*?</think>', '', response_text, flags=re.DOTALL | re.IGNORECASE)
-            response_text = re.sub(r'<thinking>.*?</thinking>', '', response_text, flags=re.DOTALL | re.IGNORECASE)
-            response_text = response_text.strip()
-
-            if rag_response.status_code == 200:
-                print(f"✅ Received RAG response with {len(source_docs)} source docs.")
-
+                response_text = f"Error from RAG API ({rag_response.status_code}): {rag_response.text}"
+                print(f"❌ RAG API error: {response_text}")
         except requests.exceptions.ConnectionError:
             response_text = "Could not connect to the RAG API server. Please ensure it is running."
-            print("❌ Connection to RAG API failed. Is the server running on port 8001?")
+            print("❌ Connection to RAG API failed (port 8001).")
         except Exception as e:
             response_text = f"Error processing RAG query: {str(e)}"
             print(f"❌ RAG processing error: {e}")
+
+        # Strip any <think>/<thinking> tags that might slip through
+        response_text = re.sub(r'<(think|thinking)>.*?</\\1>', '', response_text, flags=re.DOTALL | re.IGNORECASE).strip()
 
         return response_text, source_docs
 
@@ -695,6 +695,15 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
 
             if rag_response.status_code == 200:
                 print("✅ RAG API successfully indexed documents.")
+                # Merge key config values into index metadata
+                idx_meta = {
+                    "session_linked": True,
+                    "retrieval_mode": "hybrid",
+                }
+                try:
+                    db.update_index_metadata(session_id, idx_meta)  # session_id used as index_id in text table naming
+                except Exception as e:
+                    print(f"⚠️ Failed to update index metadata for session index: {e}")
                 self.send_json_response(rag_response.json())
             else:
                 error_info = rag_response.text
@@ -831,6 +840,7 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
             enrich_model = None
             batch_size_embed = 50
             batch_size_enrich = 25
+            overview_model = None
             
             if 'Content-Length' in self.headers and int(self.headers['Content-Length']) > 0:
                 try:
@@ -848,9 +858,19 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
                     enrich_model = opts.get('enrichModel')
                     batch_size_embed = int(opts.get('batchSizeEmbed', 50))
                     batch_size_enrich = int(opts.get('batchSizeEnrich', 25))
+                    overview_model = opts.get('overviewModel')
                 except Exception:
                     # Keep defaults on parse error
                     pass
+
+            # Set per-index overview file path
+            overview_path = f"index_store/overviews/{index_id}.jsonl"
+
+            # Ensure config_override includes overview_path
+            def ensure_overview_path(cfg: dict):
+                cfg["overview_path"] = overview_path
+            
+            # we'll inject later when we build config_override
 
             # Delegate to advanced RAG API same as session indexing
             rag_api_url = "http://localhost:8001/index"
@@ -874,27 +894,50 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
                 payload["embedding_model"] = embedding_model
             if enrich_model:
                 payload["enrich_model"] = enrich_model
+            if overview_model:
+                payload["overview_model_name"] = overview_model
                 
             rag_resp = requests.post(rag_api_url, json=payload)
             if rag_resp.status_code==200:
-                self.send_json_response({
-                    "response": rag_resp.json(),
+                meta_updates = {
+                    "chunk_size": chunk_size,
+                    "chunk_overlap": chunk_overlap,
+                    "retrieval_mode": retrieval_mode,
+                    "window_size": window_size,
+                    "enable_enrich": enable_enrich,
                     "latechunk": latechunk,
                     "docling_chunk": docling_chunk,
-                    "indexing_config": {
-                        "chunk_size": chunk_size,
-                        "chunk_overlap": chunk_overlap,
-                        "retrieval_mode": retrieval_mode,
-                        "window_size": window_size,
-                        "enable_enrich": enable_enrich,
-                        "embedding_model": embedding_model,
-                        "enrich_model": enrich_model,
-                        "batch_size_embed": batch_size_embed,
-                        "batch_size_enrich": batch_size_enrich
-                    }
+                }
+                if embedding_model:
+                    meta_updates["embedding_model"] = embedding_model
+                if enrich_model:
+                    meta_updates["enrich_model"] = enrich_model
+                if overview_model:
+                    meta_updates["overview_model"] = overview_model
+                try:
+                    db.update_index_metadata(index_id, meta_updates)
+                except Exception as e:
+                    print(f"⚠️ Failed to update index metadata: {e}")
+
+                self.send_json_response({
+                    "response": rag_resp.json(),
+                    **meta_updates
                 })
             else:
-                self.send_json_response({"error":f"RAG indexing failed: {rag_resp.text}"}, status_code=500)
+                # Gracefully handle scenario where table already exists (idempotent build)
+                try:
+                    err_json = rag_resp.json()
+                except Exception:
+                    err_json = {}
+                err_text = err_json.get('error') if isinstance(err_json, dict) else rag_resp.text
+                if err_text and 'already exists' in err_text:
+                    # Treat as non-fatal; return message indicating index previously built
+                    self.send_json_response({
+                        "message": "Index already built – skipping rebuild.",
+                        "note": err_text
+                })
+                else:
+                    self.send_json_response({"error":f"RAG indexing failed: {rag_resp.text}"}, status_code=500)
         except Exception as e:
             self.send_json_response({'error':str(e)}, status_code=500)
     
@@ -924,21 +967,56 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
         except Exception as e:
             self.send_json_response({'error': str(e)}, status_code=500)
 
-    def send_json_response(self, data, status_code=200):
-        """Send a JSON response with proper error handling"""
+    def handle_rename_session(self, session_id: str):
+        """Rename an existing session title"""
+        try:
+            session = db.get_session(session_id)
+            if not session:
+                self.send_json_response({"error": "Session not found"}, status_code=404)
+                return
+
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                self.send_json_response({"error": "Request body required"}, status_code=400)
+                return
+
+            post_data = self.rfile.read(content_length)
+            data = json.loads(post_data.decode('utf-8'))
+            new_title: str = data.get('title', '').strip()
+
+            if not new_title:
+                self.send_json_response({"error": "Title cannot be empty"}, status_code=400)
+                return
+
+            db.update_session_title(session_id, new_title)
+            updated_session = db.get_session(session_id)
+
+            self.send_json_response({
+                "message": "Session renamed successfully",
+                "session": updated_session
+            })
+
+        except json.JSONDecodeError:
+            self.send_json_response({"error": "Invalid JSON"}, status_code=400)
+        except Exception as e:
+            self.send_json_response({"error": f"Failed to rename session: {str(e)}"}, status_code=500)
+
+    def send_json_response(self, data, status_code: int = 200):
+        """Send a JSON (UTF-8) response with CORS headers. Safe against client disconnects."""
         try:
             self.send_response(status_code)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
             self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
             self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+            self.send_header('Access-Control-Allow-Credentials', 'true')
             self.end_headers()
-            
-            response = json.dumps(data, indent=2)
-            self.wfile.write(response.encode('utf-8'))
+        
+            response_bytes = json.dumps(data, indent=2).encode('utf-8')
+            self.wfile.write(response_bytes)
         except BrokenPipeError:
-            # Client disconnected - log but don't crash
-            print("⚠️  Client disconnected during response (this is normal for long RAG queries)")
+            # Client disconnected before we could finish sending
+            print("⚠️  Client disconnected during response – ignoring.")
         except Exception as e:
             print(f"❌ Error sending response: {e}")
     

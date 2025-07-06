@@ -43,36 +43,28 @@ export function Demo() {
     const handleSessionSelect = (sessionId: string) => {
         setCurrentSessionId(sessionId)
         setShowConversation(true)
+        setHomeMode('CHAT_EXISTING') // Ensure we're in the right mode to show SessionChat
     }
 
-    const handleNewSession = async () => {
-        try {
-            const newSess = await chatAPI.createSession('New Chat');
-            setCurrentSessionId(newSess.id);
-            setCurrentSession(newSess);
-            setShowConversation(true);
-            // Refresh sidebar list
-            if (sidebarRef) {
-                await sidebarRef.refreshSessions();
-            }
-        } catch (err) {
-            console.error('Failed to create new session', err);
-            // fallback to empty state if backend offline
-            setCurrentSessionId(undefined);
-            setCurrentSession(null);
-            setShowConversation(true);
-        }
+    const handleNewSession = () => {
+        // Reset state and return to landing page so user can choose chat type
+        setCurrentSessionId(undefined)
+        setCurrentSession(null)
+        setShowConversation(false)  // Hide conversation view & sidebar
+        setHomeMode('HOME')         // Show landing selector (Create index / Chat with index / LLM Chat)
     }
 
     const handleSessionChange = async (session: ChatSession) => {
         setCurrentSession(session)
-        // Update the current session ID when a new session is created
+
+        // Update the current session ID if it changed (e.g., brand-new session)
         if (session.id !== currentSessionId) {
             setCurrentSessionId(session.id)
-            // Refresh the sidebar to show the new session
+        }
+
+        // Always refresh the sidebar so that updated titles / message counts are displayed
             if (sidebarRef) {
                 await sidebarRef.refreshSessions()
-            }
         }
     }
 

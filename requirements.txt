@@ -1,3 +1,6 @@
+requests
+python-dotenv
+PyPDF2
 colpali-engine
 PyMuPDF
 Pillow
@@ -9,8 +12,7 @@ rank_bm25
 fuzzywuzzy
 python-Levenshtein
 torchaudio
-transformers
 sentencepiece
 accelerate
 docling
-ocrmac
+ocrmac 

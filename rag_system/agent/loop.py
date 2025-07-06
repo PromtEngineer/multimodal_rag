@@ -1,17 +1,13 @@
 from typing import Dict, Any, Optional
 import json
-import concurrent.futures
-import time
-import asyncio
-from cachetools import TTLCache, LRUCache
+import time, asyncio, os
 import numpy as np
+from cachetools import TTLCache, LRUCache
 from rag_system.utils.ollama_client import OllamaClient
 from rag_system.pipelines.retrieval_pipeline import RetrievalPipeline
 from rag_system.agent.verifier import Verifier
 from rag_system.retrieval.query_transformer import QueryDecomposer, GraphQueryTranslator
 from rag_system.retrieval.retrievers import GraphRetriever
-import os
-import json as _json
 
 class Agent:
     """
@@ -50,20 +46,59 @@ class Agent:
             print("Agent initialized (GraphRAG disabled).")
 
         # ---- Load document overviews for fast routing ----
-        overview_path = os.path.join("index_store", "overviews", "overviews.jsonl")
+        self._global_overview_path = os.path.join("index_store", "overviews", "overviews.jsonl")
         self.doc_overviews: list[str] = []
-        if os.path.exists(overview_path):
-            try:
-                with open(overview_path, encoding="utf-8") as fh:
-                    for line in fh:
-                        try:
-                            rec = _json.loads(line)
-                            if isinstance(rec, dict) and rec.get("overview"):
-                                self.doc_overviews.append(rec["overview"].strip())
-                        except Exception:
-                            continue
-            except Exception as e:
-                print(f"⚠️  Failed to load document overviews: {e}")
+        self._current_overview_session: str | None = None  # cache key to avoid rereading on every query
+        self._load_overviews(self._global_overview_path)
+
+    def _load_overviews(self, path: str):
+        """Helper to load overviews from a .jsonl file into self.doc_overviews."""
+        import json, os
+        self.doc_overviews.clear()
+        if not os.path.exists(path):
+            return
+        try:
+            with open(path, encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        rec = json.loads(line)
+                        if isinstance(rec, dict) and rec.get("overview"):
+                            self.doc_overviews.append(rec["overview"].strip())
+                    except Exception:
+                        continue
+            print(f"📖 Loaded {len(self.doc_overviews)} overviews from {path}")
+        except Exception as e:
+            print(f"⚠️  Failed to load document overviews from {path}: {e}")
+
+    def load_overviews_for_indexes(self, idx_ids: list[str]):
+        """Aggregate overviews for the given indexes or fall back to global file."""
+        import os, json
+        aggregated: list[str] = []
+        for idx in idx_ids:
+            path = os.path.join("index_store", "overviews", f"{idx}.jsonl")
+            if os.path.exists(path):
+                try:
+                    with open(path, encoding="utf-8") as fh:
+                        for line in fh:
+                            if not line.strip():
+                                continue
+                            try:
+                                rec = json.loads(line)
+                                ov = rec.get("overview", "").strip()
+                                if ov:
+                                    aggregated.append(ov)
+                            except json.JSONDecodeError:
+                                continue
+                except Exception as e:
+                    print(f"⚠️  Error reading {path}: {e}")
+        if aggregated:
+            self.doc_overviews = aggregated
+            self._current_overview_session = "|".join(idx_ids)  # cache composite key so no overwrite
+            print(f"📖 Loaded {len(aggregated)} overviews for indexes {[i[:8] for i in idx_ids]}")
+        else:
+            print(f"⚠️  No per-index overviews found for {idx_ids}. Using global overview file.")
+            self._load_overviews(self._global_overview_path)
+            self._current_overview_session = "GLOBAL"
 
     def _cosine_similarity(self, v1: np.ndarray, v2: np.ndarray) -> float:
         """Computes cosine similarity between two vectors."""
@@ -230,6 +265,18 @@ Respond with JSON: {{"category": "<your_choice>"}}
         
         # 🚀 NEW: Get conversation history
         history = self.chat_histories.get(session_id, []) if session_id else []
+        
+        # 🔄 Refresh overviews for this session if available
+        # if session_id and session_id != getattr(self, "_current_overview_session", None):
+        #     candidate_path = os.path.join("index_store", "overviews", f"{session_id}.jsonl")
+        #     if os.path.exists(candidate_path):
+        #         self._load_overviews(candidate_path)
+        #         self._current_overview_session = session_id
+        #     else:
+        #         # Fall back to global overviews if per-session file not found
+        #         if self._current_overview_session != "GLOBAL":
+        #             self._load_overviews(self._global_overview_path)
+        #             self._current_overview_session = "GLOBAL"
         
         query_type = await self._triage_query_async(query, history)
         print(f"🎯 ROUTING DEBUG: Final triage decision: '{query_type}'")
@@ -599,54 +646,6 @@ FINAL ANSWER:
         overviews_snip = self.doc_overviews[:40]
         overviews_block = "\n".join(f"[{i+1}] {ov}" for i, ov in enumerate(overviews_snip))
 
-#         router_prompt = f"""
-# You are an AI router that decides whether a user question should be answered via:
-#   • "rag_query"    – search the user's private documents (summarised below)
-#   • "graph_query"  – query a public knowledge-graph for a crisp factual triple
-#   • "direct_answer" – reply from your own general knowledge (chit-chat, public facts)
-
-# RULES
-#  1. If ANY overview clearly relates to the question (entities, numbers, addresses, dates, etc.) → rag_query.
-#  2. If the question is a simple factual triple about well-known public entities → graph_query.
-#  3. Otherwise → direct_answer.
-#  4. Output must be exactly: {{"category": "rag_query"}} or {{"category": "graph_query"}} or {{"category": "direct_answer"}}.
-
-
-# Example B
-#   Overviews:
-#     • Marketing slide deck titled "Q2 Growth Strategy" … outlines campaign budgets and KPIs …
-#   Question: "List two key KPIs mentioned in the growth strategy deck."
-#   Assistant: {{"category": "rag_query"}}
-
-# Example C
-#   Overviews:
-#     • Medical lab report … Patient ID 778-Q … Cholesterol 210 mg/dL …
-#   Question: "What is the patient's cholesterol level?"
-#   Assistant: {{"category": "rag_query"}}
-
-# Example D
-#   Overviews:
-#     • Resume of Jane Doe, Senior Data Scientist …
-#   Question: "Who is the CEO of Apple?"
-#   Assistant: {{"category": "direct_answer"}}
-
-# Example E
-#   Overviews:
-#     • Research paper: "Quantum Entanglement in Photonic Systems" …
-#   Question: "Which company acquired DeepMind?"
-#   Assistant: {{"category": "graph_query"}}
-
-# DOCUMENT OVERVIEWS
-# +-------------------
-# +{overviews_block}
-
-# USER QUESTION
-# +--------------
-# +"{query}"
-
-# Return only the JSON object.
-# """
-
         router_prompt = f"""Task: Route query to correct system.
 
 Documents available: Invoices, DeepSeek-V3 research papers
@@ -676,22 +675,3 @@ Response:"""
         except json.JSONDecodeError as e:
             print(f"❌ ROUTING DEBUG: Overview routing JSON parsing failed: {e}, defaulting to 'rag_query'")
             return "rag_query"
-
-
-
-        # try:
-        #     reply = self.llm_client.generate_completion(
-        #         model=self.ollama_config.get("enrichment_model", "qwen3:0.6b"),
-        #         prompt=router_prompt,
-        #     ).get("response", "").strip().lower()
-        # except Exception as e:
-        #     print(f"⚠️  Overview router failed: {e}")
-        #     return None
-        
-        # return reply
-
-        # if "rag" == reply:
-        #     return "rag_query"
-        # if "direct" == reply:
-        #     return "direct_answer"
-        # return None
