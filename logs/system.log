@@ -1,0 +1,14 @@
+2025-07-06 00:32:59,607 [INFO] 
+2025-07-06 00:32:59,607 [INFO] 🎉 RAG System Started!
+2025-07-06 00:32:59,607 [INFO] 📊 Services Status:
+2025-07-06 00:32:59,609 [INFO]    • Ollama    : ✅ Running  http://localhost:11434
+2025-07-06 00:32:59,610 [INFO]    • Rag-api   : ❌ Stopped
+2025-07-06 00:32:59,610 [INFO]    • Backend   : ❌ Stopped
+2025-07-06 00:32:59,611 [INFO]    • Frontend  : ❌ Stopped
+2025-07-06 00:32:59,611 [INFO] 
+2025-07-06 00:32:59,611 [INFO] 🌐 Access your RAG system at: http://localhost:3000
+2025-07-06 00:32:59,611 [INFO] 
+2025-07-06 00:32:59,611 [INFO] 📋 Useful commands:
+2025-07-06 00:32:59,611 [INFO]    • Stop system:  Ctrl+C
+2025-07-06 00:32:59,611 [INFO]    • Check logs:   tail -f logs/*.log
+2025-07-06 00:32:59,611 [INFO]    • Health check: python run_system.py --health

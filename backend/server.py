@@ -6,6 +6,22 @@ import os
 import uuid
 from urllib.parse import urlparse, parse_qs
 import requests  # 🆕 Import requests for making HTTP calls
+import sys
+from datetime import datetime
+
+# Add parent directory to path so we can import rag_system modules
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# Import RAG system modules for complete metadata
+try:
+    from rag_system.main import PIPELINE_CONFIGS
+    RAG_SYSTEM_AVAILABLE = True
+    print("✅ RAG system modules accessible from backend")
+except ImportError as e:
+    PIPELINE_CONFIGS = {}
+    RAG_SYSTEM_AVAILABLE = False
+    print(f"⚠️ RAG system modules not available: {e}")
+
 from ollama_client import OllamaClient
 from database import db, generate_session_title
 import simple_pdf_processor as pdf_module
@@ -790,9 +806,34 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
             name = data.get('name')
             description = data.get('description')
             metadata = data.get('metadata', {})
+            
             if not name:
                 self.send_json_response({'error': 'Name required'}, status_code=400)
                 return
+            
+            # Add complete metadata from RAG system configuration if available
+            if RAG_SYSTEM_AVAILABLE and PIPELINE_CONFIGS.get('default'):
+                default_config = PIPELINE_CONFIGS['default']
+                complete_metadata = {
+                    'status': 'created',
+                    'metadata_source': 'rag_system_config',
+                    'created_at': json.loads(json.dumps(datetime.now().isoformat())),
+                    'chunk_size': 512,  # From default config
+                    'chunk_overlap': 64,  # From default config
+                    'retrieval_mode': 'hybrid',  # From default config
+                    'window_size': 5,  # From default config
+                    'embedding_model': 'Qwen/Qwen3-Embedding-0.6B',  # From default config
+                    'enrich_model': 'qwen3:0.6b',  # From default config
+                    'overview_model': 'qwen3:0.6b',  # From default config
+                    'enable_enrich': True,  # From default config
+                    'latechunk': True,  # From default config
+                    'docling_chunk': True,  # From default config
+                    'note': 'Default configuration from RAG system'
+                }
+                # Merge with any provided metadata
+                complete_metadata.update(metadata)
+                metadata = complete_metadata
+            
             idx_id = db.create_index(name, description, metadata)
             self.send_json_response({'index_id': idx_id}, status_code=201)
         except Exception as e:
@@ -951,7 +992,18 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
     def handle_get_session_indexes(self, session_id: str):
         try:
             idx_ids = db.get_indexes_for_session(session_id)
-            indexes = [db.get_index(i) for i in idx_ids if db.get_index(i)]
+            indexes = []
+            for idx_id in idx_ids:
+                idx = db.get_index(idx_id)
+                if idx:
+                    # Try to populate metadata for older indexes that have empty metadata
+                    if not idx.get('metadata') or len(idx['metadata']) == 0:
+                        print(f"🔍 Attempting to infer metadata for index {idx_id[:8]}...")
+                        inferred_metadata = db.inspect_and_populate_index_metadata(idx_id)
+                        if inferred_metadata:
+                            # Refresh the index data with the new metadata
+                            idx = db.get_index(idx_id)
+                    indexes.append(idx)
             self.send_json_response({'indexes': indexes, 'total': len(indexes)})
         except Exception as e:
             self.send_json_response({'error': str(e)}, status_code=500)

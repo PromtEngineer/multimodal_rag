@@ -1,202 +1,630 @@
-# Multimodal RAG Chat Application
+# LocalGPT - Private Document Intelligence Platform
 
-This project is a sophisticated, full-stack multimodal chat application that leverages a local-first AI stack to provide a powerful and private Retrieval-Augmented Generation (RAG) experience.
+<div align="center">
 
-It features a modular, configurable RAG pipeline, a robust API-driven architecture, and an intuitive user interface built with Next.js and Tailwind CSS.
+![LocalGPT Logo](https://img.shields.io/badge/LocalGPT-Private%20AI-blue?style=for-the-badge)
 
-## 🌟 Key Features
+**Transform your documents into intelligent, searchable knowledge with complete privacy**
 
--   **🖥️ Full-Stack Architecture**: A complete solution with a Next.js frontend, a Python backend, and a separate, advanced RAG API server.
--   **🤖 Advanced RAG Pipeline**: A modular and configurable RAG system that can be adapted for different retrieval strategies.
--   **🧩 Modular Retrieval**: Easily enable or disable different retrieval techniques like **Graph-based RAG** and **Reranking** through simple configuration changes.
--   **📤 Upload, Index, then Chat**: A robust and intuitive workflow. Users upload documents, explicitly trigger an indexing job, and only then can they chat with the newly ingested knowledge.
--   **🧠 Agentic Triage**: The system intelligently routes user queries. General questions are answered directly by an LLM, while specific ones trigger the RAG pipeline.
--   **🔒 100% Local & Private**: The entire stack, including LLMs and embedding models, runs locally using [Ollama](https://ollama.com/), ensuring your data never leaves your machine.
--   **📝 Session-Based Chat**: Persistent, session-based conversations managed by a SQLite database.
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Docker](https://img.shields.io/badge/docker-supported-blue.svg)](https://www.docker.com/)
 
-## 🛠️ Tech Stack
+[Quick Start](#quick-start) • [Features](#features) • [Installation](#installation) • [Documentation](#documentation) • [API Reference](#api-reference)
 
--   **Frontend**: Next.js, React, Tailwind CSS, Shadcn/ui
--   **Backend**: Python (standard library `http.server`)
--   **Advanced RAG System**: Python, LanceDB, PyMuPDF, `transformers`
--   **Local AI**: Ollama (for running LLMs like Llama 3, Qwen, etc.)
--   **Database**: SQLite
+</div>
 
-## 🚀 Getting Started
+## 🚀 What is LocalGPT?
+
+LocalGPT is a **private, local document intelligence platform** that allows you to chat with your documents using advanced AI models - all while keeping your data completely private and secure on your own infrastructure.
+
+### 🎯 Key Benefits
+
+- **🔒 Complete Privacy**: Your documents never leave your server
+- **🧠 Advanced AI**: State-of-the-art RAG (Retrieval-Augmented Generation) with smart routing
+- **📚 Multi-Format Support**: PDFs, Word docs, text files, and more
+- **🔍 Intelligent Search**: Hybrid search combining semantic similarity and keyword matching
+- **⚡ High Performance**: Optimized for speed with batch processing and caching
+- **🐳 Easy Deployment**: Docker support for simple setup and scaling
+
+---
+
+## ✨ Features
+
+### 📖 Document Processing
+- **Multi-format Support**: PDF, DOCX, TXT, Markdown, and more
+- **Smart Chunking**: Intelligent text segmentation with overlap optimization
+- **Contextual Enrichment**: Enhanced document understanding with AI-generated context
+- **Batch Processing**: Handle multiple documents simultaneously
+
+### 🤖 AI-Powered Chat
+- **Natural Language Queries**: Ask questions in plain English
+- **Source Attribution**: Every answer includes document references
+- **Smart Routing**: Automatically chooses the best approach for each query
+- **Multiple AI Models**: Support for Ollama, OpenAI, and Hugging Face models
+
+### 🔍 Advanced Search
+- **Hybrid Search**: Combines semantic similarity with keyword matching
+- **Vector Embeddings**: State-of-the-art embedding models for semantic understanding
+- **BM25 Ranking**: Traditional information retrieval for precise keyword matching
+- **Reranking**: AI-powered result refinement for better relevance
+
+### 🛠️ Developer-Friendly
+- **RESTful APIs**: Complete API access for integration
+- **Real-time Progress**: Live updates during document processing
+- **Flexible Configuration**: Customize models, chunk sizes, and search parameters
+- **Extensible Architecture**: Plugin system for custom components
+
+### 🎨 Modern Interface
+- **Intuitive Web UI**: Clean, responsive design
+- **Session Management**: Organize conversations by topic
+- **Index Management**: Easy document collection management
+- **Real-time Chat**: Streaming responses for immediate feedback
+
+---
+
+## 🚀 Quick Start
 
 ### Prerequisites
+- Python 3.8 or higher
+- Docker (optional, recommended)
+- 8GB+ RAM (16GB+ recommended)
 
--   Python 3.8+
--   Node.js and npm/yarn
--   [Ollama](https://ollama.com/) installed and running.
+### Option 1: Docker Setup (Recommended)
 
-### Installation & Setup
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/localgpt.git
+cd localgpt
 
-1.  **Clone the repository:**
-    ```bash
-    git clone <repository-url>
-    cd multimodal-rag
-    ```
+# Start with Docker Compose
+docker-compose up -d
 
-2.  **Set up the Backend & RAG System:**
-    -   Install Python dependencies for the main backend:
-      ```bash
-      pip install -r backend/requirements.txt
-      ```
-    -   Install Python dependencies for the RAG system:
-      ```bash
-      pip install -r rag_system/requirements.txt
-      ```
-
-3.  **Set up the Frontend:**
-    ```bash
-    npm install
-    ```
-
-4.  **Pull Required Ollama Models:**
-    The system is configured to use specific models. Pull them using Ollama:
-    ```bash
-    ollama pull qwen2.5vl:7b  # Or your model of choice for generation/VLM
-    ollama pull qwen3-embedding-0.6b # For embeddings
-    ```
-    *Note: You can change the models used in `rag_system/main.py`.*
-
-### Running the Application
-
-The application consists of three main components that need to be running simultaneously: the **Frontend**, the **Backend**, and the **RAG API Server**.
-
-1.  **Start the Advanced RAG API Server:**
-    This server handles all the heavy lifting of indexing and retrieval.
-    ```bash
-    python -m rag_system.main api
-    ```
-    You should see output indicating it's running on port 8001.
-
-2.  **Start the Main Backend Server:**
-    This server handles sessions, database interactions, and communication with the frontend.
-    ```bash
-    python backend/server.py
-    ```
-    This will run on port 8000.
-
-3.  **Start the Frontend Development Server:**
-    ```bash
-    npm run dev
-    ```
-    The application will be available at [http://localhost:3002](http://localhost:3002).
-
-## 📄 Workflow: Upload, Index, Chat
-
-1.  Open the application and start a "New Chat".
-2.  Use the attachment icon to select the PDF files you want to work with.
-3.  Upon selection, the files are automatically uploaded.
-4.  The UI will then prompt you to **"Index Documents"**. The chat input will be disabled.
-5.  Click the "Index Documents" button. The RAG server will process your files, extract text, and create vector embeddings.
-6.  Once indexing is complete, the chat input will be enabled, and you can start asking questions about your documents.
-
-## 🔧 Configuration & Modularity
-
-The RAG pipeline is highly configurable via the `PIPELINE_CONFIGS` dictionary in `rag_system/main.py`.
-
-### Enabling/Disabling Retrieval Modules
-
-You can easily switch retrieval strategies on or off:
-
--   **Graph RAG**: Set `graph_rag["enabled"]` to `true` or `false`.
--   **Reranker**: Set `reranker["enabled"]` to `true` or `false`.
-
-```python
-# In rag_system/main.py
-...
-"retrieval": {
-    "graph_rag": {
-        "enabled": False, # <-- Toggle this
-        "graph_path": "./index_store/graph/knowledge_graph.gml"
-    },
-    "reranker": {
-        "enabled": False, # <-- Toggle this
-        "model_name": "Qwen/Qwen3-Reranker-0.6B",
-    },
-...
+# Access the application
+open http://localhost:3000
 ```
 
-This modularity allows you to experiment with different RAG techniques to see what works best for your use case.
+### Option 2: Local Development Setup
 
-## ⚡ Local Run Guide (updated 2025-06-17)
-
-The stack has three separate processes that need to be running:
-
-1. **Advanced RAG API** – heavy lifting (indexing / retrieval)
-   * Port `8001`
-   * Start from repository root
-     ```bash
-     python -m rag_system.api_server   # Ctrl-C to stop
-     ```
-   * First launch downloads / loads the embedding model defined in
-     `rag_system/main.py`  (`BAAI/bge-small-en-v1.5` by default).  The first
-     request can therefore take ~1 min.  Keep the server running so the model
-     stays in memory.
-
-2. **Legacy Backend (`server.py`)** – sessions, uploads, REST layer that the
-   Next.js UI talks to
-   * Port `8000`
-     ```bash
-     cd backend
-     python server.py
-     ```
-   * Needs to be running **in addition to** the RAG API; otherwise the UI
-     shows "Backend offline".
-
-3. **Frontend (Next.js)**
-   * Port `3000` (or whichever you choose via `PORT`)
-     ```bash
-     npm install
-     npm run dev       # open http://localhost:3000
-     ```
-
-💡  *Alternative:*  run both Python servers in one process:
 ```bash
-python combined_server.py        # starts :8000 and :8001
-```
+# Clone the repository
+git clone https://github.com/yourusername/localgpt.git
+cd localgpt
 
-### One-time setup
-```bash
-# Python deps
-pip install -r backend/requirements.txt -r rag_system/requirements.txt
-
-# Node deps (UI)
+# Install dependencies
+pip install -r requirements.txt
 npm install
 
-# Ollama models (generation + embedding)
-ollama pull qwen3:8b                 # generation
-ollama pull qwen3-embedding-0.6b     # embeddings
-ollama serve                         # in a separate terminal
+# Start the backend
+cd backend && python server.py &
+
+# Start the frontend
+npm run dev
+
+# Access the application
+open http://localhost:3000
 ```
 
-### Typical workflow
-1. "Create new index" → give it a name.
-2. Upload PDFs (stored under `backend/shared_uploads/`).
-3. Click **Build Index** – this triggers `IndexingPipeline.run(...)` on
-   the RAG server.  If you see `TypeError: unexpected keyword argument 'documents'`
-   make sure the RAG server has been restarted after pulling the latest
-   code (the patched `documents` alias is required).
-4. When the build completes, open a new chat session, attach the newly
-   built index, and start chatting.
-5. Toggle **"Stream phases"** in the chat footer to watch step-by-step
-   reasoning events (analyze → retrieval → rerank → … → final answer).
+### Option 3: Quick Script Setup
 
-### Troubleshooting
-* **Port already in use** – kill stray processes:
-  ```bash
-  lsof -i :8000 ; kill <pid>
-  lsof -i :8001 ; kill <pid>
-  ```
-* **Broken pipe / 500** from `/chat` or `/index` – normally means the RAG
-  server crashed.  Check its terminal for the real traceback.  Common
-  causes: missing LanceDB table (build the index first), model still
-  loading, out-of-memory on MPS.
-* **Embedding model** – change `embedding_model_name` in
-  `rag_system/main.py` (or `rag_system/config.py`) if you want to switch
-  away from the default BAAI BGE model.
+```bash
+# Use the automated setup script
+./setup_rag_system.sh
 
-Happy hacking! 🎉
+# Or use the interactive installer
+python install_dependencies.py
+```
+
+---
+
+## 📋 Installation Guide
+
+### System Requirements
+
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| RAM | 8GB | 16GB+ |
+| Storage | 10GB | 50GB+ |
+| CPU | 4 cores | 8+ cores |
+| GPU | Optional | NVIDIA GPU with 8GB+ VRAM |
+
+### Detailed Installation
+
+#### 1. Install System Dependencies
+
+**Ubuntu/Debian:**
+```bash
+sudo apt update
+sudo apt install python3.8 python3-pip nodejs npm docker.io docker-compose
+```
+
+**macOS:**
+```bash
+brew install python@3.8 node npm docker docker-compose
+```
+
+**Windows:**
+```bash
+# Install Python 3.8+, Node.js, and Docker Desktop
+# Then use PowerShell or WSL2
+```
+
+#### 2. Install AI Models
+
+**Install Ollama (Recommended):**
+```bash
+# Install Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Pull recommended models
+ollama pull qwen3:0.6b          # Fast generation model
+ollama pull qwen3:8b            # High-quality generation model
+```
+
+#### 3. Configure Environment
+
+```bash
+# Copy environment template
+cp .env.example .env
+
+# Edit configuration
+nano .env
+```
+
+**Key Configuration Options:**
+```env
+# AI Models
+OLLAMA_HOST=http://localhost:11434
+DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
+DEFAULT_GENERATION_MODEL=qwen3:0.6b
+
+# Database
+DATABASE_PATH=./backend/chat_data.db
+VECTOR_DB_PATH=./lancedb
+
+# Server Settings
+BACKEND_PORT=8000
+FRONTEND_PORT=3000
+```
+
+#### 4. Initialize the System
+
+```bash
+# Run system health check
+python system_health_check.py
+
+# Initialize databases
+python -c "from backend.database import ChatDatabase; ChatDatabase().init_database()"
+
+# Test installation
+python -c "from rag_system.main import get_agent; print('✅ Installation successful!')"
+```
+
+---
+
+## 🎯 Getting Started
+
+### 1. Create Your First Index
+
+An **index** is a collection of processed documents that you can chat with.
+
+#### Using the Web Interface:
+1. Open http://localhost:3000
+2. Click "Create New Index"
+3. Upload your documents (PDF, DOCX, TXT)
+4. Configure processing options
+5. Click "Build Index"
+
+#### Using Scripts:
+```bash
+# Simple script approach
+./simple_create_index.sh "My Documents" "path/to/document.pdf"
+
+# Interactive script
+python create_index_script.py
+```
+
+#### Using API:
+```bash
+# Create index
+curl -X POST http://localhost:8000/indexes \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My Index", "description": "My documents"}'
+
+# Upload documents
+curl -X POST http://localhost:8000/indexes/INDEX_ID/upload \
+  -F "files=@document.pdf"
+
+# Build index
+curl -X POST http://localhost:8000/indexes/INDEX_ID/build
+```
+
+### 2. Start Chatting
+
+Once your index is built:
+
+1. **Create a Chat Session**: Click "New Chat" or use an existing session
+2. **Select Your Index**: Choose which document collection to query
+3. **Ask Questions**: Type natural language questions about your documents
+4. **Get Answers**: Receive AI-generated responses with source citations
+
+### 3. Advanced Features
+
+#### Custom Model Configuration
+```bash
+# Use different models for different tasks
+curl -X POST http://localhost:8000/sessions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "High Quality Session",
+    "model": "qwen3:8b",
+    "embedding_model": "Qwen/Qwen3-Embedding-4B"
+  }'
+```
+
+#### Batch Document Processing
+```bash
+# Process multiple documents at once
+python demo_batch_indexing.py --config batch_indexing_config.json
+```
+
+#### API Integration
+```python
+import requests
+
+# Chat with your documents via API
+response = requests.post('http://localhost:8000/chat', json={
+    'query': 'What are the key findings in the research papers?',
+    'session_id': 'your-session-id',
+    'search_type': 'hybrid',
+    'retrieval_k': 20
+})
+
+print(response.json()['response'])
+```
+
+---
+
+## 🔧 Configuration
+
+### Model Configuration
+
+LocalGPT supports multiple AI model providers:
+
+#### Ollama Models (Local)
+```python
+OLLAMA_CONFIG = {
+    'host': 'http://localhost:11434',
+    'generation_model': 'qwen3:0.6b',
+    'embedding_model': 'nomic-embed-text'
+}
+```
+
+#### Hugging Face Models
+```python
+EXTERNAL_MODELS = {
+    'embedding': {
+        'Qwen/Qwen3-Embedding-0.6B': {'dimensions': 1024},
+        'Qwen/Qwen3-Embedding-4B': {'dimensions': 2048},
+        'Qwen/Qwen3-Embedding-8B': {'dimensions': 4096}
+    }
+}
+```
+
+### Processing Configuration
+
+```python
+PIPELINE_CONFIGS = {
+    'default': {
+        'chunk_size': 512,
+        'chunk_overlap': 64,
+        'retrieval_mode': 'hybrid',
+        'window_size': 5,
+        'enable_enrich': True,
+        'latechunk': True,
+        'docling_chunk': True
+    },
+    'fast': {
+        'chunk_size': 256,
+        'chunk_overlap': 32,
+        'retrieval_mode': 'vector',
+        'enable_enrich': False
+    }
+}
+```
+
+### Search Configuration
+
+```python
+SEARCH_CONFIG = {
+    'hybrid': {
+        'dense_weight': 0.7,
+        'sparse_weight': 0.3,
+        'retrieval_k': 20,
+        'reranker_top_k': 10
+    }
+}
+```
+
+---
+
+## 📚 Use Cases
+
+### 📊 Business Intelligence
+- **Document Analysis**: Extract insights from reports, contracts, and presentations
+- **Compliance**: Query regulatory documents and policies
+- **Knowledge Management**: Build searchable company knowledge bases
+
+### 🔬 Research & Academia
+- **Literature Review**: Analyze research papers and academic publications
+- **Data Analysis**: Query experimental results and datasets
+- **Collaboration**: Share findings with team members securely
+
+### ⚖️ Legal & Compliance
+- **Case Research**: Search through legal documents and precedents
+- **Contract Analysis**: Extract key terms and obligations
+- **Regulatory Compliance**: Query compliance requirements and guidelines
+
+### 🏥 Healthcare
+- **Medical Records**: Analyze patient data and treatment histories
+- **Research**: Query medical literature and clinical studies
+- **Compliance**: Navigate healthcare regulations and standards
+
+### 💼 Personal Productivity
+- **Document Organization**: Create searchable personal knowledge bases
+- **Research**: Analyze books, articles, and reference materials
+- **Learning**: Build interactive study materials from textbooks
+
+---
+
+## 🛠️ Troubleshooting
+
+### Common Issues
+
+#### Installation Problems
+```bash
+# Check Python version
+python --version  # Should be 3.8+
+
+# Check dependencies
+pip list | grep -E "(torch|transformers|lancedb)"
+
+# Reinstall dependencies
+pip install -r requirements.txt --force-reinstall
+```
+
+#### Model Loading Issues
+```bash
+# Check Ollama status
+ollama list
+curl http://localhost:11434/api/tags
+
+# Pull missing models
+ollama pull qwen3:0.6b
+```
+
+#### Database Issues
+```bash
+# Check database connectivity
+python -c "from backend.database import ChatDatabase; db = ChatDatabase(); print('✅ Database OK')"
+
+# Reset database (WARNING: This deletes all data)
+rm backend/chat_data.db
+python -c "from backend.database import ChatDatabase; ChatDatabase().init_database()"
+```
+
+#### Performance Issues
+```bash
+# Check system resources
+python system_health_check.py
+
+# Monitor memory usage
+htop  # or Task Manager on Windows
+
+# Optimize for low-memory systems
+export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+```
+
+### Getting Help
+
+1. **Check Logs**: Look at `logs/system.log` for detailed error messages
+2. **System Health**: Run `python system_health_check.py`
+3. **Documentation**: Check the [Technical Documentation](TECHNICAL_DOCS.md)
+4. **GitHub Issues**: Report bugs and request features
+5. **Community**: Join our Discord/Slack community
+
+---
+
+## 🔗 API Reference
+
+### Core Endpoints
+
+#### Chat API
+```http
+POST /chat
+Content-Type: application/json
+
+{
+  "query": "What are the main topics discussed?",
+  "session_id": "uuid",
+  "search_type": "hybrid",
+  "retrieval_k": 20
+}
+```
+
+#### Index Management
+```http
+# Create index
+POST /indexes
+{"name": "My Index", "description": "Description"}
+
+# Upload documents
+POST /indexes/{id}/upload
+Content-Type: multipart/form-data
+
+# Build index
+POST /indexes/{id}/build
+
+# Get index status
+GET /indexes/{id}
+```
+
+#### Session Management
+```http
+# Create session
+POST /sessions
+{"title": "My Session", "model": "qwen3:0.6b"}
+
+# Get sessions
+GET /sessions
+
+# Link index to session
+POST /sessions/{session_id}/indexes/{index_id}
+```
+
+### Advanced Features
+
+#### Streaming Chat
+```http
+POST /chat/stream
+Content-Type: application/json
+
+{
+  "query": "Explain the methodology",
+  "session_id": "uuid",
+  "stream": true
+}
+```
+
+#### Batch Processing
+```http
+POST /batch/index
+Content-Type: application/json
+
+{
+  "file_paths": ["doc1.pdf", "doc2.pdf"],
+  "config": {
+    "chunk_size": 512,
+    "enable_enrich": true
+  }
+}
+```
+
+For complete API documentation, see [API_REFERENCE.md](API_REFERENCE.md).
+
+---
+
+## 🏗️ Architecture
+
+LocalGPT is built with a modular, scalable architecture:
+
+```mermaid
+graph TB
+    UI[Web Interface] --> API[Backend API]
+    API --> Agent[RAG Agent]
+    Agent --> Retrieval[Retrieval Pipeline]
+    Agent --> Generation[Generation Pipeline]
+    
+    Retrieval --> Vector[Vector Search]
+    Retrieval --> BM25[BM25 Search]
+    Retrieval --> Rerank[Reranking]
+    
+    Vector --> LanceDB[(LanceDB)]
+    BM25 --> BM25DB[(BM25 Index)]
+    
+    Generation --> Ollama[Ollama Models]
+    Generation --> HF[Hugging Face Models]
+    
+    API --> SQLite[(SQLite DB)]
+```
+
+### Key Components
+
+- **Frontend**: React/Next.js web interface
+- **Backend**: Python FastAPI server
+- **RAG Agent**: Intelligent query routing and processing
+- **Vector Database**: LanceDB for semantic search
+- **Search Engine**: BM25 for keyword search
+- **AI Models**: Ollama and Hugging Face integration
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Here's how to get started:
+
+### Development Setup
+
+```bash
+# Fork and clone the repository
+git clone https://github.com/yourusername/localgpt.git
+cd localgpt
+
+# Create development environment
+python -m venv venv
+source venv/bin/activate  # or `venv\Scripts\activate` on Windows
+
+# Install development dependencies
+pip install -r requirements-dev.txt
+npm install
+
+# Run tests
+pytest
+npm test
+
+# Start development servers
+npm run dev
+cd backend && python server.py
+```
+
+### Contribution Guidelines
+
+1. **Code Style**: Follow PEP 8 for Python, ESLint for JavaScript
+2. **Testing**: Add tests for new features
+3. **Documentation**: Update docs for API changes
+4. **Commit Messages**: Use conventional commit format
+5. **Pull Requests**: Include description and test results
+
+### Areas for Contribution
+
+- 🐛 Bug fixes and performance improvements
+- ✨ New features and integrations
+- 📚 Documentation improvements
+- 🧪 Test coverage expansion
+- 🌐 Internationalization
+- 🎨 UI/UX enhancements
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🙏 Acknowledgments
+
+- **Ollama**: For providing excellent local AI model serving
+- **LanceDB**: For high-performance vector database
+- **Hugging Face**: For state-of-the-art AI models
+- **React/Next.js**: For the modern web interface
+- **FastAPI**: For the robust backend framework
+
+---
+
+## 📞 Support
+
+- **Documentation**: [Technical Docs](TECHNICAL_DOCS.md)
+- **Issues**: [GitHub Issues](https://github.com/yourusername/localgpt/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/yourusername/localgpt/discussions)
+- **Email**: support@localgpt.com
+
+---
+
+<div align="center">
+
+**Made with ❤️ for private, intelligent document processing**
+
+[⭐ Star us on GitHub](https://github.com/yourusername/localgpt) • [🐛 Report Bug](https://github.com/yourusername/localgpt/issues) • [💡 Request Feature](https://github.com/yourusername/localgpt/issues)
+
+</div>
