@@ -1,26 +1,5 @@
 services:
-  # Ollama service for LLM inference (optional - can use host Ollama instead)
-  ollama:
-    image: ollama/ollama:latest
-    container_name: rag-ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    environment:
-      - OLLAMA_HOST=0.0.0.0
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-    networks:
-      - rag-network
-    profiles:
-      - with-ollama  # Optional service - enable with --profile with-ollama
-
-  # RAG API server
+  # RAG API server (connects to host Ollama)
   rag-api:
     build:
       context: .
@@ -29,8 +8,7 @@ services:
     ports:
       - "8001:8001"
     environment:
-      # Use host Ollama by default, or containerized Ollama if enabled
-      - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+      - OLLAMA_HOST=http://host.docker.internal:11434
       - NODE_ENV=production
     volumes:
       - ./lancedb:/app/lancedb
@@ -93,10 +71,6 @@ services:
     restart: unless-stopped
     networks:
       - rag-network
-
-volumes:
-  ollama_data:
-    driver: local
 
 networks:
   rag-network:

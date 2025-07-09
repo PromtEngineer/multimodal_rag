@@ -1,8 +1,22 @@
 # 📦 RAG System Installation Guide
 
-_Last updated: 2025-01-02_
+_Last updated: 2025-01-07_
 
-This guide provides step-by-step instructions for installing and setting up the RAG system on different operating systems.
+This guide provides step-by-step instructions for installing and setting up the RAG system using either Docker or direct development approaches.
+
+---
+
+## 🎯 Installation Options
+
+### Option 1: Docker Deployment (Production Ready) 🐳
+- **Best for**: Production environments, isolated setups, easy management
+- **Requirements**: Docker Desktop + Local Ollama
+- **Setup time**: ~10 minutes
+
+### Option 2: Direct Development (Developer Friendly) 💻
+- **Best for**: Development, customization, debugging
+- **Requirements**: Python + Node.js + Ollama
+- **Setup time**: ~15 minutes
 
 ---
 
@@ -22,721 +36,507 @@ This guide provides step-by-step instructions for installing and setting up the 
 - **Storage**: 200GB+ SSD
 - **GPU**: NVIDIA GPU with 8GB+ VRAM (optional)
 
-### 1.2 Software Dependencies
+### 1.2 Common Dependencies
 
-- **Docker**: 24.0+ (with Docker Compose)
-- **Git**: 2.30+
-- **Python**: 3.11+ (for local development)
-- **Node.js**: 18+ (for local development)
+**Required for both approaches:**
+- **Ollama**: AI model runtime (always required)
+- **Git**: 2.30+ for cloning repository
+
+**Docker-specific:**
+- **Docker Desktop**: 24.0+ with Docker Compose
+
+**Direct Development-specific:**
+- **Python**: 3.8+ 
+- **Node.js**: 16+ with npm
 
 ---
 
-## 2. Docker Installation
+## 2. Ollama Installation (Required for Both)
 
-### 2.1 macOS Installation
+### 2.1 Install Ollama
 
-#### **Option 1: Docker Desktop (Recommended)**
+#### **macOS/Linux:**
 ```bash
-# Install via Homebrew
+# Install Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Verify installation
+ollama --version
+```
+
+#### **Windows:**
+```bash
+# Download from: https://ollama.ai/download
+# Run the installer and follow setup wizard
+```
+
+### 2.2 Configure Ollama
+
+```bash
+# Start Ollama server
+ollama serve
+
+# In another terminal, install required models
+ollama pull qwen3:0.6b      # Fast model (650MB)
+ollama pull qwen3:8b        # High-quality model (4.7GB)
+
+# Verify models are installed
+ollama list
+
+# Test Ollama
+ollama run qwen3:0.6b "Hello, how are you?"
+```
+
+**⚠️ Important**: Keep Ollama running (`ollama serve`) for the entire setup process.
+
+---
+
+## 3. 🐳 Docker Installation & Setup
+
+### 3.1 Install Docker
+
+#### **macOS:**
+```bash
+# Install Docker Desktop via Homebrew
 brew install --cask docker
 
 # Or download from: https://www.docker.com/products/docker-desktop/
-
 # Start Docker Desktop from Applications
+
 # Verify installation
 docker --version
 docker compose version
 ```
 
-#### **Option 2: Command Line Installation**
+#### **Ubuntu/Debian:**
 ```bash
-# Install Docker via Homebrew
-brew install docker docker-compose
-
-# Install Docker Machine (for VM management)
-brew install docker-machine
-
-# Create and start Docker machine
-docker-machine create --driver virtualbox default
-docker-machine start default
-eval $(docker-machine env default)
-```
-
-### 2.2 Ubuntu/Debian Installation
-
-```bash
-# Update package index
+# Update system
 sudo apt-get update
 
-# Install dependencies
-sudo apt-get install -y \
-    ca-certificates \
-    curl \
-    gnupg \
-    lsb-release
-
-# Add Docker's official GPG key
-sudo mkdir -p /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-
-# Set up repository
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-# Install Docker Engine
-sudo apt-get update
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+# Install Docker using convenience script
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
 
 # Add user to docker group
 sudo usermod -aG docker $USER
+newgrp docker
 
-# Start Docker service
-sudo systemctl enable docker
-sudo systemctl start docker
-
-# Verify installation
-docker --version
-docker compose version
-```
-
-### 2.3 CentOS/RHEL Installation
-
-```bash
-# Install required packages
-sudo yum install -y yum-utils
-
-# Add Docker repository
-sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-
-# Install Docker Engine
-sudo yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-
-# Start Docker service
-sudo systemctl enable docker
-sudo systemctl start docker
-
-# Add user to docker group
-sudo usermod -aG docker $USER
+# Install Docker Compose V2
+sudo apt-get install docker-compose-plugin
 
 # Verify installation
 docker --version
 docker compose version
 ```
 
-### 2.4 Windows Installation
-
-#### **Option 1: Docker Desktop (Recommended)**
+#### **Windows:**
 1. Download Docker Desktop from https://www.docker.com/products/docker-desktop/
-2. Run the installer and follow the setup wizard
-3. Enable WSL 2 integration if prompted
-4. Restart your computer
-5. Start Docker Desktop
-6. Verify installation in PowerShell:
-```powershell
-docker --version
-docker compose version
-```
+2. Run installer and enable WSL 2 integration
+3. Restart computer and start Docker Desktop
+4. Verify in PowerShell: `docker --version`
 
-#### **Option 2: WSL2 + Docker Engine**
-```bash
-# In WSL2 Ubuntu terminal
-# Follow Ubuntu installation steps above
-```
-
----
-
-## 3. RAG System Installation
-
-### 3.1 Quick Installation
+### 3.2 Clone and Setup RAG System
 
 ```bash
 # Clone repository
 git clone https://github.com/your-org/rag-system.git
 cd rag-system
 
-# Create environment file
-cp .env.example .env
+# Verify Ollama is running
+curl http://localhost:11434/api/tags
 
-# Create required directories
-mkdir -p {lancedb,shared_uploads,logs,ollama_data}
-mkdir -p index_store/{overviews,bm25,graph}
+# Start Docker containers
+./start-docker.sh
 
-# Start the system
-docker compose up -d
+# Wait for containers to start (2-3 minutes)
+sleep 120
 
-# Wait for services to start (2-3 minutes)
-sleep 180
-
-# Check system status
-docker compose ps
+# Verify deployment
+./start-docker.sh status
 ```
 
-### 3.2 Detailed Installation
+### 3.3 Test Docker Deployment
 
-#### **Step 1: Repository Setup**
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/rag-system.git
-cd rag-system
+# Test all endpoints
+curl -f http://localhost:3000 && echo "✅ Frontend OK"
+curl -f http://localhost:8000/health && echo "✅ Backend OK"
+curl -f http://localhost:8001/models && echo "✅ RAG API OK"
+curl -f http://localhost:11434/api/tags && echo "✅ Ollama OK"
 
-# Check available branches
-git branch -a
-
-# Switch to main branch (if not already)
-git checkout main
-
-# Verify repository contents
-ls -la
-```
-
-#### **Step 2: Environment Configuration**
-```bash
-# Copy environment template
-cp .env.example .env
-
-# Edit configuration (optional)
-nano .env
-
-# Example configuration
-cat > .env << 'EOF'
-# System Configuration
-NODE_ENV=production
-LOG_LEVEL=info
-
-# Service URLs
-FRONTEND_URL=http://localhost:3000
-BACKEND_URL=http://localhost:8000
-RAG_API_URL=http://localhost:8001
-OLLAMA_URL=http://localhost:11434
-
-# Model Configuration
-DEFAULT_EMBEDDING_MODEL=sentence-transformers/all-mpnet-base-v2
-DEFAULT_GENERATION_MODEL=qwen2.5:7b
-DEFAULT_RERANKER_MODEL=BAAI/bge-reranker-base
-
-# Performance Configuration
-MAX_CONCURRENT_REQUESTS=5
-REQUEST_TIMEOUT=300
-EMBEDDING_BATCH_SIZE=32
-EOF
-```
-
-#### **Step 3: Directory Structure**
-```bash
-# Create required directories
-mkdir -p lancedb
-mkdir -p shared_uploads
-mkdir -p logs
-mkdir -p ollama_data
-mkdir -p index_store/overviews
-mkdir -p index_store/bm25
-mkdir -p index_store/graph
-
-# Set proper permissions
-chmod 755 {lancedb,shared_uploads,logs,ollama_data}
-chmod 755 index_store/{overviews,bm25,graph}
-
-# Verify directory structure
-tree -d -L 2
-```
-
-#### **Step 4: Docker Build and Start**
-```bash
-# Build containers
-docker compose build --no-cache
-
-# Start services
-docker compose up -d
-
-# Check build progress
-docker compose logs -f
-
-# Verify all services are running
-docker compose ps
-```
-
-#### **Step 5: Model Installation**
-```bash
-# Wait for Ollama to start
-sleep 60
-
-# Install required models
-docker compose exec ollama ollama pull qwen2.5:7b
-docker compose exec ollama ollama pull qwen2.5:0.5b
-
-# Verify model installation
-docker compose exec ollama ollama list
-```
-
-#### **Step 6: System Verification**
-```bash
-# Check service health
-curl -f http://localhost:3000 && echo "Frontend: OK"
-curl -f http://localhost:8000/health && echo "Backend: OK"
-curl -f http://localhost:8001/models && echo "RAG API: OK"
-curl -f http://localhost:11434/api/tags && echo "Ollama: OK"
-
-# Check logs for errors
-docker compose logs | grep -i error
+# Access the application
+open http://localhost:3000
 ```
 
 ---
 
-## 4. Development Installation
+## 4. 💻 Direct Development Setup
 
-### 4.1 Local Development Setup
+### 4.1 Install Development Dependencies
 
-#### **Python Environment**
+#### **Python Setup:**
 ```bash
-# Create virtual environment
-python3.11 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+# Clone repository
+git clone https://github.com/your-org/rag-system.git
+cd rag-system
+
+# Create virtual environment (recommended)
+python -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate  # macOS/Linux
+# venv\Scripts\activate   # Windows
 
 # Install Python dependencies
 pip install -r requirements.txt
 
-# Install additional development dependencies
-pip install pytest black flake8 mypy
+# Verify Python setup
+python -c "import torch; print('✅ PyTorch OK')"
+python -c "import transformers; print('✅ Transformers OK')"
+python -c "import lancedb; print('✅ LanceDB OK')"
 ```
 
-#### **Node.js Environment**
+#### **Node.js Setup:**
 ```bash
 # Install Node.js dependencies
 npm install
 
-# Install development dependencies
-npm install --save-dev @types/node typescript eslint prettier
+# Verify Node.js setup
+node --version  # Should be 16+
+npm --version
+npm list --depth=0
 ```
 
-#### **Development Configuration**
+### 4.2 Start Direct Development
+
 ```bash
-# Create development environment
-cp .env.example .env.dev
+# Ensure Ollama is running
+curl http://localhost:11434/api/tags
 
-# Edit for development
-cat > .env.dev << 'EOF'
-NODE_ENV=development
-LOG_LEVEL=debug
-DEBUG=true
+# Start all components with one command
+python run_system.py
 
-# Local URLs
-FRONTEND_URL=http://localhost:3000
-BACKEND_URL=http://localhost:8000
+# Or start components manually in separate terminals:
+# Terminal 1: python -m rag_system.api_server
+# Terminal 2: cd backend && python server.py  
+# Terminal 3: npm run dev
+```
+
+### 4.3 Test Direct Development
+
+```bash
+# Check system health
+python system_health_check.py
+
+# Test endpoints
+curl -f http://localhost:3000 && echo "✅ Frontend OK"
+curl -f http://localhost:8000/health && echo "✅ Backend OK"
+curl -f http://localhost:8001/models && echo "✅ RAG API OK"
+
+# Access the application
+open http://localhost:3000
+```
+
+---
+
+## 5. Detailed Installation Steps
+
+### 5.1 Repository Setup
+
+```bash
+# Clone repository
+git clone https://github.com/your-org/rag-system.git
+cd rag-system
+
+# Check repository structure
+ls -la
+
+# Create required directories
+mkdir -p lancedb index_store shared_uploads logs backend
+touch backend/chat_data.db
+
+# Set permissions
+chmod -R 755 lancedb index_store shared_uploads
+chmod 664 backend/chat_data.db
+```
+
+### 5.2 Configuration
+
+#### **Environment Variables**
+For Docker (automatic via `docker.env`):
+```bash
+OLLAMA_HOST=http://host.docker.internal:11434
+NODE_ENV=production
+RAG_API_URL=http://rag-api:8001
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+For Direct Development (set automatically by `run_system.py`):
+```bash
+OLLAMA_HOST=http://localhost:11434
 RAG_API_URL=http://localhost:8001
-OLLAMA_URL=http://localhost:11434
-
-# Development settings
-CORS_ORIGINS=http://localhost:3000,http://localhost:3001
-API_KEY_REQUIRED=false
-EOF
+NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-### 4.2 Local Development Servers
+#### **Model Configuration**
+The system defaults to these models:
+- **Embedding**: `Qwen/Qwen3-Embedding-0.6B` (1024 dimensions)
+- **Generation**: `qwen3:0.6b` for fast responses, `qwen3:8b` for quality
+- **Reranking**: Built-in cross-encoder
 
-#### **Option 1: Mixed Mode (Recommended)**
+### 5.3 Database Initialization
+
 ```bash
-# Start only infrastructure services
-docker compose up -d ollama
+# Initialize SQLite database
+python -c "
+from backend.database import ChatDatabase
+db = ChatDatabase()
+db.init_database()
+print('✅ Database initialized')
+"
 
-# Start backend locally
-cd backend
-python server.py
-
-# Start RAG API locally
-cd rag_system
-python -m api_server
-
-# Start frontend locally
-npm run dev
-```
-
-#### **Option 2: Full Docker Development**
-```bash
-# Start with development overrides
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
-
-# Enable hot reload
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+# Verify database
+sqlite3 backend/chat_data.db ".tables"
 ```
 
 ---
 
-## 5. Configuration
+## 6. Verification & Testing
 
-### 5.1 Model Configuration
+### 6.1 System Health Checks
 
-#### **Embedding Models**
-```python
-# Edit rag_system/main.py
-EXTERNAL_MODELS = {
-    "embedding_model": "sentence-transformers/all-mpnet-base-v2",  # 768D
-    "reranker_model": "BAAI/bge-reranker-base",
-}
-```
-
-#### **Generation Models**
-```python
-# Edit rag_system/main.py
-OLLAMA_CONFIG = {
-    "generation_model": "qwen2.5:7b",
-    "enrichment_model": "qwen2.5:0.5b",
-    "host": "http://localhost:11434"
-}
-```
-
-### 5.2 Performance Configuration
-
-#### **Resource Limits**
-```yaml
-# Edit docker-compose.yml
-services:
-  rag-api:
-    deploy:
-      resources:
-        limits:
-          cpus: '4.0'
-          memory: 8G
-        reservations:
-          cpus: '2.0'
-          memory: 4G
-```
-
-#### **Pipeline Configuration**
-```python
-# Edit rag_system/main.py
-PIPELINE_CONFIGS = {
-    "query_decomposition": {"enabled": True},
-    "contextual_enricher": {"enabled": True},
-    "verification": {"enabled": True},
-    "retrieval": {
-        "search_type": "hybrid",
-        "fusion": {"dense_weight": 0.7, "sparse_weight": 0.3}
-    }
-}
-```
-
----
-
-## 6. Troubleshooting Installation
-
-### 6.1 Docker Issues
-
-#### **Docker Not Found**
+#### **Comprehensive Health Check:**
 ```bash
-# macOS
-brew install --cask docker
+# For Docker deployment
+./start-docker.sh status
+docker compose ps
 
-# Ubuntu
-sudo apt-get install docker-ce docker-ce-cli containerd.io docker-compose-plugin
+# For Direct development
+python system_health_check.py
 
-# Check installation
-docker --version
+# Universal health check
+curl -f http://localhost:3000 && echo "✅ Frontend OK"
+curl -f http://localhost:8000/health && echo "✅ Backend OK"
+curl -f http://localhost:8001/models && echo "✅ RAG API OK"
+curl -f http://localhost:11434/api/tags && echo "✅ Ollama OK"
 ```
 
-#### **Permission Denied**
+#### **RAG System Test:**
 ```bash
-# Add user to docker group
-sudo usermod -aG docker $USER
+# Test RAG system initialization
+python -c "
+from rag_system.main import get_agent
+agent = get_agent('default')
+print('✅ RAG System initialized successfully')
+"
 
-# Restart shell or log out/in
-newgrp docker
-
-# Test Docker
-docker run hello-world
-```
-
-#### **Docker Compose Not Found**
-```bash
-# Install Docker Compose plugin
-sudo apt-get install docker-compose-plugin
-
-# Or install standalone
-sudo curl -L "https://github.com/docker/compose/releases/download/v2.20.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
-```
-
-### 6.2 Build Issues
-
-#### **Build Failures**
-```bash
-# Clean Docker cache
-docker system prune -a
-
-# Rebuild with no cache
-docker compose build --no-cache
-
-# Check build logs
-docker compose logs --no-color > build.log
-```
-
-#### **Port Conflicts**
-```bash
-# Check port usage
-sudo netstat -tulpn | grep -E ":3000|:8000|:8001|:11434"
-
-# Kill processes using ports
-sudo kill -9 $(sudo lsof -t -i:3000)
-
-# Change ports in docker-compose.yml
-```
-
-#### **Memory Issues**
-```bash
-# Increase Docker memory (Docker Desktop)
-# Settings → Resources → Memory → 8GB+
-
-# Check available memory
-free -h
-
-# Monitor Docker memory usage
-docker stats
-```
-
-### 6.3 Model Issues
-
-#### **Model Download Failures**
-```bash
-# Check Ollama status
-docker compose exec ollama ollama list
-
-# Manual model download
-docker compose exec ollama ollama pull qwen2.5:7b
-
-# Check available space
-df -h
-
-# Clear model cache
-docker compose exec ollama rm -rf /root/.ollama/models/*
-```
-
-#### **Embedding Model Issues**
-```bash
-# Check Python dependencies
-docker compose exec rag-api pip list | grep -E "torch|transformers|sentence-transformers"
-
-# Test embedding model
-docker compose exec rag-api python -c "
-from sentence_transformers import SentenceTransformer
-model = SentenceTransformer('sentence-transformers/all-mpnet-base-v2')
-print('Model loaded successfully')
+# Test embedding generation
+python -c "
+from rag_system.main import get_agent
+agent = get_agent('default')
+embedder = agent.retrieval_pipeline._get_text_embedder()
+test_emb = embedder.create_embeddings(['Hello world'])
+print(f'✅ Embedding generated: {test_emb.shape}')
 "
 ```
 
----
+### 6.2 Functional Testing
 
-## 7. Verification & Testing
+#### **Document Upload Test:**
+1. Access http://localhost:3000
+2. Click "Create New Index"
+3. Upload a PDF document
+4. Configure settings and build index
+5. Test chat functionality
 
-### 7.1 System Health Check
-
+#### **API Testing:**
 ```bash
-#!/bin/bash
-# health_check.sh - Complete system verification
+# Test session creation
+curl -X POST http://localhost:8000/sessions \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Test Session"}'
 
-echo "=== RAG System Installation Verification ==="
+# Test models endpoint
+curl http://localhost:8001/models
 
-# Check Docker
-echo "1. Docker Installation:"
-docker --version || echo "❌ Docker not installed"
-docker compose version || echo "❌ Docker Compose not installed"
-
-# Check containers
-echo -e "\n2. Container Status:"
-docker compose ps
-
-# Check ports
-echo -e "\n3. Port Accessibility:"
-for port in 3000 8000 8001 11434; do
-    if nc -z localhost $port; then
-        echo "✅ Port $port: ACCESSIBLE"
-    else
-        echo "❌ Port $port: NOT ACCESSIBLE"
-    fi
-done
-
-# Check services
-echo -e "\n4. Service Health:"
-curl -s -f http://localhost:3000 && echo "✅ Frontend: OK" || echo "❌ Frontend: FAIL"
-curl -s -f http://localhost:8000/health && echo "✅ Backend: OK" || echo "❌ Backend: FAIL"
-curl -s -f http://localhost:8001/models && echo "✅ RAG API: OK" || echo "❌ RAG API: FAIL"
-curl -s -f http://localhost:11434/api/tags && echo "✅ Ollama: OK" || echo "❌ Ollama: FAIL"
-
-# Check models
-echo -e "\n5. Model Status:"
-docker compose exec ollama ollama list
-
-# Check disk space
-echo -e "\n6. Disk Usage:"
-df -h | grep -E "/$|/var|/opt"
-
-# Check memory
-echo -e "\n7. Memory Usage:"
-free -h
-
-echo -e "\n=== Verification Complete ==="
-```
-
-### 7.2 Functional Testing
-
-```bash
-# Test document upload
-curl -X POST -F "file=@test_document.pdf" http://localhost:8000/upload
-
-# Test chat functionality
-curl -X POST -H "Content-Type: application/json" \
-  -d '{"query": "Hello, how are you?", "session_id": "test-session"}' \
-  http://localhost:8000/sessions/test-session/chat
-
-# Test RAG functionality
-curl -X POST -H "Content-Type: application/json" \
-  -d '{"query": "What is in the document?", "session_id": "test-session"}' \
-  http://localhost:8001/chat
+# Test health endpoints
+curl http://localhost:8000/health
+curl http://localhost:8001/health
 ```
 
 ---
 
-## 8. Next Steps
+## 7. Troubleshooting Installation
 
-### 8.1 First Use
+### 7.1 Common Issues
 
-1. **Access the system**: Open http://localhost:3000 in your browser
-2. **Create a session**: Click "New Chat" to start
-3. **Upload documents**: Use the upload interface to add PDF files
-4. **Test queries**: Ask questions about your documents
-5. **Explore features**: Try different query types and settings
-
-### 8.2 Customization
-
-1. **Configure models**: Edit `rag_system/main.py` for different models
-2. **Adjust performance**: Modify resource limits in `docker-compose.yml`
-3. **Customize UI**: Edit React components in `src/components/`
-4. **Add features**: Extend the system with new capabilities
-
-### 8.3 Production Deployment
-
-1. **Review security**: Configure firewalls and SSL certificates
-2. **Set up monitoring**: Implement logging and alerting
-3. **Configure backups**: Set up automated data backups
-4. **Load testing**: Test system performance under load
-
----
-
-## 9. Installation Scripts
-
-### 9.1 Automated Installation Script
-
+#### **Ollama Issues:**
 ```bash
-#!/bin/bash
-# install_rag_system.sh - Automated installation
+# Ollama not responding
+curl http://localhost:11434/api/tags
 
-set -e
+# If fails, restart Ollama
+pkill ollama
+ollama serve
 
-echo "=== RAG System Automated Installation ==="
-
-# Check prerequisites
-echo "1. Checking prerequisites..."
-if ! command -v docker &> /dev/null; then
-    echo "❌ Docker not found. Please install Docker first."
-    exit 1
-fi
-
-if ! command -v git &> /dev/null; then
-    echo "❌ Git not found. Please install Git first."
-    exit 1
-fi
-
-# Clone repository
-echo "2. Cloning repository..."
-if [ ! -d "rag-system" ]; then
-    git clone https://github.com/your-org/rag-system.git
-fi
-cd rag-system
-
-# Setup environment
-echo "3. Setting up environment..."
-if [ ! -f ".env" ]; then
-    cp .env.example .env
-fi
-
-# Create directories
-echo "4. Creating directories..."
-mkdir -p {lancedb,shared_uploads,logs,ollama_data}
-mkdir -p index_store/{overviews,bm25,graph}
-
-# Build and start
-echo "5. Building and starting services..."
-docker compose build --no-cache
-docker compose up -d
-
-# Wait for services
-echo "6. Waiting for services to start..."
-sleep 180
-
-# Install models
-echo "7. Installing AI models..."
-docker compose exec ollama ollama pull qwen2.5:7b
-docker compose exec ollama ollama pull qwen2.5:0.5b
-
-# Verify installation
-echo "8. Verifying installation..."
-docker compose ps
-
-echo "✅ Installation complete!"
-echo "Access the system at: http://localhost:3000"
+# Reinstall models if needed
+ollama pull qwen3:0.6b
+ollama pull qwen3:8b
 ```
 
-### 9.2 Development Setup Script
-
+#### **Docker Issues:**
 ```bash
-#!/bin/bash
-# setup_development.sh - Development environment setup
+# Docker daemon not running
+docker version
 
-set -e
+# Restart Docker Desktop (macOS/Windows)
+# Or restart docker service (Linux)
+sudo systemctl restart docker
 
-echo "=== RAG System Development Setup ==="
+# Clear Docker cache if build fails
+docker system prune -f
+```
 
-# Check Python
-echo "1. Checking Python..."
-if ! command -v python3.11 &> /dev/null; then
-    echo "❌ Python 3.11 not found. Please install Python 3.11."
-    exit 1
-fi
+#### **Python Issues:**
+```bash
+# Check Python version
+python --version  # Should be 3.8+
 
-# Check Node.js
-echo "2. Checking Node.js..."
-if ! command -v node &> /dev/null; then
-    echo "❌ Node.js not found. Please install Node.js 18+."
-    exit 1
-fi
+# Check virtual environment
+which python
+pip list | grep torch
 
-# Setup Python environment
-echo "3. Setting up Python environment..."
-python3.11 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-pip install pytest black flake8 mypy
+# Reinstall dependencies
+pip install -r requirements.txt --force-reinstall
+```
 
-# Setup Node.js environment
-echo "4. Setting up Node.js environment..."
+#### **Node.js Issues:**
+```bash
+# Check Node version
+node --version  # Should be 16+
+
+# Clear and reinstall
+rm -rf node_modules package-lock.json
 npm install
+```
 
-# Setup development environment
-echo "5. Setting up development configuration..."
-cp .env.example .env.dev
-echo "NODE_ENV=development" >> .env.dev
-echo "LOG_LEVEL=debug" >> .env.dev
+### 7.2 Performance Issues
 
-# Start infrastructure
-echo "6. Starting infrastructure services..."
-docker compose up -d ollama
+#### **Memory Problems:**
+```bash
+# Check system memory
+free -h  # Linux
+vm_stat  # macOS
 
-echo "✅ Development setup complete!"
-echo "To start development:"
-echo "1. Backend: cd backend && python server.py"
-echo "2. RAG API: cd rag_system && python -m api_server"
-echo "3. Frontend: npm run dev"
+# For Docker: Increase memory allocation
+# Docker Desktop → Settings → Resources → Memory → 8GB+
+
+# Use smaller models
+ollama pull qwen3:0.6b  # Instead of qwen3:8b
+```
+
+#### **Slow Performance:**
+- Use SSD storage for databases (`lancedb/`, `shared_uploads/`)
+- Increase CPU cores if possible
+- Close unnecessary applications
+- Use smaller batch sizes in configuration
+
+---
+
+## 8. Post-Installation Setup
+
+### 8.1 Model Optimization
+
+```bash
+# Install additional models (optional)
+ollama pull nomic-embed-text        # Alternative embedding model
+ollama pull llama3.1:8b            # Alternative generation model
+
+# Test model switching
+curl -X POST http://localhost:8001/chat \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Hello", "model": "qwen3:8b"}'
+```
+
+### 8.2 Security Configuration
+
+```bash
+# Set proper file permissions
+chmod 600 backend/chat_data.db    # Restrict database access
+chmod 700 lancedb/                # Restrict vector DB access
+
+# Configure firewall (production)
+sudo ufw allow 3000/tcp           # Frontend
+sudo ufw deny 8000/tcp            # Backend (internal only)
+sudo ufw deny 8001/tcp            # RAG API (internal only)
+```
+
+### 8.3 Backup Setup
+
+```bash
+# Create backup script
+cat > backup_system.sh << 'EOF'
+#!/bin/bash
+BACKUP_DIR="backups/$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$BACKUP_DIR"
+
+# Backup databases and indexes
+cp -r backend/chat_data.db "$BACKUP_DIR/"
+cp -r lancedb "$BACKUP_DIR/"
+cp -r index_store "$BACKUP_DIR/"
+cp -r shared_uploads "$BACKUP_DIR/"
+
+echo "Backup completed: $BACKUP_DIR"
+EOF
+
+chmod +x backup_system.sh
 ```
 
 ---
 
-This installation guide provides comprehensive instructions for setting up the RAG system on any platform. Follow the appropriate section for your operating system and use case. 
+## 9. Success Criteria
+
+### 9.1 Installation Complete When:
+
+- ✅ All health checks pass without errors
+- ✅ Frontend loads at http://localhost:3000
+- ✅ All models are installed and responding
+- ✅ You can create document indexes
+- ✅ You can chat with uploaded documents
+- ✅ No error messages in logs/terminal
+
+### 9.2 Performance Benchmarks
+
+**Acceptable Performance:**
+- System startup: < 5 minutes
+- Index creation: < 2 minutes per 100MB document
+- Query response: < 30 seconds
+- Memory usage: < 8GB total
+
+**Optimal Performance:**
+- System startup: < 2 minutes
+- Index creation: < 1 minute per 100MB document
+- Query response: < 10 seconds
+- Memory usage: < 4GB total
+
+---
+
+## 10. Next Steps
+
+### 10.1 Getting Started
+
+1. **Upload Documents**: Create your first index with PDF documents
+2. **Explore Features**: Try different query types and models
+3. **Customize**: Adjust model settings and chunk sizes
+4. **Scale**: Add more documents and create multiple indexes
+
+### 10.2 Additional Resources
+
+- **Quick Start**: See `Documentation/quick_start.md`
+- **Docker Usage**: See `Documentation/docker_usage.md`
+- **System Architecture**: See `Documentation/architecture_overview.md`
+- **API Reference**: See `Documentation/api_reference.md`
+
+---
+
+**Congratulations! 🎉** Your RAG system is now ready to use. Visit http://localhost:3000 to start chatting with your documents. 

@@ -4,194 +4,331 @@ _Get up and running in 5 minutes!_
 
 ---
 
-## 🚀 Super Quick Start (One Command)
+## 🚀 Choose Your Deployment Method
 
-If you have Docker installed:
+### Option 1: Docker Deployment (Production Ready) 🐳
 
-```bash
-# Clone and run the complete setup
-git clone https://github.com/your-org/rag-system.git
-cd rag-system
-./setup_rag_system.sh
-```
+Best for: Production deployments, isolated environments, easy scaling
 
-**That's it!** The script will handle everything automatically.
+### Option 2: Direct Development (Developer Friendly) 💻  
+
+Best for: Development, customization, debugging, faster iteration
 
 ---
 
-## 📋 Step-by-Step Quick Start
+## 🐳 Docker Deployment
 
-### Step 1: Install Docker (if not installed)
+### Prerequisites
+- Docker Desktop installed and running
+- 8GB+ RAM available
+- Internet connection
 
-#### macOS:
-```bash
-# Install Docker Desktop
-./install_docker.sh
-# Then start Docker Desktop from Applications
-```
-
-#### Linux:
-```bash
-# Install Docker
-./install_docker.sh
-# Log out and log back in (or run: newgrp docker)
-```
-
-### Step 2: Start the System
+### Step 1: Clone and Setup
 
 ```bash
 # Clone repository
 git clone https://github.com/your-org/rag-system.git
 cd rag-system
 
-# Start everything
-docker compose up -d
-
-# Wait 2-3 minutes for services to start
+# Ensure Docker is running
+docker version
 ```
 
-### Step 3: Install AI Models
+### Step 2: Install Ollama Locally
+
+**Even with Docker, Ollama runs locally for better performance:**
 
 ```bash
-# Install required models
-docker compose exec ollama ollama pull qwen2.5:7b
-docker compose exec ollama ollama pull qwen2.5:0.5b
+# Install Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Start Ollama (in one terminal)
+ollama serve
+
+# Install models (in another terminal)
+ollama pull qwen3:0.6b
+ollama pull qwen3:8b
 ```
 
-### Step 4: Access the System
+### Step 3: Start Docker Containers
+
+```bash
+# Start all containers
+./start-docker.sh
+
+# Or manually:
+docker compose --env-file docker.env up --build -d
+```
+
+### Step 4: Verify Deployment
+
+```bash
+# Check container status
+docker compose ps
+
+# Test endpoints
+curl http://localhost:3000      # Frontend
+curl http://localhost:8000/health  # Backend  
+curl http://localhost:8001/models  # RAG API
+```
+
+### Step 5: Access Application
 
 Open your browser to: **http://localhost:3000**
 
 ---
 
-## 🎯 First Use
+## 💻 Direct Development
 
-### 1. Create a Chat Session
-- Click "New Chat" in the interface
-- Give your session a name
+### Prerequisites
+- Python 3.8+
+- Node.js 16+ and npm
+- 8GB+ RAM available
 
-### 2. Upload Documents
-- Click the upload button
-- Select PDF files from your computer
-- Wait for processing to complete
+### Step 1: Clone and Install Dependencies
 
-### 3. Ask Questions
-- Type questions about your documents
-- Examples:
-  - "What is this document about?"
-  - "Summarize the key points"
-  - "What are the main findings?"
+```bash
+# Clone repository
+git clone https://github.com/your-org/rag-system.git
+cd rag-system
+
+# Install Python dependencies
+pip install -r requirements.txt
+
+# Install Node.js dependencies  
+npm install
+```
+
+### Step 2: Install and Configure Ollama
+
+```bash
+# Install Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Start Ollama (in one terminal)
+ollama serve
+
+# Install models (in another terminal)
+ollama pull qwen3:0.6b
+ollama pull qwen3:8b
+```
+
+### Step 3: Start the System
+
+```bash
+# Start all components with one command
+python run_system.py
+```
+
+**Or start components manually in separate terminals:**
+
+```bash
+# Terminal 1: RAG API
+python -m rag_system.api_server
+
+# Terminal 2: Backend
+cd backend && python server.py
+
+# Terminal 3: Frontend
+npm run dev
+```
+
+### Step 4: Verify Installation
+
+```bash
+# Check system health
+python system_health_check.py
+
+# Test endpoints
+curl http://localhost:3000      # Frontend
+curl http://localhost:8000/health  # Backend
+curl http://localhost:8001/models  # RAG API
+```
+
+### Step 5: Access Application
+
+Open your browser to: **http://localhost:3000**
 
 ---
 
-## 🔧 Essential Commands
+## 🎯 First Use Guide
+
+### 1. Create a Chat Session
+- Click "New Chat" in the interface
+- Give your session a descriptive name
+
+### 2. Upload Documents
+- Click "Create New Index" button
+- Upload PDF files from your computer
+- Configure processing options:
+  - **Chunk Size**: 512 (recommended)
+  - **Embedding Model**: Qwen/Qwen3-Embedding-0.6B
+  - **Enable Enrichment**: Yes
+- Click "Build Index" and wait for processing
+
+### 3. Start Chatting
+- Select your built index
+- Ask questions about your documents:
+  - "What is this document about?"
+  - "Summarize the key points"
+  - "What are the main findings?"
+  - "Compare the arguments in section 3 and 5"
+
+---
+
+## 🔧 Management Commands
+
+### Docker Commands
 
 ```bash
-# Start system
-docker compose up -d
+# Container management
+./start-docker.sh                    # Start all containers
+./start-docker.sh stop              # Stop all containers
+./start-docker.sh logs              # View logs
+./start-docker.sh status            # Check status
 
-# Stop system
-docker compose down
+# Manual Docker Compose
+docker compose ps                    # Check status
+docker compose logs -f              # Follow logs
+docker compose down                 # Stop containers
+docker compose up --build -d        # Rebuild and start
+```
 
-# Check status
-docker compose ps
+### Direct Development Commands
 
-# View logs
-docker compose logs -f
+```bash
+# System management
+python run_system.py               # Start all services
+python system_health_check.py      # Check system health
 
-# Restart specific service
-docker compose restart rag-api
+# Individual components
+python -m rag_system.api_server    # RAG API only
+cd backend && python server.py     # Backend only
+npm run dev                         # Frontend only
+
+# Stop: Press Ctrl+C in terminal running services
 ```
 
 ---
 
 ## 🆘 Quick Troubleshooting
 
-### System Not Starting?
+### Docker Issues
+
+**Containers not starting?**
 ```bash
-# Check if Docker is running
-docker ps
+# Check Docker daemon
+docker version
 
-# Check service status
-docker compose ps
-
-# View error logs
-docker compose logs
+# Restart Docker Desktop and try again
+./start-docker.sh
 ```
 
-### Can't Access http://localhost:3000?
+**Port conflicts?**
 ```bash
-# Check if port is in use
-sudo lsof -i :3000
+# Check what's using ports
+lsof -i :3000 -i :8000 -i :8001
 
-# Check frontend logs
-docker compose logs frontend
+# Stop conflicting processes
+./start-docker.sh stop
 ```
 
-### Models Not Loading?
-```bash
-# Check Ollama status
-docker compose exec ollama ollama list
+### Direct Development Issues
 
-# Reinstall models
-docker compose exec ollama ollama pull qwen2.5:7b
+**Import errors?**
+```bash
+# Check Python installation
+python --version  # Should be 3.8+
+
+# Reinstall dependencies
+pip install -r requirements.txt --force-reinstall
 ```
 
-### Out of Memory?
+**Node.js errors?**
+```bash
+# Check Node version
+node --version    # Should be 16+
+
+# Reinstall dependencies
+rm -rf node_modules package-lock.json
+npm install
+```
+
+### Common Issues
+
+**Ollama not responding?**
+```bash
+# Check if Ollama is running
+curl http://localhost:11434/api/tags
+
+# Restart Ollama
+pkill ollama
+ollama serve
+```
+
+**Out of memory?**
 ```bash
 # Check memory usage
-docker stats
+docker stats  # For Docker
+htop          # For direct development
 
-# Increase Docker memory in Docker Desktop:
-# Settings → Resources → Memory → 8GB+
+# Recommended: 16GB+ RAM for optimal performance
 ```
 
 ---
 
-## 📊 System Status Check
+## 📊 System Verification
 
-Run this to verify everything is working:
+Run this comprehensive check:
 
 ```bash
-# Check all services
+# Check all endpoints
 curl -f http://localhost:3000 && echo "✅ Frontend OK"
-curl -f http://localhost:8000/health && echo "✅ Backend OK"
+curl -f http://localhost:8000/health && echo "✅ Backend OK"  
 curl -f http://localhost:8001/models && echo "✅ RAG API OK"
 curl -f http://localhost:11434/api/tags && echo "✅ Ollama OK"
+
+# For Docker: Check containers
+docker compose ps
 ```
 
 ---
 
 ## 🎉 Success!
 
-If you see all services running and can access http://localhost:3000, you're ready to go!
+If you see:
+- ✅ All services responding
+- ✅ Frontend accessible at http://localhost:3000  
+- ✅ No error messages
+
+You're ready to start using LocalGPT!
 
 ### What's Next?
-1. **Upload Documents**: Add your PDF files
-2. **Ask Questions**: Start querying your documents
-3. **Explore Features**: Try different query types
-4. **Customize**: Check `Documentation/` for advanced configuration
 
-### Need Help?
-- 📖 **Full Documentation**: See `Documentation/` folder
-- 🐛 **Troubleshooting**: Check `Documentation/deployment_guide.md`
-- 🔧 **Configuration**: See `Documentation/system_overview.md`
+1. **📚 Upload Documents**: Add your PDF files to create indexes
+2. **💬 Start Chatting**: Ask questions about your documents
+3. **🔧 Customize**: Explore different models and settings
+4. **📖 Learn More**: Check the full documentation below
 
----
-
-## 📁 File Structure
+### 📁 Key Files
 
 ```
 rag-system/
-├── 📄 setup_rag_system.sh     # Complete setup script
-├── 📄 install_docker.sh       # Docker installation
-├── 📄 docker-compose.yml      # Service configuration
-├── 📁 Documentation/          # Full documentation
-├── 📁 rag_system/            # Core RAG system
-├── 📁 backend/               # API backend
-├── 📁 src/                   # Frontend source
-└── 📁 shared_uploads/        # Document storage
+├── 🐳 start-docker.sh           # Docker deployment script
+├── 🏃 run_system.py             # Direct development launcher
+├── 🩺 system_health_check.py    # System verification
+├── 📋 requirements.txt          # Python dependencies
+├── 📦 package.json              # Node.js dependencies
+├── 📁 Documentation/            # Complete documentation
+└── 📁 rag_system/              # Core system code
 ```
+
+### 📖 Additional Resources
+
+- **🏗️ Architecture**: See `Documentation/architecture_overview.md`
+- **🔧 Configuration**: See `Documentation/system_overview.md`  
+- **🚀 Deployment**: See `Documentation/deployment_guide.md`
+- **🐛 Troubleshooting**: See `DOCKER_TROUBLESHOOTING.md`
 
 ---
 

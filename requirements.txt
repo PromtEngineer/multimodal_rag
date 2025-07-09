@@ -16,3 +16,4 @@ sentencepiece
 accelerate
 docling
 ocrmac 
+sentence_transformers
