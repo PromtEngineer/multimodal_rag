@@ -1,8 +1,22 @@
 # 🚀 RAG System Deployment Guide
 
-_Last updated: 2025-01-02_
+_Last updated: 2025-01-07_
 
-This guide provides comprehensive instructions for deploying the RAG system using Docker, including setup, configuration, and operational procedures.
+This guide provides comprehensive instructions for deploying the RAG system using both Docker and direct development approaches.
+
+---
+
+## 🎯 Deployment Options
+
+### Option 1: Docker Deployment (Production) 🐳
+- **Best for**: Production environments, containerized deployments, scaling
+- **Pros**: Isolated, reproducible, easy to manage
+- **Cons**: Slightly more complex setup, resource overhead
+
+### Option 2: Direct Development (Development) 💻
+- **Best for**: Development, debugging, customization
+- **Pros**: Direct access to code, faster iteration, easier debugging
+- **Cons**: More dependencies to manage
 
 ---
 
@@ -22,22 +36,43 @@ This guide provides comprehensive instructions for deploying the RAG system usin
 - **Storage**: 200GB+ SSD
 - **GPU**: NVIDIA GPU with 8GB+ VRAM (optional, for acceleration)
 
-### 1.2 Software Dependencies
+### 1.2 Common Dependencies
 
-#### **Required Software**
+**Both deployment methods require:**
+```bash
+# Ollama (required for both approaches)
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Git for cloning
+git 2.30+
+```
+
+### 1.3 Docker-Specific Dependencies
+
+**For Docker deployment:**
 ```bash
 # Docker & Docker Compose
 Docker Engine 24.0+
 Docker Compose 2.20+
-
-# Git (for cloning repository)
-Git 2.30+
-
-# Optional: NVIDIA Container Toolkit (for GPU support)
-nvidia-container-toolkit
 ```
 
-#### **Installation Commands**
+### 1.4 Direct Development Dependencies
+
+**For direct development:**
+```bash
+# Python & Node.js
+Python 3.8+
+Node.js 16+
+npm 8+
+```
+
+---
+
+## 2. 🐳 Docker Deployment
+
+### 2.1 Installation
+
+#### **Step 1: Install Docker**
 
 **Ubuntu/Debian:**
 ```bash
@@ -45,24 +80,17 @@ nvidia-container-toolkit
 curl -fsSL https://get.docker.com -o get-docker.sh
 sudo sh get-docker.sh
 sudo usermod -aG docker $USER
+newgrp docker
 
-# Install Docker Compose
+# Install Docker Compose V2
 sudo apt-get update
 sudo apt-get install docker-compose-plugin
-
-# For GPU support (optional)
-distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
-curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
-curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
-sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
-sudo systemctl restart docker
 ```
 
 **macOS:**
 ```bash
 # Install Docker Desktop
 brew install --cask docker
-
 # Or download from: https://www.docker.com/products/docker-desktop
 ```
 
@@ -72,1017 +100,499 @@ brew install --cask docker
 # Download from: https://www.docker.com/products/docker-desktop
 ```
 
----
-
-## 2. Quick Start
-
-### 2.1 Clone Repository
+#### **Step 2: Clone Repository**
 ```bash
 git clone https://github.com/your-org/rag-system.git
 cd rag-system
 ```
 
-### 2.2 Environment Setup
+#### **Step 3: Install Ollama**
 ```bash
-# Create environment file
-cp .env.example .env
+# Install Ollama (runs locally even with Docker)
+curl -fsSL https://ollama.ai/install.sh | sh
 
-# Edit configuration (optional)
-nano .env
+# Start Ollama
+ollama serve
+
+# In another terminal, install models
+ollama pull qwen3:0.6b
+ollama pull qwen3:8b
 ```
 
-### 2.3 Launch System
+#### **Step 4: Launch Docker System**
 ```bash
-# Start all services
-docker-compose up -d
+# Start all containers using the convenience script
+./start-docker.sh
 
-# Check status
-docker-compose ps
+# Or manually:
+docker compose --env-file docker.env up --build -d
+```
+
+#### **Step 5: Verify Deployment**
+```bash
+# Check container status
+docker compose ps
+
+# Test all endpoints
+curl http://localhost:3000      # Frontend
+curl http://localhost:8000/health  # Backend
+curl http://localhost:8001/models  # RAG API
+curl http://localhost:11434/api/tags  # Ollama
+```
+
+### 2.2 Docker Management
+
+#### **Container Operations**
+```bash
+# Start system
+./start-docker.sh
+
+# Stop system
+./start-docker.sh stop
 
 # View logs
-docker-compose logs -f
+./start-docker.sh logs
+
+# Check status
+./start-docker.sh status
+
+# Manual Docker Compose commands
+docker compose ps                    # Check status
+docker compose logs -f              # Follow logs
+docker compose down                 # Stop all containers
+docker compose up --build -d        # Rebuild and restart
 ```
 
-### 2.4 Access System
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **RAG API**: http://localhost:8001
-- **Ollama API**: http://localhost:11434
+#### **Individual Container Management**
+```bash
+# Restart specific service
+docker compose restart rag-api
+
+# View specific service logs
+docker compose logs -f backend
+
+# Execute commands in container
+docker compose exec rag-api python -c "print('Hello')"
+```
 
 ---
 
-## 3. Docker Architecture
+## 3. 💻 Direct Development
 
-### 3.1 Service Overview
+### 3.1 Installation
 
-The system consists of 4 containerized services:
+#### **Step 1: Install Dependencies**
+
+**Python Dependencies:**
+```bash
+# Clone repository
+git clone https://github.com/your-org/rag-system.git
+cd rag-system
+
+# Create virtual environment (recommended)
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install Python packages
+pip install -r requirements.txt
+```
+
+**Node.js Dependencies:**
+```bash
+# Install Node.js dependencies
+npm install
+```
+
+#### **Step 2: Install and Configure Ollama**
+```bash
+# Install Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+
+# Start Ollama
+ollama serve
+
+# In another terminal, install models
+ollama pull qwen3:0.6b
+ollama pull qwen3:8b
+```
+
+#### **Step 3: Launch System**
+
+**Option A: Integrated Launcher (Recommended)**
+```bash
+# Start all components with one command
+python run_system.py
+```
+
+**Option B: Manual Component Startup**
+```bash
+# Terminal 1: RAG API
+python -m rag_system.api_server
+
+# Terminal 2: Backend
+cd backend && python server.py
+
+# Terminal 3: Frontend
+npm run dev
+
+# Access at http://localhost:3000
+```
+
+#### **Step 4: Verify Installation**
+```bash
+# Check system health
+python system_health_check.py
+
+# Test endpoints
+curl http://localhost:3000      # Frontend
+curl http://localhost:8000/health  # Backend
+curl http://localhost:8001/models  # RAG API
+```
+
+### 3.2 Direct Development Management
+
+#### **System Operations**
+```bash
+# Start system
+python run_system.py
+
+# Check system health
+python system_health_check.py
+
+# Stop system
+# Press Ctrl+C in terminal running run_system.py
+```
+
+#### **Individual Component Management**
+```bash
+# Start components individually
+python -m rag_system.api_server    # RAG API on port 8001
+cd backend && python server.py     # Backend on port 8000
+npm run dev                         # Frontend on port 3000
+
+# Development tools
+npm run build                       # Build frontend for production
+pip install -r requirements.txt --upgrade  # Update Python packages
+```
+
+---
+
+## 4. Architecture Comparison
+
+### 4.1 Docker Architecture
 
 ```mermaid
 graph TB
-    subgraph "Docker Network: rag-network"
-        Frontend[Frontend Container<br/>Next.js App<br/>Port 3000]
+    subgraph "Docker Containers"
+        Frontend[Frontend Container<br/>Next.js<br/>Port 3000]
         Backend[Backend Container<br/>Python API<br/>Port 8000]
         RAG[RAG API Container<br/>Document Processing<br/>Port 8001]
-        Ollama[Ollama Container<br/>LLM Server<br/>Port 11434]
+    end
+    
+    subgraph "Local System"
+        Ollama[Ollama Server<br/>Port 11434]
     end
     
     Frontend --> Backend
     Backend --> RAG
     RAG --> Ollama
-    
-    subgraph "Persistent Storage"
-        OllamaVol[ollama_data<br/>Model Storage]
-        SQLiteVol[chat_data.db<br/>Session Data]
-        LanceVol[lancedb/<br/>Vector Store]
-        UploadsVol[shared_uploads/<br/>Documents]
+```
+
+### 4.2 Direct Development Architecture
+
+```mermaid
+graph TB
+    subgraph "Local Processes"
+        Frontend[Next.js Dev Server<br/>Port 3000]
+        Backend[Python Backend<br/>Port 8000]
+        RAG[RAG API<br/>Port 8001]
+        Ollama[Ollama Server<br/>Port 11434]
     end
     
-    Ollama --> OllamaVol
-    Backend --> SQLiteVol
-    RAG --> LanceVol
-    RAG --> UploadsVol
-```
-
-### 3.2 Container Specifications
-
-#### **Frontend Container**
-```dockerfile
-# Based on: node:18-alpine
-# Build: Next.js production build
-# Port: 3000
-# Dependencies: React, TypeScript, Tailwind CSS
-```
-
-#### **Backend Container**
-```dockerfile
-# Based on: python:3.11-slim
-# Purpose: API gateway, session management
-# Port: 8000
-# Dependencies: FastAPI, SQLite, requests
-```
-
-#### **RAG API Container**
-```dockerfile
-# Based on: python:3.11-slim
-# Purpose: Document processing, retrieval
-# Port: 8001
-# Dependencies: transformers, lancedb, torch
-```
-
-#### **Ollama Container**
-```dockerfile
-# Based on: ollama/ollama:latest
-# Purpose: LLM inference server
-# Port: 11434
-# Models: Downloaded on first use
+    Frontend --> Backend
+    Backend --> RAG
+    RAG --> Ollama
 ```
 
 ---
 
-## 4. Configuration
+## 5. Configuration
 
-### 4.1 Environment Variables
+### 5.1 Environment Variables
 
-#### **Global Configuration (`.env`)**
+#### **Docker Configuration (`docker.env`)**
 ```bash
-# System Configuration
+# Ollama Configuration
+OLLAMA_HOST=http://host.docker.internal:11434
+
+# Service Configuration
 NODE_ENV=production
-LOG_LEVEL=info
-
-# Service URLs
-FRONTEND_URL=http://localhost:3000
-BACKEND_URL=http://localhost:8000
-RAG_API_URL=http://localhost:8001
-OLLAMA_URL=http://localhost:11434
-
-# Database Configuration
-DATABASE_PATH=./backend/chat_data.db
-LANCEDB_PATH=./lancedb
-UPLOADS_PATH=./shared_uploads
-
-# Model Configuration
-DEFAULT_EMBEDDING_MODEL=sentence-transformers/all-mpnet-base-v2
-DEFAULT_GENERATION_MODEL=qwen2.5:7b
-DEFAULT_RERANKER_MODEL=BAAI/bge-reranker-base
-
-# Performance Configuration
-MAX_CONCURRENT_REQUESTS=5
-REQUEST_TIMEOUT=300
-EMBEDDING_BATCH_SIZE=32
+RAG_API_URL=http://rag-api:8001
+NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-#### **Service-Specific Configuration**
-
-**Frontend (`docker-compose.yml`)**
-```yaml
-environment:
-  - NODE_ENV=production
-  - NEXT_PUBLIC_API_URL=http://localhost:8000
-  - NEXT_PUBLIC_ENABLE_STREAMING=true
-  - NEXT_PUBLIC_MAX_FILE_SIZE=50MB
-```
-
-**Backend (`docker-compose.yml`)**
-```yaml
-environment:
-  - NODE_ENV=production
-  - RAG_API_URL=http://rag-api:8001
-  - DATABASE_PATH=/app/backend/chat_data.db
-  - UPLOADS_PATH=/app/shared_uploads
-```
-
-**RAG API (`docker-compose.yml`)**
-```yaml
-environment:
-  - OLLAMA_HOST=http://ollama:11434
-  - LANCEDB_PATH=/app/lancedb
-  - INDEX_STORE_PATH=/app/index_store
-  - UPLOADS_PATH=/app/shared_uploads
-```
-
-**Ollama (`docker-compose.yml`)**
-```yaml
-environment:
-  - OLLAMA_HOST=0.0.0.0
-  - OLLAMA_ORIGINS=*
-  - OLLAMA_MODELS_PATH=/root/.ollama/models
-```
-
-### 4.2 Volume Configuration
-
-#### **Persistent Volumes**
-```yaml
-volumes:
-  # Ollama model storage
-  ollama_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./ollama_data
-
-  # Database storage
-  chat_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./backend/chat_data.db
-
-  # Vector database
-  lancedb:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./lancedb
-
-  # Document uploads
-  shared_uploads:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ./shared_uploads
-```
-
----
-
-## 5. Deployment Procedures
-
-### 5.1 Production Deployment
-
-#### **Step 1: System Preparation**
+#### **Direct Development Configuration**
 ```bash
-# Create deployment directory
-mkdir -p /opt/rag-system
-cd /opt/rag-system
-
-# Clone repository
-git clone https://github.com/your-org/rag-system.git .
-
-# Set proper permissions
-sudo chown -R $USER:$USER .
-chmod +x scripts/*.sh
+# Environment variables are set automatically by run_system.py
+# Override in environment if needed:
+export OLLAMA_HOST=http://localhost:11434
+export RAG_API_URL=http://localhost:8001
 ```
 
-#### **Step 2: Configuration**
-```bash
-# Copy and configure environment
-cp .env.example .env
-nano .env
+### 5.2 Model Configuration
 
-# Create required directories
-mkdir -p {lancedb,shared_uploads,logs,ollama_data}
-mkdir -p index_store/{overviews,bm25,graph}
+#### **Default Models**
+```python
+# Embedding Models
+EMBEDDING_MODELS = [
+    "Qwen/Qwen3-Embedding-0.6B",  # Fast, 1024 dimensions
+    "Qwen/Qwen3-Embedding-4B",    # High quality, 2048 dimensions
+]
 
-# Set permissions
-chmod 755 {lancedb,shared_uploads,logs,ollama_data}
-chmod 644 .env
+# Generation Models  
+GENERATION_MODELS = [
+    "qwen3:0.6b",  # Fast responses
+    "qwen3:8b",    # High quality
+]
 ```
 
-#### **Step 3: Service Deployment**
+### 5.3 Performance Tuning
+
+#### **Memory Settings**
 ```bash
-# Build and start services
-docker-compose up -d --build
+# For Docker: Increase memory allocation
+# Docker Desktop → Settings → Resources → Memory → 16GB+
 
-# Verify deployment
-docker-compose ps
-docker-compose logs --tail=50
-
-# Test connectivity
-curl -f http://localhost:3000 || echo "Frontend not ready"
-curl -f http://localhost:8000/health || echo "Backend not ready"
-curl -f http://localhost:8001/models || echo "RAG API not ready"
-curl -f http://localhost:11434/api/tags || echo "Ollama not ready"
+# For Direct Development: Monitor with
+htop  # or top on macOS
 ```
 
-#### **Step 4: Model Installation**
-```bash
-# Install required models via Ollama
-docker-compose exec ollama ollama pull qwen2.5:7b
-docker-compose exec ollama ollama pull qwen2.5:0.5b
+#### **Model Settings**
+```python
+# Batch sizes (adjust based on available RAM)
+EMBEDDING_BATCH_SIZE = 50   # Reduce if OOM
+ENRICHMENT_BATCH_SIZE = 25  # Reduce if OOM
 
-# Verify model installation
-docker-compose exec ollama ollama list
-```
-
-### 5.2 Development Deployment
-
-#### **Step 1: Development Setup**
-```bash
-# Clone repository
-git clone https://github.com/your-org/rag-system.git
-cd rag-system
-
-# Create development environment
-cp .env.example .env.dev
-nano .env.dev
-
-# Override for development
-echo "LOG_LEVEL=debug" >> .env.dev
-echo "NODE_ENV=development" >> .env.dev
-```
-
-#### **Step 2: Development Services**
-```bash
-# Start with development overrides
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
-
-# Enable hot reload (optional)
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.hotreload.yml up -d
+# Chunk settings
+CHUNK_SIZE = 512           # Text chunk size
+CHUNK_OVERLAP = 64         # Overlap between chunks
 ```
 
 ---
 
 ## 6. Operational Procedures
 
-### 6.1 Service Management
-
-#### **Starting Services**
-```bash
-# Start all services
-docker-compose up -d
-
-# Start specific service
-docker-compose up -d frontend
-docker-compose up -d backend
-docker-compose up -d rag-api
-docker-compose up -d ollama
-
-# Start with logs
-docker-compose up --build
-```
-
-#### **Stopping Services**
-```bash
-# Stop all services
-docker-compose down
-
-# Stop specific service
-docker-compose stop frontend
-
-# Stop and remove volumes (caution!)
-docker-compose down -v
-```
-
-#### **Restarting Services**
-```bash
-# Restart all services
-docker-compose restart
-
-# Restart specific service
-docker-compose restart rag-api
-
-# Rebuild and restart
-docker-compose up -d --build rag-api
-```
-
-### 6.2 Monitoring & Logging
+### 6.1 System Monitoring
 
 #### **Health Checks**
 ```bash
-# Check service status
-docker-compose ps
-
-# Check service health
-docker-compose exec frontend curl -f http://localhost:3000/api/health
-docker-compose exec backend curl -f http://localhost:8000/health
-docker-compose exec rag-api curl -f http://localhost:8001/models
-docker-compose exec ollama curl -f http://localhost:11434/api/tags
-```
-
-#### **Log Management**
-```bash
-# View all logs
-docker-compose logs
-
-# View specific service logs
-docker-compose logs frontend
-docker-compose logs backend
-docker-compose logs rag-api
-docker-compose logs ollama
-
-# Follow logs in real-time
-docker-compose logs -f
-
-# View last N lines
-docker-compose logs --tail=100
-
-# View logs with timestamps
-docker-compose logs -t
-```
-
-#### **Resource Monitoring**
-```bash
-# Monitor resource usage
-docker stats
-
-# Monitor specific containers
-docker stats rag-frontend rag-backend rag-api rag-ollama
-
-# View disk usage
-docker system df
-
-# View volume usage
-docker volume ls
-du -sh ./lancedb ./shared_uploads ./ollama_data
-```
-
-### 6.3 Backup & Recovery
-
-#### **Backup Procedures**
-```bash
-#!/bin/bash
-# backup.sh - Complete system backup
-
-BACKUP_DIR="/backup/rag-system/$(date +%Y%m%d_%H%M%S)"
-mkdir -p "$BACKUP_DIR"
-
-# Stop services
-docker-compose down
-
-# Backup data
-cp -r ./backend/chat_data.db "$BACKUP_DIR/"
-cp -r ./lancedb "$BACKUP_DIR/"
-cp -r ./shared_uploads "$BACKUP_DIR/"
-cp -r ./index_store "$BACKUP_DIR/"
-cp -r ./ollama_data "$BACKUP_DIR/"
-
-# Backup configuration
-cp .env "$BACKUP_DIR/"
-cp docker-compose.yml "$BACKUP_DIR/"
-
-# Create archive
-tar -czf "$BACKUP_DIR.tar.gz" -C "$BACKUP_DIR" .
-
-# Restart services
-docker-compose up -d
-
-echo "Backup completed: $BACKUP_DIR.tar.gz"
-```
-
-#### **Recovery Procedures**
-```bash
-#!/bin/bash
-# restore.sh - System recovery
-
-BACKUP_FILE="$1"
-if [ -z "$BACKUP_FILE" ]; then
-    echo "Usage: $0 <backup-file.tar.gz>"
-    exit 1
-fi
-
-# Stop services
-docker-compose down
-
-# Extract backup
-TEMP_DIR=$(mktemp -d)
-tar -xzf "$BACKUP_FILE" -C "$TEMP_DIR"
-
-# Restore data
-cp -r "$TEMP_DIR/chat_data.db" ./backend/
-cp -r "$TEMP_DIR/lancedb" ./
-cp -r "$TEMP_DIR/shared_uploads" ./
-cp -r "$TEMP_DIR/index_store" ./
-cp -r "$TEMP_DIR/ollama_data" ./
-
-# Restore configuration
-cp "$TEMP_DIR/.env" ./
-cp "$TEMP_DIR/docker-compose.yml" ./
-
-# Restart services
-docker-compose up -d
-
-echo "Recovery completed from: $BACKUP_FILE"
-```
-
----
-
-## 7. Scaling & Performance
-
-### 7.1 Horizontal Scaling
-
-#### **Load Balancer Configuration**
-```yaml
-# docker-compose.scale.yml
-version: '3.8'
-
-services:
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf
-    depends_on:
-      - backend
-      - rag-api
-
-  backend:
-    # ... existing configuration
-    deploy:
-      replicas: 3
-      
-  rag-api:
-    # ... existing configuration
-    deploy:
-      replicas: 2
-```
-
-#### **Scaling Commands**
-```bash
-# Scale services
-docker-compose up -d --scale backend=3 --scale rag-api=2
-
-# Auto-scaling with Docker Swarm
-docker swarm init
-docker stack deploy -c docker-compose.yml rag-system
-```
-
-### 7.2 Performance Optimization
-
-#### **Resource Limits**
-```yaml
-# docker-compose.yml
-services:
-  rag-api:
-    # ... existing configuration
-    deploy:
-      resources:
-        limits:
-          cpus: '4.0'
-          memory: 8G
-        reservations:
-          cpus: '2.0'
-          memory: 4G
-```
-
-#### **Caching Configuration**
-```yaml
-# Add Redis for caching
-services:
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-```
-
----
-
-## 8. Security Configuration
-
-### 8.1 Network Security
-
-#### **Firewall Configuration**
-```bash
-# UFW configuration
-sudo ufw allow 22/tcp      # SSH
-sudo ufw allow 80/tcp      # HTTP
-sudo ufw allow 443/tcp     # HTTPS
-sudo ufw allow 3000/tcp    # Frontend (development only)
-sudo ufw deny 8000/tcp     # Backend (internal only)
-sudo ufw deny 8001/tcp     # RAG API (internal only)
-sudo ufw deny 11434/tcp    # Ollama (internal only)
-sudo ufw enable
-```
-
-#### **Docker Network Security**
-```yaml
-# docker-compose.yml
-networks:
-  rag-network:
-    driver: bridge
-    driver_opts:
-      com.docker.network.bridge.name: rag-br0
-    ipam:
-      driver: default
-      config:
-        - subnet: 172.20.0.0/16
-```
-
-### 8.2 SSL/TLS Configuration
-
-#### **SSL Certificate Setup**
-```bash
-# Using Let's Encrypt
-sudo apt-get install certbot
-sudo certbot certonly --standalone -d your-domain.com
-
-# Configure nginx with SSL
-cp nginx.ssl.conf /etc/nginx/sites-available/rag-system
-sudo ln -s /etc/nginx/sites-available/rag-system /etc/nginx/sites-enabled/
-sudo systemctl reload nginx
-```
-
-#### **SSL Configuration File**
-```nginx
-# nginx.ssl.conf
-server {
-    listen 443 ssl http2;
-    server_name your-domain.com;
-    
-    ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
-    
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-    
-    location /api/ {
-        proxy_pass http://localhost:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
----
-
-## 9. Troubleshooting
-
-### 9.1 Common Issues
-
-#### **Container Startup Issues**
-```bash
-# Check container logs
-docker-compose logs [service-name]
-
-# Check resource usage
-docker stats
-
-# Check port conflicts
-sudo netstat -tulpn | grep :3000
-sudo netstat -tulpn | grep :8000
-sudo netstat -tulpn | grep :8001
-sudo netstat -tulpn | grep :11434
-```
-
-#### **Model Loading Issues**
-```bash
-# Check Ollama models
-docker-compose exec ollama ollama list
-
-# Download missing models
-docker-compose exec ollama ollama pull qwen2.5:7b
-
-# Check model storage
-docker-compose exec ollama ls -la /root/.ollama/models
-```
-
-#### **Database Connection Issues**
-```bash
-# Check database file
-ls -la backend/chat_data.db
-
-# Check database permissions
-chmod 664 backend/chat_data.db
-
-# Test database connection
-docker-compose exec backend python -c "
-import sqlite3
-conn = sqlite3.connect('/app/backend/chat_data.db')
-print('Database connection successful')
-conn.close()
-"
-```
-
-#### **Vector Database Issues**
-```bash
-# Check LanceDB tables
-docker-compose exec rag-api python -c "
-import lancedb
-db = lancedb.connect('/app/lancedb')
-print(f'Tables: {db.table_names()}')
-"
-
-# Check vector dimensions
-docker-compose exec rag-api python -c "
-import lancedb
-db = lancedb.connect('/app/lancedb')
-if db.table_names():
-    table = db.open_table(db.table_names()[0])
-    print(f'Schema: {table.schema}')
-"
-```
-
-### 9.2 Debug Commands
-
-#### **System Health Check**
-```bash
-#!/bin/bash
-# health_check.sh - Comprehensive system health check
-
-echo "=== RAG System Health Check ==="
-
-# Check Docker
-echo "Docker status:"
-docker --version
-docker-compose --version
-
-# Check containers
-echo -e "\nContainer status:"
-docker-compose ps
-
-# Check ports
-echo -e "\nPort availability:"
-for port in 3000 8000 8001 11434; do
-    if nc -z localhost $port; then
-        echo "Port $port: OPEN"
-    else
-        echo "Port $port: CLOSED"
-    fi
-done
-
-# Check disk space
-echo -e "\nDisk usage:"
-df -h | grep -E "/$|/opt|/var"
-
-# Check memory
-echo -e "\nMemory usage:"
-free -h
-
-# Check services
-echo -e "\nService health:"
-curl -s -f http://localhost:3000/api/health && echo "Frontend: OK" || echo "Frontend: FAIL"
-curl -s -f http://localhost:8000/health && echo "Backend: OK" || echo "Backend: FAIL"
-curl -s -f http://localhost:8001/models && echo "RAG API: OK" || echo "RAG API: FAIL"
-curl -s -f http://localhost:11434/api/tags && echo "Ollama: OK" || echo "Ollama: FAIL"
-
-echo -e "\n=== Health Check Complete ==="
+# Comprehensive system check
+curl -f http://localhost:3000 && echo "✅ Frontend OK"
+curl -f http://localhost:8000/health && echo "✅ Backend OK"
+curl -f http://localhost:8001/models && echo "✅ RAG API OK"
+curl -f http://localhost:11434/api/tags && echo "✅ Ollama OK"
 ```
 
 #### **Performance Monitoring**
 ```bash
-#!/bin/bash
-# monitor.sh - Continuous performance monitoring
+# Docker monitoring
+docker stats
 
-while true; do
-    echo "=== $(date) ==="
-    
-    # Container stats
-    docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}\t{{.BlockIO}}"
-    
-    # System load
-    echo -e "\nSystem load:"
-    uptime
-    
-    # Memory usage
-    echo -e "\nMemory usage:"
-    free -h
-    
-    # Disk usage
-    echo -e "\nDisk usage:"
-    df -h | grep -E "/$|lancedb|shared_uploads"
-    
-    echo -e "\n" | head -20
-    sleep 30
-done
+# Direct development monitoring
+htop           # Overall system
+nvidia-smi     # GPU usage (if available)
+```
+
+### 6.2 Log Management
+
+#### **Docker Logs**
+```bash
+# All services
+docker compose logs -f
+
+# Specific service
+docker compose logs -f rag-api
+
+# Save logs to file
+docker compose logs > system.log 2>&1
+```
+
+#### **Direct Development Logs**
+```bash
+# Logs are printed to terminal
+# Redirect to file if needed:
+python run_system.py > system.log 2>&1
+```
+
+### 6.3 Backup and Restore
+
+#### **Data Backup**
+```bash
+# Create backup directory
+mkdir -p backups/$(date +%Y%m%d)
+
+# Backup databases and indexes
+cp -r backend/chat_data.db backups/$(date +%Y%m%d)/
+cp -r lancedb backups/$(date +%Y%m%d)/
+cp -r index_store backups/$(date +%Y%m%d)/
+
+# For Docker: also backup volumes
+docker compose down
+docker run --rm -v rag_system_old_ollama_data:/data -v $(pwd)/backups:/backup alpine tar czf /backup/ollama_models_$(date +%Y%m%d).tar.gz -C /data .
+```
+
+#### **Data Restore**
+```bash
+# Stop system
+./start-docker.sh stop  # Docker
+# Or Ctrl+C for direct development
+
+# Restore files
+cp -r backups/YYYYMMDD/* ./
+
+# Restart system
+./start-docker.sh  # Docker
+python run_system.py  # Direct development
 ```
 
 ---
 
-## 10. Maintenance
+## 7. Troubleshooting
 
-### 10.1 Regular Maintenance Tasks
+### 7.1 Common Issues
 
-#### **Daily Tasks**
+#### **Port Conflicts**
 ```bash
-# Check system health
-./scripts/health_check.sh
+# Check what's using ports
+lsof -i :3000 -i :8000 -i :8001 -i :11434
 
-# Review logs for errors
-docker-compose logs --since=24h | grep -i error
+# For Docker: Stop conflicting containers
+./start-docker.sh stop
 
-# Monitor disk usage
-df -h | grep -E "lancedb|shared_uploads|ollama_data"
+# For Direct: Kill processes
+pkill -f "npm run dev"
+pkill -f "server.py"
+pkill -f "api_server"
 ```
 
-#### **Weekly Tasks**
+#### **Docker Issues**
 ```bash
-# Update system packages
-sudo apt-get update && sudo apt-get upgrade -y
+# Docker daemon not running
+docker version  # Check if daemon responds
 
-# Clean Docker resources
+# Restart Docker Desktop (macOS/Windows)
+# Or restart docker service (Linux)
+sudo systemctl restart docker
+
+# Clear Docker cache
 docker system prune -f
-
-# Backup system data
-./scripts/backup.sh
-
-# Check for security updates
-sudo unattended-upgrades --dry-run
 ```
 
-#### **Monthly Tasks**
+#### **Ollama Issues**
 ```bash
-# Update Docker images
-docker-compose pull
-docker-compose up -d --build
+# Check Ollama status
+curl http://localhost:11434/api/tags
 
-# Review and rotate logs
-docker-compose logs --since=30d > logs/archive/$(date +%Y%m).log
+# Restart Ollama
+pkill ollama
+ollama serve
 
-# Performance review
-./scripts/performance_report.sh
-
-# Security audit
-./scripts/security_audit.sh
+# Reinstall models
+ollama pull qwen3:0.6b
+ollama pull qwen3:8b
 ```
 
-### 10.2 Update Procedures
+### 7.2 Performance Issues
 
-#### **Application Updates**
+#### **Memory Problems**
 ```bash
-#!/bin/bash
-# update.sh - Application update procedure
+# Check memory usage
+free -h           # Linux
+vm_stat           # macOS
+docker stats      # Docker containers
 
-# Backup current system
-./scripts/backup.sh
-
-# Stop services
-docker-compose down
-
-# Update code
-git pull origin main
-
-# Update dependencies
-docker-compose build --no-cache
-
-# Start services
-docker-compose up -d
-
-# Verify update
-./scripts/health_check.sh
+# Solutions:
+# 1. Increase system RAM
+# 2. Reduce batch sizes in configuration
+# 3. Use smaller models (qwen3:0.6b instead of qwen3:8b)
 ```
 
-#### **Model Updates**
+#### **Slow Response Times**
 ```bash
-#!/bin/bash
-# update_models.sh - Update AI models
+# Check model loading
+curl http://localhost:11434/api/tags
 
-# Update Ollama models
-docker-compose exec ollama ollama pull qwen2.5:7b
-docker-compose exec ollama ollama pull qwen2.5:0.5b
+# Monitor component response times
+time curl http://localhost:8001/models
 
-# Update embedding models (requires restart)
-docker-compose restart rag-api
-
-# Verify model updates
-docker-compose exec ollama ollama list
+# Solutions:
+# 1. Use SSD storage
+# 2. Increase CPU cores
+# 3. Use GPU acceleration (if available)
 ```
 
 ---
 
-## 11. Appendices
+## 8. Production Considerations
 
-### 11.1 Complete Configuration Files
+### 8.1 Security
 
-#### **docker-compose.yml**
-```yaml
-version: '3.8'
-
-services:
-  # Ollama service for LLM inference
-  ollama:
-    image: ollama/ollama:latest
-    container_name: rag-ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    environment:
-      - OLLAMA_HOST=0.0.0.0
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-    networks:
-      - rag-network
-
-  # RAG API server
-  rag-api:
-    build:
-      context: .
-      dockerfile: Dockerfile.rag-api
-    container_name: rag-api
-    ports:
-      - "8001:8001"
-    environment:
-      - OLLAMA_HOST=http://ollama:11434
-      - NODE_ENV=production
-    volumes:
-      - ./lancedb:/app/lancedb
-      - ./index_store:/app/index_store
-      - ./shared_uploads:/app/shared_uploads
-      - ./backend/chat_data.db:/app/backend/chat_data.db
-    depends_on:
-      ollama:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/models"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-    networks:
-      - rag-network
-
-  # Backend API server
-  backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
-    container_name: rag-backend
-    ports:
-      - "8000:8000"
-    environment:
-      - NODE_ENV=production
-      - RAG_API_URL=http://rag-api:8001
-    volumes:
-      - ./backend/chat_data.db:/app/backend/chat_data.db
-      - ./shared_uploads:/app/shared_uploads
-    depends_on:
-      rag-api:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-    networks:
-      - rag-network
-
-  # Frontend Next.js application
-  frontend:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    container_name: rag-frontend
-    ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
-    depends_on:
-      backend:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    restart: unless-stopped
-    networks:
-      - rag-network
-
-volumes:
-  ollama_data:
-    driver: local
-
-networks:
-  rag-network:
-    driver: bridge
+#### **Network Security**
+```bash
+# Use reverse proxy (nginx/traefik) for production
+# Enable HTTPS/TLS
+# Restrict port access with firewall
 ```
 
-### 11.2 Environment Template
-
-#### **.env.example**
+#### **Data Security**
 ```bash
-# System Configuration
-NODE_ENV=production
-LOG_LEVEL=info
-DEBUG=false
+# Enable authentication in production
+# Encrypt sensitive data
+# Regular security updates
+```
 
-# Service URLs
-FRONTEND_URL=http://localhost:3000
-BACKEND_URL=http://localhost:8000
-RAG_API_URL=http://localhost:8001
-OLLAMA_URL=http://localhost:11434
+### 8.2 Scaling
 
-# Database Configuration
-DATABASE_PATH=./backend/chat_data.db
-LANCEDB_PATH=./lancedb
-UPLOADS_PATH=./shared_uploads
-INDEX_STORE_PATH=./index_store
+#### **Horizontal Scaling**
+```bash
+# Use Docker Swarm or Kubernetes
+# Load balance frontend and backend
+# Scale RAG API instances based on load
+```
 
-# Model Configuration
-DEFAULT_EMBEDDING_MODEL=sentence-transformers/all-mpnet-base-v2
-DEFAULT_GENERATION_MODEL=qwen2.5:7b
-DEFAULT_RERANKER_MODEL=BAAI/bge-reranker-base
-DEFAULT_ENRICHMENT_MODEL=qwen2.5:0.5b
-
-# Performance Configuration
-MAX_CONCURRENT_REQUESTS=5
-REQUEST_TIMEOUT=300
-EMBEDDING_BATCH_SIZE=32
-MAX_CONTEXT_LENGTH=4096
-
-# Security Configuration
-CORS_ORIGINS=http://localhost:3000
-API_KEY_REQUIRED=false
-RATE_LIMIT_REQUESTS=100
-RATE_LIMIT_WINDOW=60
-
-# Storage Configuration
-MAX_FILE_SIZE=50MB
-MAX_UPLOAD_FILES=10
-CLEANUP_INTERVAL=3600
-BACKUP_RETENTION_DAYS=30
+#### **Resource Optimization**
+```bash
+# Use dedicated GPU nodes for AI workloads
+# Implement model caching
+# Optimize batch processing
 ```
 
 ---
 
-This deployment guide provides everything needed to successfully deploy, configure, and maintain the RAG system in production or development environments. For additional support, refer to the troubleshooting section or system documentation. 
+## 9. Success Criteria
+
+### 9.1 Deployment Verification
+
+Your deployment is successful when:
+
+- ✅ All health checks pass
+- ✅ Frontend loads at http://localhost:3000
+- ✅ You can create document indexes
+- ✅ You can chat with uploaded documents
+- ✅ No error messages in logs
+
+### 9.2 Performance Benchmarks
+
+**Acceptable Performance:**
+- Index creation: < 2 minutes per 100MB document
+- Query response: < 30 seconds for complex questions
+- Memory usage: < 8GB total system memory
+
+**Optimal Performance:**
+- Index creation: < 1 minute per 100MB document  
+- Query response: < 10 seconds for complex questions
+- Memory usage: < 16GB total system memory
+
+---
+
+**Happy Deploying! 🚀** 

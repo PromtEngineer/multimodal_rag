@@ -67,52 +67,95 @@ LocalGPT is a **private, local document intelligence platform** that allows you 
 
 ### Prerequisites
 - Python 3.8 or higher
-- Docker (optional, recommended)
+- Node.js 16+ and npm
+- Docker (optional, for containerized deployment)
 - 8GB+ RAM (16GB+ recommended)
 
-### Option 1: Docker Setup (Recommended)
+### Option 1: Docker Deployment (Recommended for Production)
 
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/localgpt.git
 cd localgpt
 
-# Start with Docker Compose
-docker-compose up -d
+# Install Ollama locally (required even for Docker)
+curl -fsSL https://ollama.ai/install.sh | sh
+ollama pull qwen3:0.6b
+ollama pull qwen3:8b
+
+# Start Ollama
+ollama serve
+
+# Start with Docker (in a new terminal)
+./start-docker.sh
 
 # Access the application
 open http://localhost:3000
 ```
 
-### Option 2: Local Development Setup
+**Docker Management Commands:**
+```bash
+# Check container status
+docker compose ps
+
+# View logs
+docker compose logs -f
+
+# Stop containers
+./start-docker.sh stop
+```
+
+### Option 2: Direct Development (Recommended for Development)
 
 ```bash
 # Clone the repository
 git clone https://github.com/yourusername/localgpt.git
 cd localgpt
 
-# Install dependencies
+# Install Python dependencies
 pip install -r requirements.txt
+
+# Install Node.js dependencies
 npm install
 
-# Start the backend
-cd backend && python server.py &
+# Install and start Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+ollama pull qwen3:0.6b
+ollama pull qwen3:8b
+ollama serve
 
-# Start the frontend
-npm run dev
+# Start the system (in a new terminal)
+python run_system.py
 
 # Access the application
 open http://localhost:3000
 ```
 
-### Option 3: Quick Script Setup
+**Direct Development Management:**
+```bash
+# Check system health
+python system_health_check.py
+
+# Stop all services
+# Press Ctrl+C in the terminal running python run_system.py
+```
+
+### Option 3: Manual Component Startup
 
 ```bash
-# Use the automated setup script
-./setup_rag_system.sh
+# Terminal 1: Start Ollama
+ollama serve
 
-# Or use the interactive installer
-python install_dependencies.py
+# Terminal 2: Start RAG API
+python -m rag_system.api_server
+
+# Terminal 3: Start Backend
+cd backend && python server.py
+
+# Terminal 4: Start Frontend
+npm run dev
+
+# Access at http://localhost:3000
 ```
 
 ---
