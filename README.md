@@ -604,48 +604,53 @@ graph TB
 
 ## 🤝 Contributing
 
-We welcome contributions! Here's how to get started:
+We welcome contributions from developers of all skill levels! LocalGPT is an open-source project that benefits from community involvement.
 
-### Development Setup
+### 🚀 Quick Start for Contributors
 
 ```bash
 # Fork and clone the repository
-git clone https://github.com/yourusername/localgpt.git
-cd localgpt
+git clone https://github.com/YOUR_USERNAME/multimodal_rag.git
+cd multimodal_rag
 
-# Create development environment
-python -m venv venv
-source venv/bin/activate  # or `venv\Scripts\activate` on Windows
-
-# Install development dependencies
-pip install -r requirements-dev.txt
+# Set up development environment
+pip install -r requirements.txt
 npm install
 
-# Run tests
-pytest
-npm test
+# Install Ollama and models
+curl -fsSL https://ollama.ai/install.sh | sh
+ollama pull qwen3:0.6b qwen3:8b
 
-# Start development servers
-npm run dev
-cd backend && python server.py
+# Verify setup
+python system_health_check.py
+python run_system.py --mode dev
 ```
 
-### Contribution Guidelines
+### 📋 How to Contribute
 
-1. **Code Style**: Follow PEP 8 for Python, ESLint for JavaScript
-2. **Testing**: Add tests for new features
-3. **Documentation**: Update docs for API changes
-4. **Commit Messages**: Use conventional commit format
-5. **Pull Requests**: Include description and test results
+1. **🐛 Report Bugs**: Use our [bug report template](.github/ISSUE_TEMPLATE/bug_report.md)
+2. **💡 Request Features**: Use our [feature request template](.github/ISSUE_TEMPLATE/feature_request.md)
+3. **🔧 Submit Code**: Follow our [development workflow](CONTRIBUTING.md#development-workflow)
+4. **📚 Improve Docs**: Help make our documentation better
 
-### Areas for Contribution
+### 🎯 Priority Areas
 
-- 🐛 Bug fixes and performance improvements
-- ✨ New features and integrations
-- 📚 Documentation improvements
-- 🧪 Test coverage expansion
-- 🌐 Internationalization
-- 🎨 UI/UX enhancements
+- **Performance Optimization**: Improve indexing and retrieval speed
+- **Model Integration**: Add support for new AI models
+- **User Experience**: Enhance the web interface
+- **Testing**: Expand test coverage
+- **Documentation**: Improve setup and usage guides
+
+### 📖 Detailed Guidelines
+
+For comprehensive contributing guidelines, including:
+- Development setup and workflow
+- Coding standards and best practices
+- Testing requirements
+- Documentation standards
+- Release process
+
+**👉 See our [CONTRIBUTING.md](CONTRIBUTING.md) guide**
 
 ---
 
