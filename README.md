@@ -66,10 +66,11 @@ LocalGPT is a **private, local document intelligence platform** that allows you 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.8 or higher
-- Node.js 16+ and npm
+- Python 3.8 or higher (tested with Python 3.11.5)
+- Node.js 16+ and npm (tested with Node.js 23.10.0, npm 10.9.2)
 - Docker (optional, for containerized deployment)
 - 8GB+ RAM (16GB+ recommended)
+- Ollama (required for both deployment approaches)
 
 ### Option 1: Docker Deployment (Recommended for Production)
 
@@ -133,11 +134,15 @@ open http://localhost:3000
 
 **Direct Development Management:**
 ```bash
-# Check system health
+# Check system health (comprehensive diagnostics)
 python system_health_check.py
 
+# Check service status
+python run_system.py --health
+
 # Stop all services
-# Press Ctrl+C in the terminal running python run_system.py
+python run_system.py --stop
+# Or press Ctrl+C in the terminal running python run_system.py
 ```
 
 ### Option 3: Manual Component Startup
@@ -164,12 +169,14 @@ npm run dev
 
 ### System Requirements
 
-| Component | Minimum | Recommended |
-|-----------|---------|-------------|
-| RAM | 8GB | 16GB+ |
-| Storage | 10GB | 50GB+ |
-| CPU | 4 cores | 8+ cores |
-| GPU | Optional | NVIDIA GPU with 8GB+ VRAM |
+| Component | Minimum | Recommended | Tested |
+|-----------|---------|-------------|--------|
+| Python | 3.8+ | 3.11+ | 3.11.5 |
+| Node.js | 16+ | 18+ | 23.10.0 |
+| RAM | 8GB | 16GB+ | 16GB+ |
+| Storage | 10GB | 50GB+ | 50GB+ |
+| CPU | 4 cores | 8+ cores | 8+ cores |
+| GPU | Optional | NVIDIA GPU with 8GB+ VRAM | MPS (Apple Silicon) |
 
 ### Detailed Installation
 
@@ -241,6 +248,9 @@ python -c "from backend.database import ChatDatabase; ChatDatabase().init_databa
 
 # Test installation
 python -c "from rag_system.main import get_agent; print('✅ Installation successful!')"
+
+# Validate complete setup
+python run_system.py --health
 ```
 
 ---
