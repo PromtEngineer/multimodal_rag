@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+docker.env
 
 # vercel
 .vercel
@@ -44,15 +45,84 @@ next-env.d.ts
 __pycache__/
 *.pyc
 
-# Local Data
-/index_store
-/shared_uploads
-chat_history.db
-*.pkl
+# ===== SENSITIVE DATA & LOGS =====
+# Log files
+logs/
+*.log
+*.log.*
 
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.pkl
+*.pickle
+
+# Vector databases and indexes
+lancedb/
+index_store/
+chroma_db/
+*.lance/
+
+# Uploaded files and documents
+shared_uploads/
+backend/shared_uploads/
+rag_system/documents/
+*.pdf
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.doc
+*.docx
+*.xls
+*.xlsx
+*.ppt
+*.pptx
+
+# Chat history and session data
+chat_history.db
+chat_data.db
+pdf_storage.db
+
+# Knowledge graphs and embeddings
+*.gml
+*.graphml
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-*
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ===== SPECIFIC PATTERNS =====
 # Backend generated files
 backend/shared_uploads/
 backend/chat_history.db
+backend/chat_data.db
+backend/pdf_storage.db
+backend/chroma_db/
+backend/PHOTO-*
+
+# RAG system specific
+rag_system/index_store/
+rag_system/documents/
+rag_system/index_store/bm25/
+rag_system/index_store/graph/
+rag_system/index_store/lancedb/
 
 # Vector DB artefacts
 lancedb/
