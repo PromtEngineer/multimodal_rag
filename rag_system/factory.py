@@ -7,7 +7,6 @@ def get_agent(mode: str = "default"):
     This uses local imports to prevent circular dependencies.
     """
     from rag_system.agent.loop import Agent
-    from rag_system.agent.react_agent import ReActAgent
     from rag_system.utils.ollama_client import OllamaClient
     from rag_system.main import PIPELINE_CONFIGS, OLLAMA_CONFIG
 
@@ -23,12 +22,7 @@ def get_agent(mode: str = "default"):
             'image_table_name': 'image_pages'
         }
     
-    if mode == "react":
-        agent_class = ReActAgent
-    else:
-        agent_class = Agent
-        
-    agent = agent_class(
+    agent = Agent(
         pipeline_configs=config, 
         llm_client=llm_client, 
         ollama_config=OLLAMA_CONFIG

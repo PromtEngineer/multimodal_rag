@@ -67,7 +67,7 @@ The `RetrievalPipeline` uses **lazy initialization** for all components to avoid
 def _get_text_embedder(self):
     if self.text_embedder is None:
         self.text_embedder = select_embedder(
-            self.config.get("embedding_model_name", "BAAI/bge-small-en-v1.5"),
+            self.config.get("embedding_model_name", "Qwen/Qwen3-Embedding-0.6B"),
             self.ollama_config.get("host")
         )
     return self.text_embedder
@@ -91,14 +91,14 @@ When multiple queries run in parallel, only one thread can initialize heavy mode
 ```python
 self.dense_retriever = MultiVectorRetriever(
     db_manager,           # LanceDB connection
-    text_embedder,        # Qwen/BGE embedder
+    text_embedder,        # Qwen3-Embedding embedder
     vision_model=None,    # Optional multimodal
     fusion_config={}      # Score combination rules
 )
 ```
 
 **Process**:
-1. Query → embedding vector (768D for BGE, 896D for Qwen)
+1. Query → embedding vector (1024D for Qwen3-Embedding-0.6B)
 2. LanceDB ANN search using IVF-PQ index
 3. Cosine similarity scoring
 4. Returns top-K with metadata
@@ -123,7 +123,7 @@ When both retrievers are enabled:
 ```python
 final_score = (1 - dense_weight) * bm25_score + dense_weight * dense_score
 ```
-Default `dense_weight = 0.5` balances semantic and lexical matching.
+Default `dense_weight = 0.7` favors semantic over lexical matching (updated from 0.5).
 
 ### Late-Chunk Merging Algorithm
 
@@ -198,119 +198,419 @@ Instructions
 
 ORIGINAL QUESTION: "{query}"
 """
+
+    response = self.llm_client.complete_stream(
+        prompt=prompt,
+        model=self.ollama_config["generation_model"]  # qwen3:8b
+    )
+    
+    for chunk in response:
+        if event_callback:
+            event_callback({"type": "answer_chunk", "content": chunk})
+        yield chunk
 ```
 
-#### Streaming Implementation
+**Advanced Features**:
+- **Source Attribution**: Automatic citation generation
+- **Confidence Scoring**: Based on retrieval scores and snippet relevance
+- **Answer Verification**: Optional grounding check via Verifier component
+
+### Query Processing and Transformation
+
+#### Query Decomposition
 ```python
-answer_parts: list[str] = []
-for tok in self.ollama_client.stream_completion(
-    model=self.ollama_config["generation_model"],
-    prompt=prompt,
-):
-    answer_parts.append(tok)
-    if event_callback:
-        event_callback("token", {"text": tok})  # SSE to frontend
-
-return "".join(answer_parts)
+class QueryDecomposer:
+    def decompose_query(self, query: str) -> List[str]:
+        """Break complex queries into simpler sub-queries."""
+        decomposition_prompt = f"""
+        Break down this complex question into 2-4 simpler sub-questions that would help answer the original question.
+        
+        Original question: {query}
+        
+        Sub-questions:
+        1.
+        2.
+        3.
+        4.
+        """
+        
+        response = self.llm_client.complete(
+            prompt=decomposition_prompt,
+            model=self.enrichment_model  # qwen3:0.6b for speed
+        )
+        
+        # Parse response into list of sub-queries
+        return self._parse_subqueries(response)
 ```
 
-**Benefits**:
-- Real-time user feedback
-- Reduced perceived latency
-- Graceful handling of long responses
-
-### Performance Optimizations
-
-#### 1. Vector Index Strategy
-```sql
--- LanceDB automatically creates IVF-PQ index
-CREATE INDEX IF NOT EXISTS idx_embedding ON text_pages 
-USING ivf_pq(embedding) WITH (num_partitions=256, num_sub_vectors=96)
-```
-
-#### 2. Batch Processing
+#### HyDE (Hypothetical Document Embeddings)
 ```python
-# Embedding generation uses batch processing
-batch_processor = BatchProcessor(batch_size=self.batch_size)
-all_embeddings = batch_processor.process_in_batches(
-    texts_to_embed,
-    process_text_batch,
-    "Embedding Generation"
-)
+class HyDEGenerator:
+    def generate_hypothetical_doc(self, query: str) -> str:
+        """Generate hypothetical document that would answer the query."""
+        hyde_prompt = f"""
+        Generate a hypothetical document passage that would perfectly answer this question:
+        
+        Question: {query}
+        
+        Hypothetical passage:
+        """
+        
+        response = self.llm_client.complete(
+            prompt=hyde_prompt,
+            model=self.enrichment_model
+        )
+        
+        return response.strip()
 ```
 
-#### 3. Memory Management
-- **Lazy loading**: Components loaded on first use
-- **Singleton pattern**: One reranker instance per process
-- **Cleanup**: Explicit model unloading after batch operations
+### Caching and Performance Optimization
 
-### Error Handling & Fallbacks
-
-| Component | Primary Method | Fallback Strategy |
-|-----------|----------------|-------------------|
-| Dense Retrieval | LanceDB ANN | Skip dense, use BM25 only |
-| BM25 Search | SQLite FTS5 | Return empty results |
-| AI Reranker | ColBERT | Use original retrieval order |
-| Answer Synthesis | Ollama streaming | Return "Unable to generate answer" |
-| Embedding | HuggingFace model | Retry with reduced batch size |
-
-### Configuration Deep-Dive
-
-#### Critical Parameters
+#### Semantic Query Caching
 ```python
-config = {
-    "retrieval": {
-        "k": 10,                    # Initial candidates per retriever
-        "dense_weight": 0.5,        # Hybrid fusion weight
-        "context_window": 5,        # Late-chunk merge window
-        "reranker_top_k": 20       # Post-rerank limit
-    },
-    "reranker": {
+class RetrievalPipeline:
+    def __init__(self, config, ollama_client, ollama_config):
+        # TTL cache for embeddings and results
+        self.query_cache = TTLCache(maxsize=100, ttl=300)  # 5 min TTL
+        self.embedding_cache = LRUCache(maxsize=500)
+        self.semantic_threshold = 0.98  # Similarity threshold for cache hits
+    
+    def get_cached_result(self, query: str, session_id: str = None) -> Optional[Dict]:
+        """Check for semantically similar cached queries."""
+        query_embedding = self._get_text_embedder().create_embeddings([query])[0]
+        
+        for cached_query, cached_data in self.query_cache.items():
+            cached_embedding = cached_data["embedding"]
+            similarity = cosine_similarity([query_embedding], [cached_embedding])[0][0]
+            
+            if similarity > self.semantic_threshold:
+                # Check session scope if configured
+                if self.cache_scope == "session" and cached_data.get("session_id") != session_id:
+                    continue
+                
+                print(f"🎯 Cache hit: {similarity:.3f} similarity")
+                return cached_data["result"]
+        
+        return None
+```
+
+#### Batch Processing Optimizations
+```python
+def process_query_batch(self, queries: List[str]) -> List[Dict]:
+    """Process multiple queries efficiently."""
+    # Batch embed all queries
+    query_embeddings = self._get_text_embedder().create_embeddings(queries)
+    
+    # Batch search
+    results = []
+    for i, query in enumerate(queries):
+        embedding = query_embeddings[i]
+        
+        # Search with pre-computed embedding
+        dense_results = self._search_dense_with_embedding(embedding)
+        bm25_results = self._search_bm25(query)
+        
+        # Combine and rerank
+        combined = self._combine_results(dense_results, bm25_results)
+        reranked = self._rerank_batch([query], [combined])[0]
+        
+        results.append(reranked)
+    
+    return results
+```
+
+### Advanced Search Features
+
+#### Conversational Context Integration
+```python
+def answer_with_history(self, query: str, conversation_history: List[Dict], **kwargs):
+    """Answer query with conversation context."""
+    # Build conversational context
+    context_prompt = self._build_conversation_context(conversation_history)
+    
+    # Expand query with context
+    expanded_query = f"{context_prompt}\n\nCurrent question: {query}"
+    
+    # Process with expanded context
+    return self.answer_stream(expanded_query, **kwargs)
+
+def _build_conversation_context(self, history: List[Dict]) -> str:
+    """Build context from conversation history."""
+    context_parts = []
+    
+    for turn in history[-3:]:  # Last 3 turns for context
+        if turn.get("role") == "user":
+            context_parts.append(f"Previous question: {turn['content']}")
+        elif turn.get("role") == "assistant":
+            # Extract key points from previous answers
+            context_parts.append(f"Previous context: {turn['content'][:200]}...")
+    
+    return "\n".join(context_parts)
+```
+
+#### Multi-Index Search
+```python
+def search_multiple_indexes(self, query: str, index_ids: List[str], **kwargs):
+    """Search across multiple document indexes."""
+    all_results = []
+    
+    for index_id in index_ids:
+        table_name = f"text_pages_{index_id}"
+        
+        try:
+            # Search individual index
+            index_results = self._search_single_index(query, table_name, **kwargs)
+            
+            # Add index metadata
+            for result in index_results:
+                result["source_index"] = index_id
+            
+            all_results.extend(index_results)
+            
+        except Exception as e:
+            print(f"⚠️ Error searching index {index_id}: {e}")
+            continue
+    
+    # Global reranking across all indexes
+    if len(all_results) > kwargs.get("retrieval_k", 20):
+        all_results = self._rerank_global(query, all_results, **kwargs)
+    
+    return all_results
+```
+
+### Error Handling and Resilience
+
+#### Graceful Degradation
+```python
+def answer_stream(self, query: str, **kwargs):
+    """Main answer method with comprehensive error handling."""
+    try:
+        # Try full pipeline
+        return self._answer_stream_full_pipeline(query, **kwargs)
+        
+    except Exception as e:
+        print(f"⚠️ Full pipeline failed: {e}")
+        
+        try:
+            # Fallback: Dense-only search
+            kwargs["search_type"] = "dense"
+            kwargs["ai_rerank"] = False
+            return self._answer_stream_fallback(query, **kwargs)
+            
+        except Exception as e2:
+            print(f"⚠️ Fallback failed: {e2}")
+            
+            # Last resort: Direct LLM answer
+            return self._direct_llm_answer(query)
+
+def _direct_llm_answer(self, query: str):
+    """Direct LLM answer as last resort."""
+    prompt = f"""
+    The document retrieval system is temporarily unavailable. 
+    Please provide a helpful response acknowledging this limitation.
+    
+    User question: {query}
+    
+    Response:
+    """
+    
+    response = self.llm_client.complete_stream(
+        prompt=prompt,
+        model=self.ollama_config["generation_model"]
+    )
+    
+    yield "⚠️ Document search unavailable. Providing general response:\n\n"
+    
+    for chunk in response:
+        yield chunk
+```
+
+#### Recovery Mechanisms
+```python
+def recover_from_embedding_failure(self, query: str, **kwargs):
+    """Recover when embedding model fails."""
+    print("🔄 Attempting embedding model recovery...")
+    
+    # Try to reinitialize embedder
+    try:
+        self.text_embedder = None  # Clear failed instance
+        embedder = self._get_text_embedder()  # Reinitialize
+        
+        # Test with simple query
+        test_embedding = embedder.create_embeddings(["test"])
+        
+        if test_embedding is not None:
+            print("✅ Embedding model recovered")
+            return True
+            
+    except Exception as e:
+        print(f"❌ Recovery failed: {e}")
+    
+    # Fallback to BM25-only search
+    kwargs["search_type"] = "bm25"
+    kwargs["ai_rerank"] = False
+    print("🔄 Falling back to keyword search only")
+    
+    return False
+```
+
+### Performance Monitoring and Metrics
+
+#### Query Performance Tracking
+```python
+class PerformanceTracker:
+    def __init__(self):
+        self.metrics = {
+            "query_count": 0,
+            "avg_response_time": 0,
+            "cache_hit_rate": 0,
+            "error_rate": 0,
+            "embedding_time": 0,
+            "retrieval_time": 0,
+            "reranking_time": 0,
+            "synthesis_time": 0
+        }
+    
+    @contextmanager
+    def track_query(self, query: str):
+        """Context manager for tracking query performance."""
+        start_time = time.time()
+        
+        try:
+            yield
+            
+            # Success metrics
+            duration = time.time() - start_time
+            self.metrics["query_count"] += 1
+            self.metrics["avg_response_time"] = (
+                (self.metrics["avg_response_time"] * (self.metrics["query_count"] - 1) + duration) 
+                / self.metrics["query_count"]
+            )
+            
+        except Exception as e:
+            # Error metrics
+            self.metrics["error_rate"] = (
+                self.metrics["error_rate"] * self.metrics["query_count"] + 1
+            ) / (self.metrics["query_count"] + 1)
+            
+            raise e
+        
+        finally:
+            self.metrics["query_count"] += 1
+```
+
+#### Resource Usage Monitoring
+```python
+def monitor_memory_usage(self):
+    """Monitor memory usage of pipeline components."""
+    import psutil
+    import gc
+    
+    process = psutil.Process()
+    memory_info = process.memory_info()
+    
+    print(f"Memory Usage: {memory_info.rss / 1024 / 1024:.1f} MB")
+    
+    # Component-specific monitoring
+    if hasattr(self, 'text_embedder') and self.text_embedder:
+        print(f"Embedder loaded: {type(self.text_embedder).__name__}")
+    
+    if hasattr(self, 'ai_reranker') and self.ai_reranker:
+        print(f"Reranker loaded: {type(self.ai_reranker).__name__}")
+    
+    # Suggest cleanup if memory usage is high
+    if memory_info.rss > 8 * 1024 * 1024 * 1024:  # 8GB
+        print("⚠️ High memory usage detected - consider cleanup")
+        gc.collect()
+```
+
+---
+
+## Configuration Reference
+
+### Default Pipeline Configuration
+```python
+RETRIEVAL_CONFIG = {
+    "retriever": "multivector",
+    "search_type": "hybrid",
+    "retrieval_k": 20,
+    "reranker_top_k": 10,
+    "dense_weight": 0.7,
+    "late_chunking": {
         "enabled": True,
-        "model_name": "answerdotai/answerai-colbert-small-v1",
-        "strategy": "rerankers-lib"  # vs "qwen"
+        "window_size": 5
+    },
+    "ai_rerank": True,
+    "verify_answers": False,
+    "cache_enabled": True,
+    "cache_ttl": 300,
+    "semantic_cache_threshold": 0.98
+}
+```
+
+### Model Configuration
+```python
+MODEL_CONFIG = {
+    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",
+    "generation_model": "qwen3:8b",
+    "enrichment_model": "qwen3:0.6b",
+    "reranker_model": "answerdotai/answerai-colbert-small-v1",
+    "fallback_reranker": "BAAI/bge-reranker-base"
+}
+```
+
+### Performance Tuning
+```python
+PERFORMANCE_CONFIG = {
+    "batch_sizes": {
+        "embedding": 32,
+        "reranking": 16,
+        "synthesis": 1
+    },
+    "timeouts": {
+        "embedding": 30,
+        "retrieval": 60,
+        "reranking": 30,
+        "synthesis": 120
+    },
+    "memory_limits": {
+        "max_cache_size": 1000,
+        "max_results_per_query": 100,
+        "chunk_size_limit": 2048
     }
 }
 ```
 
-#### Model Selection Impact
-| Model | Embedding Dim | Speed | Quality | Memory |
-|-------|---------------|-------|---------|--------|
-| BGE-small | 384 | Fast | Good | 133MB |
-| BGE-base | 768 | Medium | Better | 438MB |
-| Qwen-0.6B | 896 | Slow | Best | 1.2GB |
+## Extension Examples
 
-### Integration Points
-
-#### Frontend → Backend Flow
-```typescript
-// Frontend (api.ts)
-const response = await fetch('/sessions/123/messages', {
-  method: 'POST',
-  body: JSON.stringify({
-    message: "What is the revenue?",
-    retrievalK: 15,
-    aiRerank: true,
-    contextWindowSize: 3
-  })
-});
-
-// Backend routes to:
-// agent/loop.py → RetrievalPipeline.answer_stream()
+### Custom Retriever Implementation
+```python
+class CustomRetriever(BaseRetriever):
+    def search(self, query: str, k: int = 10) -> List[Dict]:
+        """Implement custom search logic."""
+        # Your custom retrieval implementation
+        pass
+    
+    def get_embeddings(self, texts: List[str]) -> np.ndarray:
+        """Generate embeddings for custom retrieval."""
+        # Your custom embedding logic
+        pass
 ```
 
-#### Database Schema Integration
-```sql
--- LanceDB table structure
-CREATE TABLE text_pages_<index_id> (
-    chunk_id TEXT PRIMARY KEY,
-    text TEXT NOT NULL,
-    embedding VECTOR(896),        -- Qwen embedding
-    document_id TEXT,
-    chunk_index INTEGER,
-    metadata JSON
-);
+### Custom Reranker Implementation
+```python
+class CustomReranker(BaseReranker):
+    def rank(self, query: str, documents: List[Dict]) -> List[Dict]:
+        """Implement custom reranking logic."""
+        # Your custom reranking implementation
+        pass
 ```
 
----
-_Keep in sync with retrieval-related PRs, especially if adding vector-DB filters or new reranker logic._ 
+### Custom Query Transformer
+```python
+class CustomQueryTransformer:
+    def transform(self, query: str, context: Dict = None) -> str:
+        """Transform query based on context."""
+        # Your custom query transformation logic
+        pass
+``` 

@@ -41,29 +41,19 @@ _Last updated: 2025-07-06_
 | `agent.loop.compose_sub` | same `506-542` | Compose answer from sub-answers. |
 | `agent.loop.router` | same `648-660` | Decide which subsystem handles query. |
 
-## 5. ReAct Agent
-
-| ID | File & Lines | Purpose |
-|----|--------------|---------|
-| `react_agent.sub_answer` | `rag_system/agent/react_agent.py` `255-271` | Answer a single decomposed sub-question. |
-| `react_agent.compose` | same `273-302` | Combine sub-answers. |
-| `react_agent.answer_simple` | same `304-322`, `329-350` | Evidence-based direct answer (single pass). |
-| `react_agent.template` | same `~120-150` (PROMPT_TEMPLATE) | Main ReAct tool-use template. |
-| `react_agent.fallback` | same `425-435` | If max iterations reached. |
-
-## 6. Verifier
+## 5. Verifier
 
 | ID | File & Lines | Purpose |
 |----|--------------|---------|
 | `verifier.fact_check` | `rag_system/agent/verifier.py` `18-58` | Strict JSON-format grounding verifier. |
 
-## 7. Backend Router (Fast path)
+## 6. Backend Router (Fast path)
 
 | ID | File & Lines | Purpose |
 |----|--------------|---------|
 | `backend.router` | `backend/server.py` `435-448` | Decide "RAG vs direct LLM" before heavy processing. |
 
-## 8. Miscellaneous
+## 7. Miscellaneous
 
 | ID | File & Lines | Purpose |
 |----|--------------|---------|

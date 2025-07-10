@@ -21,7 +21,7 @@ flowchart LR
     end
 
     subgraph Core["rag_system core package"]
-        BE --> LOOP["Agent Loop / ReAct Agent\n(rag_system/agent/*)"]
+        BE --> LOOP["Agent Loop\n(rag_system/agent/loop.py)"]
         BE --> IDX["Indexing Pipeline\n(pipelines/indexing_pipeline.py)"]
 
         LOOP --> RP["Retrieval Pipeline\n(pipelines/retrieval_pipeline.py)"]
@@ -70,13 +70,13 @@ flowchart LR
 ## 2. Component Documents
 The table below links to deep-dives for each major component.
 
-| Component | Detail Doc |
-|-----------|------------|
-| Triage / Routing | [`triage_system.md`](triage_system.md) |
-| Retrieval Pipeline | [`retrieval_pipeline.md`](retrieval_pipeline.md) |
+| **Component** | **Documentation** |
+|---------------|-------------------|
+| Agent Loop | [`system_overview.md`](system_overview.md) |
 | Indexing Pipeline | [`indexing_pipeline.md`](indexing_pipeline.md) |
-| ReAct Agent | [`react_agent.md`](react_agent.md) |
+| Retrieval Pipeline | [`retrieval_pipeline.md`](retrieval_pipeline.md) |
 | Verifier | [`verifier.md`](verifier.md) |
+| Triage System | [`triage_system.md`](triage_system.md) |
 
 ---
 

@@ -1,6 +1,6 @@
 # 🏗️ RAG System - Complete System Overview
 
-_Last updated: 2025-01-02_
+_Last updated: 2025-01-09_
 
 This document provides a comprehensive overview of the Advanced Retrieval-Augmented Generation (RAG) System, covering its architecture, components, data flow, and operational characteristics.
 
@@ -90,9 +90,9 @@ The system's key innovation is its **dual-layer routing architecture** that opti
 
 #### **Indexing Process**
 1. **Document Upload**: PDF files uploaded via web interface
-2. **Text Extraction**: PyMuPDF extracts text with layout preservation
-3. **Chunking**: Intelligent chunking with configurable strategies
-4. **Embedding**: Text converted to vector embeddings using configurable models
+2. **Text Extraction**: Docling library extracts text with layout preservation
+3. **Chunking**: Intelligent chunking with configurable strategies (DocLing, Late Chunking, Standard)
+4. **Embedding**: Text converted to vector embeddings using Qwen models
 5. **Storage**: Vectors stored in LanceDB with metadata in SQLite
 
 #### **Retrieval Process**
@@ -166,16 +166,18 @@ index_store/
 
 The system supports multiple embedding and generation models with automatic switching:
 
-#### **Default Model Configuration**
+#### **Current Model Configuration**
 ```python
 EXTERNAL_MODELS = {
-    "embedding_model": "sentence-transformers/all-mpnet-base-v2",  # 768D
-    "reranker_model": "BAAI/bge-reranker-base",
+    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",  # 1024D
+    "reranker_model": "answerdotai/answerai-colbert-small-v1",  # ColBERT reranker
+    "vision_model": "Qwen/Qwen-VL-Chat",  # Vision model for multimodal
+    "fallback_reranker": "BAAI/bge-reranker-base",  # Backup reranker
 }
 
 OLLAMA_CONFIG = {
-    "generation_model": "qwen2.5:7b",
-    "enrichment_model": "qwen2.5:0.5b",
+    "generation_model": "qwen3:8b",  # High-quality generation
+    "enrichment_model": "qwen3:0.6b",  # Fast enrichment/routing
     "host": "http://localhost:11434"
 }
 ```
@@ -188,71 +190,72 @@ OLLAMA_CONFIG = {
 ### 4.2 Supported Models
 
 #### **Embedding Models**
-- `sentence-transformers/all-mpnet-base-v2` (768D) - Default
-- `BAAI/bge-small-en-v1.5` (384D) - Lightweight
-- `Qwen/Qwen2-7B-instruct` (1024D) - Advanced
+- `Qwen/Qwen3-Embedding-0.6B` (1024D) - Default, fast and high-quality
 
 #### **Generation Models** (via Ollama)
-- `qwen2.5:7b` - Primary generation model
-- `qwen2.5:0.5b` - Fast enrichment model
-- `llama3.1:8b` - Alternative generation model
+- `qwen3:8b` - Primary generation model (high quality)
+- `qwen3:0.6b` - Fast enrichment and routing model
 
 #### **Reranking Models**
-- `BAAI/bge-reranker-base` - Cross-encoder reranking
-- `sentence-transformers/cross-encoder-ms-marco-MiniLM-L-6-v2` - Lightweight
+- `answerdotai/answerai-colbert-small-v1` - Primary ColBERT reranker
+- `BAAI/bge-reranker-base` - Fallback cross-encoder reranker
+
+#### **Vision Models** (Multimodal)
+- `Qwen/Qwen-VL-Chat` - Vision-language model for image processing
 
 ---
 
-## 5. API Architecture
+## 5. Pipeline Configurations
 
-### 5.1 Frontend API (`localhost:3000`)
-- **Framework**: Next.js 15 with App Router
-- **UI Components**: Radix UI + Tailwind CSS
-- **State Management**: React hooks and context
-- **Real-time**: Server-Sent Events for streaming responses
+### 5.1 Default Production Pipeline
 
-### 5.2 Backend API (`localhost:8000`)
-
-#### **Core Endpoints**
-```bash
-# Session Management
-GET    /sessions              # List all sessions
-POST   /sessions              # Create new session
-GET    /sessions/{id}         # Get session details
-DELETE /sessions/{id}         # Delete session
-
-# Chat Operations
-POST   /sessions/{id}/chat    # Send message (streaming)
-GET    /sessions/{id}/messages # Get message history
-
-# Document Management
-POST   /upload                # Upload documents
-GET    /indexes               # List indexes
-POST   /indexes               # Create index
-DELETE /indexes/{id}          # Delete index
-
-# System Operations
-GET    /health                # Health check
-GET    /models                # List available models
+```python
+PIPELINE_CONFIGS = {
+    "default": {
+        "description": "Production-ready pipeline with hybrid search, AI reranking, and verification",
+        "storage": {
+            "lancedb_uri": "./lancedb",
+            "text_table_name": "text_pages_v3", 
+            "bm25_path": "./index_store/bm25",
+            "graph_path": "./index_store/graph/knowledge_graph.gml"
+        },
+        "retrieval": {
+            "retriever": "multivector",
+            "search_type": "hybrid",
+            "late_chunking": {
+                "enabled": True,
+                "table_suffix": "_lc_v3"
+            },
+            "dense": { 
+                "enabled": True,
+                "weight": 0.7
+            },
+            "bm25": { 
+                "enabled": True,
+                "index_name": "rag_bm25_index"
+            }
+        },
+        "embedding_model_name": "Qwen/Qwen3-Embedding-0.6B",
+        "reranker": {
+            "enabled": True,
+            "model_name": "answerdotai/answerai-colbert-small-v1",
+            "top_k": 20
+        }
+    }
+}
 ```
 
-### 5.3 RAG API (`localhost:8001`)
+### 5.2 Processing Options
 
-#### **Processing Endpoints**
-```bash
-# Core RAG Operations
-POST   /chat                  # Process query with full RAG pipeline
-POST   /chat/stream           # Streaming RAG processing
+#### **Chunking Strategies**
+- **Standard**: Fixed-size chunks with overlap
+- **DocLing**: Structure-aware chunking using DocLing library
+- **Late Chunking**: Small chunks expanded at query time
 
-# Index Operations
-POST   /index                 # Create document index
-GET    /indexes               # List indexes
-DELETE /indexes/{id}          # Delete index
-
-# Model Management
-GET    /models                # List loaded models
-POST   /models/switch         # Switch embedding model
-```
+#### **Enrichment Options**
+- **Contextual Enrichment**: AI-generated chunk summaries
+- **Overview Building**: Document-level summaries for routing
+- **Graph Extraction**: Entity and relationship extraction
 
 ---
 
@@ -260,54 +263,39 @@ POST   /models/switch         # Switch embedding model
 
 ### 6.1 Response Times
 
-| Operation | Typical Time | Factors |
-|-----------|-------------|---------|
-| **Direct LLM** | 1-3 seconds | Model size, query complexity |
-| **RAG Query** | 15-30 seconds | Document corpus size, retrieval depth |
-| **Document Upload** | 2-5 seconds/MB | File size, processing complexity |
-| **Index Creation** | 1-2 minutes/100 pages | Document count, embedding model |
+| Operation | Time Range | Notes |
+|-----------|------------|-------|
+| Simple Chat | 1-3 seconds | Direct LLM, no retrieval |
+| Document Query | 5-15 seconds | Includes retrieval and reranking |
+| Complex Analysis | 15-30 seconds | Multi-step reasoning |
+| Document Indexing | 2-5 min/100MB | Depends on enrichment settings |
 
-### 6.2 Resource Usage
+### 6.2 Memory Usage
 
-#### **Memory Requirements**
-- **Base System**: ~2GB RAM
-- **Embedding Models**: 1-4GB RAM per model
-- **Generation Models**: 4-16GB RAM depending on model size
-- **Vector Storage**: ~10MB per 1000 document pages
-
-#### **Storage Requirements**
-- **Documents**: Original file size
-- **Embeddings**: ~3KB per chunk (768D embeddings)
-- **Metadata**: ~1KB per document
-- **Indexes**: ~5-10% of document size
+| Component | Memory Usage | Notes |
+|-----------|--------------|-------|
+| Embedding Model | 1-2GB | Qwen3-Embedding-0.6B |
+| Generation Model | 8-16GB | qwen3:8b |
+| Reranker Model | 500MB-1GB | ColBERT reranker |
+| Database Cache | 500MB-2GB | LanceDB and SQLite |
 
 ### 6.3 Scalability
 
-#### **Concurrent Users**
-- **Direct LLM**: 10-20 concurrent users
-- **RAG Pipeline**: 3-5 concurrent users
-- **Document Processing**: 1-2 concurrent operations
-
-#### **Document Limits**
-- **Single Index**: Up to 10,000 documents
-- **Total Storage**: Limited by disk space
-- **Query Performance**: Maintains sub-second search up to 100,000 chunks
+- **Concurrent Users**: 5-10 users with 16GB RAM
+- **Document Capacity**: 10,000+ documents per index
+- **Query Throughput**: 10-20 queries/minute per instance
+- **Storage**: Approximately 1MB per 100 pages indexed
 
 ---
 
 ## 7. Security & Privacy
 
-### 7.1 Data Security
-- **Local Processing**: All data processed locally, no external API calls
-- **File Isolation**: Documents stored in isolated directories
-- **Session Security**: Session-based access control
-- **Database Security**: SQLite with file-level permissions
+### 7.1 Data Privacy
 
-### 7.2 Privacy Features
-- **No External Dependencies**: All AI processing happens locally
-- **Data Retention**: Configurable message and document retention
+- **Local Processing**: All AI models run locally via Ollama
+- **No External Calls**: No data sent to external APIs
+- **Document Isolation**: Documents stored locally with session-based access
 - **User Isolation**: Each session maintains separate context
-- **Audit Trail**: Complete logging of all operations
 
 ---
 
@@ -319,14 +307,14 @@ Models can be configured in `rag_system/main.py`:
 ```python
 # Embedding model configuration
 EXTERNAL_MODELS = {
-    "embedding_model": "your-preferred-model",
-    "reranker_model": "your-reranker-model",
+    "embedding_model": "Qwen/Qwen3-Embedding-0.6B",  # Your preferred model
+    "reranker_model": "answerdotai/answerai-colbert-small-v1",
 }
 
 # Generation model configuration
 OLLAMA_CONFIG = {
-    "generation_model": "your-llm-model",
-    "enrichment_model": "your-fast-model",
+    "generation_model": "qwen3:8b",  # Your LLM model
+    "enrichment_model": "qwen3:0.6b",  # Your fast model
 }
 ```
 
@@ -335,12 +323,16 @@ Processing behavior configured in `PIPELINE_CONFIGS`:
 
 ```python
 PIPELINE_CONFIGS = {
-    "query_decomposition": {"enabled": True},
-    "contextual_enricher": {"enabled": True},
-    "verification": {"enabled": True},
     "retrieval": {
         "search_type": "hybrid",
-        "fusion": {"dense_weight": 0.7, "sparse_weight": 0.3}
+        "dense": {"weight": 0.7},
+        "bm25": {"enabled": True}
+    },
+    "chunking": {
+        "chunk_size": 512,
+        "chunk_overlap": 64,
+        "enable_latechunk": True,
+        "enable_docling": True
     }
 }
 ```
@@ -378,73 +370,60 @@ NEXT_PUBLIC_MAX_FILE_SIZE=50MB
 
 ---
 
+## ⚙️ Configuration Modes
+
+The system supports multiple configuration modes optimized for different use cases:
+
+### **Default Mode** (`"default"`)
+- **Description**: Production-ready pipeline with full features
+- **Search**: Hybrid (dense + BM25) with 0.7 dense weight
+- **Reranking**: AI-powered ColBERT reranker
+- **Query Processing**: Query decomposition enabled
+- **Verification**: Grounding verification enabled
+- **Performance**: ~3-8 seconds per query
+- **Memory**: ~10-16GB (with models loaded)
+
+### **Fast Mode** (`"fast"`)  
+- **Description**: Speed-optimized pipeline with minimal overhead
+- **Search**: Vector-only (no BM25, no late chunking)
+- **Reranking**: Disabled
+- **Query Processing**: Single-pass, no decomposition
+- **Verification**: Disabled
+- **Performance**: ~1-3 seconds per query
+- **Memory**: ~8-12GB (with models loaded)
+
+### **BM25 Mode** (`"bm25"`)
+- **Description**: Traditional keyword-based search
+- **Search**: BM25 only
+- **Use Case**: Exact keyword matching, legacy compatibility
+
+### **Graph RAG Mode** (`"graph_rag"`)
+- **Description**: Knowledge graph integration (currently disabled)
+- **Status**: Available for future implementation
+- **Use Case**: Relationship-aware retrieval
+
+---
+
 ## 10. Development & Extension
 
 ### 10.1 Architecture Principles
 - **Modular Design**: Clear separation of concerns
 - **Configuration-Driven**: Behavior controlled via config files
-- **Plugin Architecture**: Easy addition of new components
-- **API-First**: All functionality exposed via APIs
+- **Lazy Loading**: Components loaded on-demand
+- **Thread Safety**: Proper synchronization for concurrent access
 
 ### 10.2 Extension Points
-- **Custom Embedders**: Add new embedding models
-- **Custom Retrievers**: Implement specialized search methods
-- **Custom Rerankers**: Add domain-specific reranking
-- **Custom Generators**: Integrate new LLM backends
+- **Custom Retrievers**: Implement `BaseRetriever` interface
+- **Custom Chunkers**: Extend chunking strategies
+- **Custom Models**: Add new embedding or generation models
+- **Custom Pipelines**: Create specialized processing workflows
 
 ### 10.3 Testing Strategy
-- **Unit Tests**: Component-level testing
+- **Unit Tests**: Individual component testing
 - **Integration Tests**: End-to-end workflow testing
 - **Performance Tests**: Load and stress testing
-- **Model Tests**: Embedding and generation quality tests
+- **Health Checks**: Automated system validation
 
 ---
 
-## 11. Troubleshooting
-
-### 11.1 Common Issues
-
-#### **"No document overviews available"**
-- **Cause**: Missing or corrupted overview files
-- **Solution**: Regenerate overviews or check file permissions
-
-#### **"Vector dimension mismatch"**
-- **Cause**: Embedding model changed without reindexing
-- **Solution**: Ensure consistent embedding models or reindex documents
-
-#### **"Table not found"**
-- **Cause**: Database-LanceDB synchronization issues
-- **Solution**: Verify table names and database consistency
-
-### 11.2 Debug Commands
-
-```bash
-# Check system health
-python -c "from rag_system.main import get_agent; agent = get_agent('default'); print('✅ System operational')"
-
-# Verify model loading
-python -c "from rag_system.main import get_agent; agent = get_agent('default'); embedder = agent.retrieval_pipeline._get_text_embedder(); print(f'Model: {embedder.model}')"
-
-# Check database tables
-python -c "import lancedb; db = lancedb.connect('./lancedb'); print(f'Tables: {db.table_names()}')"
-```
-
----
-
-## 12. Future Roadmap
-
-### 12.1 Planned Features
-- **Multimodal Support**: Image and video document processing
-- **Graph RAG**: Knowledge graph-based retrieval
-- **Collaborative Features**: Multi-user sessions
-- **API Integrations**: External data source connections
-
-### 12.2 Performance Improvements
-- **Caching Layer**: Redis-based caching for frequent queries
-- **Distributed Processing**: Multi-node document processing
-- **GPU Acceleration**: CUDA support for embedding generation
-- **Streaming Optimizations**: Reduced latency for real-time responses
-
----
-
-This comprehensive overview provides the foundation for understanding, deploying, and extending the RAG system. For specific implementation details, refer to the component-specific documentation in this directory. 
+> **Note**: This overview reflects the current implementation as of 2025-01-09. For the latest changes, check the git history and individual component documentation. 

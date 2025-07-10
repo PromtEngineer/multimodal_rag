@@ -24,6 +24,7 @@ httpx
 scikit-learn
 pandas
 sentence_transformers
+rerankers
 # Standard library modules (no need to install)
 # asyncio, logging, json, os, sys, typing, threading, itertools, math, re
 # ocrmac - removed for Docker compatibility (macOS-specific) 

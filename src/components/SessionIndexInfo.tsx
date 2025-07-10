@@ -138,7 +138,7 @@ export default function SessionIndexInfo({ sessionId, onClose }: Props) {
               </div>
             )}
 
-            {hasMetadata && (indexStatus === 'functional' || !indexStatus) && (
+            {hasMetadata && (indexStatus === 'functional' || indexStatus === 'created' || !indexStatus) && (
               <>
                 {/* Basic Information */}
                 <div className="grid grid-cols-2 gap-4">

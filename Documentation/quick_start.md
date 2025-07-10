@@ -27,8 +27,8 @@ Best for: Development, customization, debugging, faster iteration
 
 ```bash
 # Clone repository
-git clone https://github.com/your-org/rag-system.git
-cd rag-system
+git clone <your-repository-url>
+cd rag_system_old
 
 # Ensure Docker is running
 docker version
@@ -89,8 +89,8 @@ Open your browser to: **http://localhost:3000**
 
 ```bash
 # Clone repository
-git clone https://github.com/your-org/rag-system.git
-cd rag-system
+git clone <your-repository-url>
+cd rag_system_old
 
 # Install Python dependencies
 pip install -r requirements.txt
@@ -333,3 +333,47 @@ rag-system/
 ---
 
 **Happy RAG-ing! 🚀** 
+
+---
+
+## 🛠️ Indexing Scripts
+
+The repository includes several convenient scripts for document indexing:
+
+### Simple Index Creation Script
+
+For quick document indexing without the UI:
+
+```bash
+# Basic usage
+./simple_create_index.sh "Index Name" "document.pdf"
+
+# Multiple documents
+./simple_create_index.sh "Research Papers" "paper1.pdf" "paper2.pdf" "notes.txt"
+
+# Using wildcards
+./simple_create_index.sh "Invoice Collection" ./invoices/*.pdf
+```
+
+**Supported file types**: PDF, TXT, DOCX, MD
+
+### Batch Indexing Script
+
+For processing large document collections:
+
+```bash
+# Using the Python batch indexing script
+python demo_batch_indexing.py
+
+# Or using the direct indexing script
+python create_index_script.py
+```
+
+These scripts automatically:
+- ✅ Check prerequisites (Ollama running, Python dependencies)
+- ✅ Validate document formats
+- ✅ Create database entries
+- ✅ Process documents with the RAG pipeline
+- ✅ Generate searchable indexes
+
+--- 

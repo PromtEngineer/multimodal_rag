@@ -12,7 +12,6 @@ load_dotenv()
 # python -m rag_system.main api
 
 from rag_system.agent.loop import Agent
-from rag_system.agent.react_agent import ReActAgent
 from rag_system.indexing.representations import QwenEmbedder
 from rag_system.indexing.embedders import LanceDBManager
 from rag_system.indexing.multimodal import MultimodalProcessor, LocalVisionModel
@@ -153,19 +152,6 @@ PIPELINE_CONFIGS = {
     },
     "graph_rag": {
         "enabled": False, # Keep disabled for now unless specified
-    },
-    "react": {
-        "description": "A ReAct-style agent that uses tools to answer queries.",
-        "retrieval": {
-            "retriever": "multivector",
-            "embeddings": "qwen",
-            "search_type": "hybrid",
-            "reranker": "qwen", 
-            "context_expansion": True,
-        },
-        "react": {
-            "max_iterations": 5
-        }
     }
 }
 
@@ -173,15 +159,15 @@ PIPELINE_CONFIGS = {
 # 🏭 FACTORY FUNCTIONS
 # ============================================================================
 
-def get_agent(mode: str = "default") -> Agent | ReActAgent:
+def get_agent(mode: str = "default") -> Agent:
     """
     Factory function to get an instance of the RAG agent based on the specified mode.
     
     Args:
-        mode: Configuration mode ("default", "fast", "react")
+        mode: Configuration mode ("default", "fast")
         
     Returns:
-        Configured Agent or ReActAgent instance
+        Configured Agent instance
     """
     load_dotenv()
     
@@ -191,13 +177,7 @@ def get_agent(mode: str = "default") -> Agent | ReActAgent:
     # Get the configuration for the specified mode
     config = PIPELINE_CONFIGS.get(mode, PIPELINE_CONFIGS['default'])
     
-    # Determine which agent class to instantiate
-    if mode == "react":
-        agent_class = ReActAgent
-    else:
-        agent_class = Agent
-        
-    agent = agent_class(
+    agent = Agent(
         pipeline_configs=config, 
         llm_client=llm_client, 
         ollama_config=OLLAMA_CONFIG
