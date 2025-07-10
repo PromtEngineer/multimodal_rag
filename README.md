@@ -73,6 +73,7 @@ RAG System is a **private, local document intelligence platform** that allows yo
 - 8GB+ RAM (16GB+ recommended)
 - Ollama (required for both deployment approaches)
 - **Virtual Environment** (recommended for direct installation)
+- Git 2.30+ for cloning repository
 
 ### Option 1: Docker Deployment (Recommended for Production)
 
@@ -92,6 +93,9 @@ ollama serve
 # Start with Docker (in a new terminal)
 ./start-docker.sh
 
+# Wait for containers to start (2-3 minutes)
+sleep 120
+
 # Access the application
 open http://localhost:3000
 ```
@@ -106,6 +110,12 @@ docker compose logs -f
 
 # Stop containers
 ./start-docker.sh stop
+
+# Check system status
+./start-docker.sh status
+
+# View logs
+./start-docker.sh logs
 ```
 
 ### Option 2: Direct Development (Recommended for Development)
@@ -166,6 +176,12 @@ cd backend && python server.py
 # Terminal 4: Start Frontend
 npm run dev
 
+# Verify all services are running
+curl http://localhost:3000      # Frontend
+curl http://localhost:8000/health  # Backend
+curl http://localhost:8001/models  # RAG API
+curl http://localhost:11434/api/tags  # Ollama
+
 # Access at http://localhost:3000
 ```
 
@@ -220,7 +236,7 @@ ollama pull qwen3:8b            # High-quality generation model
 #### 3. Configure Environment
 
 ```bash
-# Copy environment template
+# Copy environment template (if available)
 cp .env.example .env
 
 # Edit configuration
@@ -232,7 +248,7 @@ nano .env
 # AI Models
 OLLAMA_HOST=http://localhost:11434
 DEFAULT_EMBEDDING_MODEL=Qwen/Qwen3-Embedding-0.6B
-DEFAULT_GENERATION_MODEL=qwen3:0.6b
+DEFAULT_GENERATION_MODEL=qwen3:8b
 
 # Database
 DATABASE_PATH=./backend/chat_data.db
@@ -241,6 +257,7 @@ VECTOR_DB_PATH=./lancedb
 # Server Settings
 BACKEND_PORT=8000
 FRONTEND_PORT=3000
+RAG_API_PORT=8001
 ```
 
 #### 4. Initialize the System
@@ -278,8 +295,11 @@ An **index** is a collection of processed PDF documents that you can chat with.
 1. Open http://localhost:3000
 2. Click "Create New Index"
 3. Upload your PDF documents
-4. Configure processing options
-5. Click "Build Index"
+4. Configure processing options:
+   - **Chunk Size**: 512 (recommended)
+   - **Embedding Model**: Qwen/Qwen3-Embedding-0.6B
+   - **Enable Enrichment**: Yes
+5. Click "Build Index" and wait for processing
 
 #### Using Scripts:
 ```bash
@@ -302,7 +322,9 @@ curl -X POST http://localhost:8000/indexes/INDEX_ID/upload \
   -F "files=@document.pdf"
 
 # Build index
-curl -X POST http://localhost:8000/indexes/INDEX_ID/build
+curl -X POST http://localhost:8000/indexes/INDEX_ID/build \
+  -H "Content-Type: application/json" \
+  -d '{"chunkSize": 512, "enableEnrich": true}'
 ```
 
 ### 2. Start Chatting
@@ -323,8 +345,7 @@ curl -X POST http://localhost:8000/sessions \
   -H "Content-Type: application/json" \
   -d '{
     "title": "High Quality Session",
-    "model": "qwen3:8b",
-    "embedding_model": "Qwen/Qwen3-Embedding-4B"
+    "model": "qwen3:8b"
   }'
 ```
 
@@ -339,11 +360,14 @@ python demo_batch_indexing.py --config batch_indexing_config.json
 import requests
 
 # Chat with your PDF documents via API
-response = requests.post('http://localhost:8000/chat', json={
-    'query': 'What are the key findings in the research papers?',
-    'session_id': 'your-session-id',
-    'search_type': 'hybrid',
-    'retrieval_k': 20
+response = requests.post('http://localhost:8000/sessions/SESSION_ID/messages', json={
+    'message': 'What are the key findings in the research papers?',
+    'composeSubAnswers': True,
+    'decompose': True,
+    'aiRerank': False,
+    'verify': True,
+    'retrievalK': 20,
+    'searchType': 'hybrid'
 })
 
 print(response.json()['response'])
@@ -361,8 +385,8 @@ RAG System supports multiple AI model providers:
 ```python
 OLLAMA_CONFIG = {
     'host': 'http://localhost:11434',
-    'generation_model': 'qwen3:0.6b',
-    'embedding_model': 'nomic-embed-text'
+    'generation_model': 'qwen3:8b',
+    'enrichment_model': 'qwen3:0.6b'
 }
 ```
 
@@ -370,9 +394,11 @@ OLLAMA_CONFIG = {
 ```python
 EXTERNAL_MODELS = {
     'embedding': {
-        'Qwen/Qwen3-Embedding-0.6B': {'dimensions': 1024},
-        'Qwen/Qwen3-Embedding-4B': {'dimensions': 2048},
-        'Qwen/Qwen3-Embedding-8B': {'dimensions': 4096}
+        'Qwen/Qwen3-Embedding-0.6B': {'dimensions': 1024}
+    },
+    'reranker': {
+        'answerdotai/answerai-colbert-small-v1': {},
+        'BAAI/bge-reranker-base': {}
     }
 }
 ```
@@ -385,10 +411,10 @@ PIPELINE_CONFIGS = {
         'chunk_size': 512,
         'chunk_overlap': 64,
         'retrieval_mode': 'hybrid',
-        'window_size': 5,
+        'window_size': 2,
         'enable_enrich': True,
         'latechunk': True,
-        'docling_chunk': True
+        'docling_chunk': False
     },
     'fast': {
         'chunk_size': 256,
@@ -407,7 +433,8 @@ SEARCH_CONFIG = {
         'dense_weight': 0.7,
         'sparse_weight': 0.3,
         'retrieval_k': 20,
-        'reranker_top_k': 10
+        'reranker_top_k': 10,
+        'context_window_size': 1
     }
 }
 ```
@@ -514,14 +541,17 @@ export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 
 #### Chat API
 ```http
-POST /chat
+POST /sessions/{session_id}/messages
 Content-Type: application/json
 
 {
-  "query": "What are the main topics discussed?",
-  "session_id": "uuid",
-  "search_type": "hybrid",
-  "retrieval_k": 20
+  "message": "What are the main topics discussed?",
+  "composeSubAnswers": true,
+  "decompose": true,
+  "aiRerank": false,
+  "verify": true,
+  "retrievalK": 20,
+  "searchType": "hybrid"
 }
 ```
 
@@ -537,6 +567,8 @@ Content-Type: multipart/form-data
 
 # Build index
 POST /indexes/{id}/build
+Content-Type: application/json
+{"chunkSize": 512, "enableEnrich": true}
 
 # Get index status
 GET /indexes/{id}
@@ -546,7 +578,7 @@ GET /indexes/{id}
 ```http
 # Create session
 POST /sessions
-{"title": "My Session", "model": "qwen3:0.6b"}
+{"title": "My Session", "model": "qwen3:8b"}
 
 # Get sessions
 GET /sessions
@@ -593,32 +625,47 @@ RAG System is built with a modular, scalable architecture:
 
 ```mermaid
 graph TB
-    UI[Web Interface] --> API[Backend API]
-    API --> Agent[RAG Agent]
-    Agent --> Retrieval[Retrieval Pipeline]
-    Agent --> Generation[Generation Pipeline]
+    subgraph "Client Layer"
+        Browser[👤 User Browser]
+        UI[Next.js Frontend<br/>React/TypeScript<br/>Port 3000]
+        Browser --> UI
+    end
     
-    Retrieval --> Vector[Vector Search]
-    Retrieval --> BM25[BM25 Search]
-    Retrieval --> Rerank[Reranking]
+    subgraph "API Gateway Layer"
+        Backend[Backend Server<br/>Python HTTP Server<br/>Port 8000]
+        UI -->|REST API| Backend
+    end
     
-    Vector --> LanceDB[(LanceDB)]
-    BM25 --> BM25DB[(BM25 Index)]
+    subgraph "Processing Layer"
+        RAG[RAG API Server<br/>Document Processing<br/>Port 8001]
+        Backend -->|Internal API| RAG
+    end
     
-    Generation --> Ollama[Ollama Models]
-    Generation --> HF[Hugging Face Models]
+    subgraph "LLM Service Layer"
+        Ollama[Ollama Server<br/>LLM Inference<br/>Port 11434]
+        RAG -->|Model Calls| Ollama
+    end
     
-    API --> SQLite[(SQLite DB)]
+    subgraph "Storage Layer"
+        SQLite[(SQLite Database<br/>Sessions & Metadata)]
+        LanceDB[(LanceDB<br/>Vector Embeddings)]
+        FileSystem[File System<br/>Documents & Indexes]
+        
+        Backend --> SQLite
+        RAG --> LanceDB
+        RAG --> FileSystem
+    end
 ```
 
 ### Key Components
 
-- **Frontend**: React/Next.js web interface
-- **Backend**: Python FastAPI server
-- **RAG Agent**: Intelligent query routing and processing
-- **Vector Database**: LanceDB for semantic search
-- **Search Engine**: BM25 for keyword search
-- **AI Models**: Ollama and Hugging Face integration
+- **Frontend**: Next.js 15, React 19, TypeScript (Port 3000)
+- **Backend**: Python HTTP Server (Port 8000)
+- **RAG API**: Advanced NLP processing (Port 8001)
+- **Ollama**: Go-based LLM server (Port 11434)
+- **SQLite**: Embedded database for sessions and metadata
+- **LanceDB**: Vector database for document embeddings
+- **File System**: Document storage and index management
 
 ---
 
