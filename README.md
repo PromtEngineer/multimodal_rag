@@ -72,6 +72,7 @@ RAG System is a **private, local document intelligence platform** that allows yo
 - Docker (optional, for containerized deployment)
 - 8GB+ RAM (16GB+ recommended)
 - Ollama (required for both deployment approaches)
+- **Virtual Environment** (recommended for direct installation)
 
 ### Option 1: Docker Deployment (Recommended for Production)
 
@@ -113,6 +114,10 @@ docker compose logs -f
 # Clone the repository
 git clone https://github.com/PromtEngineer/multimodal_rag.git
 cd multimodal_rag
+
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install Python dependencies
 pip install -r requirements.txt
@@ -186,7 +191,7 @@ npm run dev
 **Ubuntu/Debian:**
 ```bash
 sudo apt update
-sudo apt install python3.8 python3-pip nodejs npm docker.io docker-compose
+sudo apt install python3.8 python3-pip python3-venv nodejs npm docker.io docker-compose
 ```
 
 **macOS:**
@@ -241,6 +246,13 @@ FRONTEND_PORT=3000
 #### 4. Initialize the System
 
 ```bash
+# Create and activate virtual environment (if not already done)
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies (if not already done)
+pip install -r requirements.txt
+
 # Run system health check
 python system_health_check.py
 
@@ -440,6 +452,13 @@ SEARCH_CONFIG = {
 # Check Python version
 python --version  # Should be 3.8+
 
+# Check if virtual environment is activated
+echo $VIRTUAL_ENV  # Should show path to venv (Linux/macOS)
+# On Windows: echo %VIRTUAL_ENV%
+
+# Activate virtual environment if not active
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
 # Check dependencies
 pip list | grep -E "(torch|transformers|lancedb)"
 
@@ -613,6 +632,10 @@ We welcome contributions from developers of all skill levels! RAG System is an o
 # Fork and clone the repository
 git clone https://github.com/YOUR_USERNAME/multimodal_rag.git
 cd multimodal_rag
+
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Set up development environment
 pip install -r requirements.txt
