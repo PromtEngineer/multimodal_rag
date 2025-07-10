@@ -11,12 +11,13 @@ import numpy as np
 from threading import Lock
 
 from rag_system.utils.ollama_client import OllamaClient
-from rag_system.retrieval.retrievers import MultiVectorRetriever, GraphRetriever
+from rag_system.retrieval.retrievers import MultiVectorRetriever, GraphRetriever, MultiHopRetriever
 from rag_system.indexing.multimodal import LocalVisionModel
 from rag_system.indexing.representations import select_embedder
 from rag_system.indexing.embedders import LanceDBManager
 from rag_system.rerankers.reranker import QwenReranker
 from rag_system.rerankers.sentence_pruner import SentencePruner
+from rag_system.retrieval.query_transformer import MultiHopContext
 # from rag_system.indexing.chunk_store import ChunkStore
 
 import os
@@ -62,6 +63,8 @@ class RetrievalPipeline:
         self._graph_retriever = None
         self.reranker = None
         self.ai_reranker = None
+        # NEW: Multi-hop retriever
+        self._multihop_retriever = None
 
     def _get_db_manager(self):
         if self.db_manager is None:
@@ -102,6 +105,41 @@ class RetrievalPipeline:
                 print(f"❌ Failed to initialise dense retriever: {e}")
                 self.dense_retriever = None
         return self.dense_retriever
+
+    def _get_multihop_retriever(self):
+        """Get or create the multi-hop retriever."""
+        if not hasattr(self, '_multihop_retriever') or self._multihop_retriever is None:
+            try:
+                from rag_system.retrieval.retrievers import MultiHopRetriever
+                
+                base_retriever = self._get_dense_retriever()
+                text_embedder = self._get_text_embedder()
+                
+                # Get reranker and pruner components
+                reranker = None
+                if self.config.get("reranker", {}).get("enabled", False):
+                    reranker = self._get_ai_reranker()
+                    
+                pruner = None
+                if self.config.get("provence", {}).get("enabled", False):
+                    pruner = self._get_sentence_pruner()
+                
+                self._multihop_retriever = MultiHopRetriever(
+                    base_retriever=base_retriever,
+                    text_embedder=text_embedder,
+                    synthesis_llm_client=self.ollama_client,
+                    synthesis_model=self.ollama_config.get("model", "qwen3:8b"),
+                    reranker=reranker,
+                    pruner=pruner,
+                    pipeline_config=self.config
+                )
+                print("✅ Multi-hop retriever initialized successfully")
+                
+            except Exception as e:
+                print(f"❌ Failed to initialize multi-hop retriever: {e}")
+                self._multihop_retriever = None
+                
+        return self._multihop_retriever
 
     def _get_bm25_retriever(self):
         if self.bm25_retriever is None and self.retriever_configs.get("bm25", {}).get("enabled"):
@@ -508,6 +546,34 @@ ORIGINAL QUESTION: "{query}"
         final_answer = self._synthesize_final_answer(query, context, event_callback=event_callback)
         
         return {"answer": final_answer, "source_documents": final_docs}
+
+    def run_multihop(self, context: MultiHopContext, table_name: str = None, window_size_override: Optional[int] = None, event_callback=None) -> Dict[str, Any]:
+        """
+        Execute multi-hop retrieval using the provided context.
+        """
+        print(f"\n--- Multi-Hop Pipeline Started ---")
+        
+        multihop_retriever = self._get_multihop_retriever()
+        if not multihop_retriever:
+            # Fallback to regular pipeline if multi-hop not available
+            print("⚠️ Multi-hop retriever not available, falling back to regular retrieval")
+            # Use the first step's query as fallback
+            if context.steps:
+                fallback_query = context.steps[0]['query']
+                return self.run(fallback_query, table_name, window_size_override, event_callback)
+            else:
+                return {"answer": "No valid query provided for multi-hop retrieval.", "source_documents": []}
+        
+        # Execute multi-hop retrieval
+        retrieval_k = self.config.get("retrieval_k", 10)
+        result = multihop_retriever.retrieve_multihop(
+            context=context,
+            table_name=table_name or self.storage_config.get("text_table_name"),
+            k=retrieval_k,
+            event_callback=event_callback
+        )
+        
+        return result
 
     # ------------------------------------------------------------------
     # Public utility

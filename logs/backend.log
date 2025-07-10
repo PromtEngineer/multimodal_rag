@@ -715,3 +715,134 @@
 2025-07-10 00:12:59,465 [Thu, 10 Jul 2025 04:55:41 GMT] "GET /sessions HTTP/1.1" 200 -
 2025-07-10 00:12:59,465 [Thu, 10 Jul 2025 04:55:41 GMT] "GET /sessions HTTP/1.1" 200 -
 2025-07-10 00:12:59,465 🛑 Server stopped
+2025-07-10 12:59:41,315 /Users/prompt/Github/rag_system_old/backend/server.py:4: DeprecationWarning: 'cgi' is deprecated and slated for removal in Python 3.13
+2025-07-10 12:59:41,315 import cgi
+2025-07-10 12:59:41,703 2025-07-10 12:59:41,703 | INFO     | numexpr.utils | Note: NumExpr detected 12 cores but "NUMEXPR_MAX_THREADS" not set, so enforcing safe limit of 8.
+2025-07-10 12:59:41,703 2025-07-10 12:59:41,703 | INFO     | numexpr.utils | NumExpr defaulting to 8 threads.
+2025-07-10 12:59:41,709 /Users/prompt/anaconda3/lib/python3.11/site-packages/pandas/core/arrays/masked.py:60: UserWarning: Pandas requires version '1.3.6' or newer of 'bottleneck' (version '1.3.5' currently installed).
+2025-07-10 12:59:41,709 from pandas.core import (
+2025-07-10 12:59:44,307 2025-07-10 12:59:44,307 | INFO     | datasets | PyTorch version 2.4.1 available.
+2025-07-10 13:16:06,395 ✅ RAG system modules accessible from backend
+2025-07-10 13:16:06,399 ✅ Database initialized successfully
+2025-07-10 13:16:06,399 ✅ Database initialized successfully
+2025-07-10 13:16:06,399 ✅ Simple PDF processor initialized
+2025-07-10 13:16:06,399 ✅ Global PDF processor initialized
+2025-07-10 13:16:06,401 📄 Initializing simple PDF processing...
+2025-07-10 13:16:06,401 ✅ Simple PDF processor initialized
+2025-07-10 13:16:06,402 ✅ Global PDF processor initialized
+2025-07-10 13:16:06,402 🧹 Cleaning up empty sessions...
+2025-07-10 13:16:06,403 🗑️ Cleaned up empty session: b3b27599...
+2025-07-10 13:16:06,403 🗑️ Cleaned up empty session: e28372fc...
+2025-07-10 13:16:06,403 ✨ Cleaned up 2 empty sessions
+2025-07-10 13:16:06,403 ✨ Cleaned up 2 empty sessions
+2025-07-10 13:16:06,403 🚀 Starting localGPT backend server on port 8000
+2025-07-10 13:16:06,404 📍 Chat endpoint: http://localhost:8000/chat
+2025-07-10 13:16:06,404 🔍 Health check: http://localhost:8000/health
+2025-07-10 13:16:06,404 ✅ Ollama is running with 26 models
+2025-07-10 13:16:06,405 📋 Available models: qwen3:0.6b, qwen3:8b, gemma3n:e4b-it-q8_0...
+2025-07-10 13:16:06,405 🌐 Frontend should connect to: http://localhost:8000
+2025-07-10 13:16:06,405 💬 Ready to chat!
+2025-07-10 13:16:06,406 [Thu, 10 Jul 2025 19:59:57 GMT] "GET /health HTTP/1.1" 200 -
+2025-07-10 13:16:06,406 [Thu, 10 Jul 2025 19:59:59 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-10 13:16:06,406 [Thu, 10 Jul 2025 19:59:59 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-10 13:16:06,407 [Thu, 10 Jul 2025 19:59:59 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-10 13:16:06,407 [Thu, 10 Jul 2025 19:59:59 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-10 13:16:06,407 [Thu, 10 Jul 2025 19:59:59 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-10 13:16:06,407 [Thu, 10 Jul 2025 19:59:59 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-10 13:16:06,408 [Thu, 10 Jul 2025 20:00:04 GMT] "GET /indexes HTTP/1.1" 200 -
+2025-07-10 13:16:06,408 [Thu, 10 Jul 2025 20:00:04 GMT] "GET /indexes HTTP/1.1" 200 -
+2025-07-10 13:16:06,408 [Thu, 10 Jul 2025 20:00:12 GMT] "OPTIONS /sessions HTTP/1.1" 200 -
+2025-07-10 13:16:06,408 📝 Created new session: 5289dd04... - New Chat
+2025-07-10 13:16:06,408 [Thu, 10 Jul 2025 20:00:12 GMT] "POST /sessions HTTP/1.1" 201 -
+2025-07-10 13:16:06,409 [Thu, 10 Jul 2025 20:00:12 GMT] "POST /sessions/5289dd04-3fc6-48ba-993c-7e64d9425273/indexes/ce0f5560-2f95-4fd4-a829-9e623a9a2427 HTTP/1.1" 200 -
+2025-07-10 13:16:06,409 [Thu, 10 Jul 2025 20:00:12 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-10 13:16:06,410 [Thu, 10 Jul 2025 20:00:12 GMT] "GET /sessions/5289dd04-3fc6-48ba-993c-7e64d9425273 HTTP/1.1" 200 -
+2025-07-10 13:16:06,410 [Thu, 10 Jul 2025 20:00:12 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-10 13:16:06,410 [Thu, 10 Jul 2025 20:00:12 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-10 13:16:06,410 [Thu, 10 Jul 2025 20:00:12 GMT] "GET /sessions/5289dd04-3fc6-48ba-993c-7e64d9425273 HTTP/1.1" 200 -
+2025-07-10 13:16:06,410 [Thu, 10 Jul 2025 20:00:12 GMT] "GET /sessions/5289dd04-3fc6-48ba-993c-7e64d9425273/indexes HTTP/1.1" 200 -
+2025-07-10 13:16:06,410 [Thu, 10 Jul 2025 20:00:12 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-10 13:16:06,410 [Thu, 10 Jul 2025 20:00:12 GMT] "GET /sessions/5289dd04-3fc6-48ba-993c-7e64d9425273 HTTP/1.1" 200 -
+2025-07-10 13:16:06,410 [Thu, 10 Jul 2025 20:00:12 GMT] "GET /sessions/5289dd04-3fc6-48ba-993c-7e64d9425273/indexes HTTP/1.1" 200 -
+2025-07-10 13:16:06,410 [Thu, 10 Jul 2025 20:00:12 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-10 13:16:06,411 [Thu, 10 Jul 2025 20:00:12 GMT] "GET /sessions/5289dd04-3fc6-48ba-993c-7e64d9425273/indexes HTTP/1.1" 200 -
+2025-07-10 13:16:06,411 [Thu, 10 Jul 2025 20:00:13 GMT] "GET /sessions/5289dd04-3fc6-48ba-993c-7e64d9425273/indexes HTTP/1.1" 200 -
+2025-07-10 13:16:06,411 [Thu, 10 Jul 2025 20:00:13 GMT] "GET /sessions/5289dd04-3fc6-48ba-993c-7e64d9425273/indexes HTTP/1.1" 200 -
+2025-07-10 13:16:06,411 [Thu, 10 Jul 2025 20:01:02 GMT] "GET /sessions/5289dd04-3fc6-48ba-993c-7e64d9425273 HTTP/1.1" 200 -
+2025-07-10 13:16:06,411 🛑 Server stopped
+2025-07-10 13:16:20,979 /Users/prompt/Github/rag_system_old/backend/server.py:4: DeprecationWarning: 'cgi' is deprecated and slated for removal in Python 3.13
+2025-07-10 13:16:20,979 import cgi
+2025-07-10 13:16:21,477 2025-07-10 13:16:21,477 | INFO     | numexpr.utils | Note: NumExpr detected 12 cores but "NUMEXPR_MAX_THREADS" not set, so enforcing safe limit of 8.
+2025-07-10 13:16:21,477 2025-07-10 13:16:21,477 | INFO     | numexpr.utils | NumExpr defaulting to 8 threads.
+2025-07-10 13:16:21,484 /Users/prompt/anaconda3/lib/python3.11/site-packages/pandas/core/arrays/masked.py:60: UserWarning: Pandas requires version '1.3.6' or newer of 'bottleneck' (version '1.3.5' currently installed).
+2025-07-10 13:16:21,484 from pandas.core import (
+2025-07-10 13:16:24,054 2025-07-10 13:16:24,054 | INFO     | datasets | PyTorch version 2.4.1 available.
+2025-07-10 13:42:28,968 ✅ RAG system modules accessible from backend
+2025-07-10 13:42:28,968 ✅ Database initialized successfully
+2025-07-10 13:42:28,968 ✅ Database initialized successfully
+2025-07-10 13:42:28,969 ✅ Simple PDF processor initialized
+2025-07-10 13:42:28,969 ✅ Global PDF processor initialized
+2025-07-10 13:42:28,969 📄 Initializing simple PDF processing...
+2025-07-10 13:42:28,969 ✅ Simple PDF processor initialized
+2025-07-10 13:42:28,969 ✅ Global PDF processor initialized
+2025-07-10 13:42:28,969 🧹 Cleaning up empty sessions...
+2025-07-10 13:42:28,969 ✨ No empty sessions to clean up
+2025-07-10 13:42:28,969 🚀 Starting localGPT backend server on port 8000
+2025-07-10 13:42:28,969 📍 Chat endpoint: http://localhost:8000/chat
+2025-07-10 13:42:28,969 🔍 Health check: http://localhost:8000/health
+2025-07-10 13:42:28,969 ✅ Ollama is running with 26 models
+2025-07-10 13:42:28,969 📋 Available models: qwen3:0.6b, qwen3:8b, gemma3n:e4b-it-q8_0...
+2025-07-10 13:42:28,970 🌐 Frontend should connect to: http://localhost:8000
+2025-07-10 13:42:28,970 💬 Ready to chat!
+2025-07-10 13:42:28,970 [Thu, 10 Jul 2025 20:16:27 GMT] "GET /health HTTP/1.1" 200 -
+2025-07-10 13:42:28,970 [Thu, 10 Jul 2025 20:16:28 GMT] "GET /indexes HTTP/1.1" 200 -
+2025-07-10 13:42:28,970 [Thu, 10 Jul 2025 20:16:28 GMT] "GET /indexes HTTP/1.1" 200 -
+2025-07-10 13:42:28,970 [Thu, 10 Jul 2025 20:16:31 GMT] "OPTIONS /sessions HTTP/1.1" 200 -
+2025-07-10 13:42:28,970 📝 Created new session: 9d52bc22... - New Chat
+2025-07-10 13:42:28,970 [Thu, 10 Jul 2025 20:16:31 GMT] "POST /sessions HTTP/1.1" 201 -
+2025-07-10 13:42:28,970 [Thu, 10 Jul 2025 20:16:31 GMT] "POST /sessions/9d52bc22-1953-4fbc-8cf4-499f78e5b958/indexes/ce0f5560-2f95-4fd4-a829-9e623a9a2427 HTTP/1.1" 200 -
+2025-07-10 13:42:28,970 [Thu, 10 Jul 2025 20:16:31 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-10 13:42:28,970 [Thu, 10 Jul 2025 20:16:31 GMT] "GET /sessions/9d52bc22-1953-4fbc-8cf4-499f78e5b958 HTTP/1.1" 200 -
+2025-07-10 13:42:28,970 [Thu, 10 Jul 2025 20:16:31 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-10 13:42:28,970 [Thu, 10 Jul 2025 20:16:31 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-10 13:42:28,970 [Thu, 10 Jul 2025 20:16:31 GMT] "GET /sessions/9d52bc22-1953-4fbc-8cf4-499f78e5b958 HTTP/1.1" 200 -
+2025-07-10 13:42:28,971 [Thu, 10 Jul 2025 20:16:31 GMT] "GET /sessions/9d52bc22-1953-4fbc-8cf4-499f78e5b958/indexes HTTP/1.1" 200 -
+2025-07-10 13:42:28,971 [Thu, 10 Jul 2025 20:16:31 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-10 13:42:28,971 [Thu, 10 Jul 2025 20:16:31 GMT] "GET /sessions/9d52bc22-1953-4fbc-8cf4-499f78e5b958 HTTP/1.1" 200 -
+2025-07-10 13:42:28,971 [Thu, 10 Jul 2025 20:16:31 GMT] "GET /sessions/9d52bc22-1953-4fbc-8cf4-499f78e5b958/indexes HTTP/1.1" 200 -
+2025-07-10 13:42:28,971 [Thu, 10 Jul 2025 20:16:31 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-10 13:42:28,971 [Thu, 10 Jul 2025 20:16:31 GMT] "GET /sessions/9d52bc22-1953-4fbc-8cf4-499f78e5b958/indexes HTTP/1.1" 200 -
+2025-07-10 13:42:28,971 [Thu, 10 Jul 2025 20:16:57 GMT] "GET /sessions/9d52bc22-1953-4fbc-8cf4-499f78e5b958 HTTP/1.1" 200 -
+2025-07-10 13:42:28,971 [Thu, 10 Jul 2025 20:41:10 GMT] "GET /health HTTP/1.1" 200 -
+2025-07-10 13:42:28,971 [Thu, 10 Jul 2025 20:41:24 GMT] "GET /indexes HTTP/1.1" 200 -
+2025-07-10 13:42:28,971 [Thu, 10 Jul 2025 20:41:24 GMT] "GET /indexes HTTP/1.1" 200 -
+2025-07-10 13:42:28,972 [Thu, 10 Jul 2025 20:41:26 GMT] "OPTIONS /sessions HTTP/1.1" 200 -
+2025-07-10 13:42:28,972 📝 Created new session: e1cb7a4a... - New Chat
+2025-07-10 13:42:28,972 [Thu, 10 Jul 2025 20:41:26 GMT] "POST /sessions HTTP/1.1" 201 -
+2025-07-10 13:42:28,972 [Thu, 10 Jul 2025 20:41:26 GMT] "POST /sessions/e1cb7a4a-27b5-433a-b304-0f92953ad812/indexes/ce0f5560-2f95-4fd4-a829-9e623a9a2427 HTTP/1.1" 200 -
+2025-07-10 13:42:28,972 [Thu, 10 Jul 2025 20:41:26 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-10 13:42:28,972 [Thu, 10 Jul 2025 20:41:26 GMT] "GET /sessions/e1cb7a4a-27b5-433a-b304-0f92953ad812 HTTP/1.1" 200 -
+2025-07-10 13:42:28,972 [Thu, 10 Jul 2025 20:41:26 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-10 13:42:28,973 [Thu, 10 Jul 2025 20:41:26 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-10 13:42:28,973 [Thu, 10 Jul 2025 20:41:26 GMT] "GET /sessions/e1cb7a4a-27b5-433a-b304-0f92953ad812 HTTP/1.1" 200 -
+2025-07-10 13:42:28,973 [Thu, 10 Jul 2025 20:41:26 GMT] "GET /models HTTP/1.1" 200 -
+2025-07-10 13:42:28,973 [Thu, 10 Jul 2025 20:41:26 GMT] "GET /sessions/e1cb7a4a-27b5-433a-b304-0f92953ad812/indexes HTTP/1.1" 200 -
+2025-07-10 13:42:28,973 [Thu, 10 Jul 2025 20:41:26 GMT] "GET /sessions/e1cb7a4a-27b5-433a-b304-0f92953ad812 HTTP/1.1" 200 -
+2025-07-10 13:42:28,973 [Thu, 10 Jul 2025 20:41:26 GMT] "GET /sessions/e1cb7a4a-27b5-433a-b304-0f92953ad812/indexes HTTP/1.1" 200 -
+2025-07-10 13:42:28,973 [Thu, 10 Jul 2025 20:41:26 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-10 13:42:28,973 [Thu, 10 Jul 2025 20:41:26 GMT] "GET /sessions/e1cb7a4a-27b5-433a-b304-0f92953ad812/indexes HTTP/1.1" 200 -
+2025-07-10 13:42:28,973 [Thu, 10 Jul 2025 20:41:34 GMT] "GET /sessions/9d52bc22-1953-4fbc-8cf4-499f78e5b958 HTTP/1.1" 200 -
+2025-07-10 13:42:28,973 [Thu, 10 Jul 2025 20:41:34 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-10 13:42:28,973 [Thu, 10 Jul 2025 20:41:34 GMT] "GET /sessions/9d52bc22-1953-4fbc-8cf4-499f78e5b958/indexes HTTP/1.1" 200 -
+2025-07-10 13:42:28,973 [Thu, 10 Jul 2025 20:41:39 GMT] "GET /sessions/e1cb7a4a-27b5-433a-b304-0f92953ad812 HTTP/1.1" 200 -
+2025-07-10 13:42:28,973 [Thu, 10 Jul 2025 20:41:39 GMT] "GET /sessions HTTP/1.1" 200 -
+2025-07-10 13:42:28,973 [Thu, 10 Jul 2025 20:41:39 GMT] "GET /sessions/e1cb7a4a-27b5-433a-b304-0f92953ad812/indexes HTTP/1.1" 200 -
+2025-07-10 13:42:28,974 [Thu, 10 Jul 2025 20:41:42 GMT] "GET /sessions/e1cb7a4a-27b5-433a-b304-0f92953ad812 HTTP/1.1" 200 -
+2025-07-10 13:42:28,974 🛑 Server stopped
+2025-07-10 13:44:21,578 /Users/prompt/Github/rag_system_old/backend/server.py:4: DeprecationWarning: 'cgi' is deprecated and slated for removal in Python 3.13
+2025-07-10 13:44:21,578 import cgi
+2025-07-10 13:44:21,902 2025-07-10 13:44:21,902 | INFO     | numexpr.utils | Note: NumExpr detected 12 cores but "NUMEXPR_MAX_THREADS" not set, so enforcing safe limit of 8.
+2025-07-10 13:44:21,902 2025-07-10 13:44:21,902 | INFO     | numexpr.utils | NumExpr defaulting to 8 threads.
+2025-07-10 13:44:21,909 /Users/prompt/anaconda3/lib/python3.11/site-packages/pandas/core/arrays/masked.py:60: UserWarning: Pandas requires version '1.3.6' or newer of 'bottleneck' (version '1.3.5' currently installed).
+2025-07-10 13:44:21,909 from pandas.core import (
+2025-07-10 13:44:24,605 2025-07-10 13:44:24,605 | INFO     | datasets | PyTorch version 2.4.1 available.

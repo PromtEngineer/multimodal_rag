@@ -52,6 +52,8 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
   const [forceDocs, setForceDocs] = useState<boolean>(false)
   // Provence pruning toggle
   const [provencePrune, setProvencePrune] = useState<boolean>(false)
+  // Multi-hop retrieval toggle
+  const [enableMultihop, setEnableMultihop] = useState<boolean>(true)
   
   // ✨ NEW RETRIEVAL PARAMETERS
   const [retrievalK, setRetrievalK] = useState<number>(20)
@@ -211,7 +213,9 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
         // Stepwise progress structure
         const steps: Step[] = [
           { key: 'analyze', label: 'Analyzing user question', status: 'pending' as const, details: '' },
+          { key: 'multihop_analysis', label: 'Multi-hop analysis', status: 'pending' as const, details: '' },
           { key: 'decompose', label: 'Generating sub-queries', status: 'pending' as const, details: '' },
+          { key: 'multihop_steps', label: 'Executing multi-hop steps', status: 'pending' as const, details: [] },
           { key: 'retrieval', label: 'Retrieving context', status: 'pending' as const, details: '' },
           { key: 'rerank', label: 'Reranking results', status: 'pending' as const, details: '' },
           { key: 'expand', label: 'Expanding context window', status: 'pending' as const, details: '' },
@@ -251,6 +255,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             searchType,
             forceRag: forceDocs,
             provencePrune,
+            multihop: enableMultihop,
           },
           (evt) => {
             console.log('STREAM EVENT:', evt.type, evt.data); // Debug log for SSE events
@@ -262,16 +267,203 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
                 steps[0].details = 'Analyzing your question...';
                 return { ...m, content: { steps } };
               }
-              if (evt.type === 'decomposition') {
+              if (evt.type === 'multihop_analysis') {
                 steps[0].status = 'done';
                 steps[1].status = 'active';
-                steps[1].details = (evt.data.sub_queries || []);
+                steps[1].details = `Analyzing multi-hop potential: ${evt.data.query || ''}`;
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'multihop_started') {
+                steps[1].status = 'done';
+                steps[3].status = 'active';
+                steps[3].details = evt.data.steps?.map((s: any) => ({
+                  step_id: s.id,
+                  query: s.query,
+                  dependencies: s.dependencies,
+                  status: 'pending'
+                })) || [];
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'multihop_step_started') {
+                const multihopIdx = steps.findIndex(s => s.key === 'multihop_steps');
+                if (multihopIdx !== -1) {
+                  const stepDetails = Array.isArray(steps[multihopIdx].details) ? steps[multihopIdx].details : [];
+                  const existingStepIdx = stepDetails.findIndex((s: any) => s.step_id === evt.data.step_id);
+                  
+                  if (existingStepIdx !== -1) {
+                    stepDetails[existingStepIdx] = {
+                      ...stepDetails[existingStepIdx],
+                      status: 'retrieving',
+                      query: evt.data.query
+                    };
+                  } else {
+                    stepDetails.push({
+                      step_id: evt.data.step_id,
+                      step_number: evt.data.step_number,
+                      query: evt.data.query,
+                      status: 'retrieving',
+                      documents_found: 0,
+                      answer: ''
+                    });
+                  }
+                  steps[multihopIdx].details = stepDetails;
+                }
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'multihop_step_retrieved') {
+                const multihopIdx = steps.findIndex(s => s.key === 'multihop_steps');
+                if (multihopIdx !== -1) {
+                  const stepDetails = Array.isArray(steps[multihopIdx].details) ? steps[multihopIdx].details : [];
+                  const stepIdx = stepDetails.findIndex((s: any) => s.step_id === evt.data.step_id);
+                  
+                  if (stepIdx !== -1) {
+                    stepDetails[stepIdx] = {
+                      ...stepDetails[stepIdx],
+                      status: 'synthesizing',
+                      documents_found: evt.data.documents_found
+                    };
+                    steps[multihopIdx].details = stepDetails;
+                  }
+                }
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'multihop_step_completed') {
+                const multihopIdx = steps.findIndex(s => s.key === 'multihop_steps');
+                if (multihopIdx !== -1) {
+                  const stepDetails = Array.isArray(steps[multihopIdx].details) ? steps[multihopIdx].details : [];
+                  const stepIdx = stepDetails.findIndex((s: any) => s.step_id === evt.data.step_id);
+                  
+                  if (stepIdx !== -1) {
+                    stepDetails[stepIdx] = {
+                      ...stepDetails[stepIdx],
+                      status: 'completed',
+                      answer: evt.data.answer,
+                      documents_used: evt.data.documents_used
+                    };
+                    steps[multihopIdx].details = stepDetails;
+                  }
+                }
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'multihop_step_reranking') {
+                const multihopIdx = steps.findIndex(s => s.key === 'multihop_steps');
+                if (multihopIdx !== -1) {
+                  const stepDetails = Array.isArray(steps[multihopIdx].details) ? steps[multihopIdx].details : [];
+                  const stepIdx = stepDetails.findIndex((s: any) => s.step_id === evt.data.step_id);
+                  
+                  if (stepIdx !== -1) {
+                    stepDetails[stepIdx] = {
+                      ...stepDetails[stepIdx],
+                      status: 'reranking',
+                      documents_found: evt.data.documents_count
+                    };
+                    steps[multihopIdx].details = stepDetails;
+                  }
+                }
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'multihop_step_reranked') {
+                const multihopIdx = steps.findIndex(s => s.key === 'multihop_steps');
+                if (multihopIdx !== -1) {
+                  const stepDetails = Array.isArray(steps[multihopIdx].details) ? steps[multihopIdx].details : [];
+                  const stepIdx = stepDetails.findIndex((s: any) => s.step_id === evt.data.step_id);
+                  
+                  if (stepIdx !== -1) {
+                    stepDetails[stepIdx] = {
+                      ...stepDetails[stepIdx],
+                      status: 'reranked',
+                      reranked_count: evt.data.reranked_count
+                    };
+                    steps[multihopIdx].details = stepDetails;
+                  }
+                }
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'multihop_step_pruning') {
+                const multihopIdx = steps.findIndex(s => s.key === 'multihop_steps');
+                if (multihopIdx !== -1) {
+                  const stepDetails = Array.isArray(steps[multihopIdx].details) ? steps[multihopIdx].details : [];
+                  const stepIdx = stepDetails.findIndex((s: any) => s.step_id === evt.data.step_id);
+                  
+                  if (stepIdx !== -1) {
+                    stepDetails[stepIdx] = {
+                      ...stepDetails[stepIdx],
+                      status: 'pruning',
+                      documents_found: evt.data.documents_count
+                    };
+                    steps[multihopIdx].details = stepDetails;
+                  }
+                }
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'multihop_step_pruned') {
+                const multihopIdx = steps.findIndex(s => s.key === 'multihop_steps');
+                if (multihopIdx !== -1) {
+                  const stepDetails = Array.isArray(steps[multihopIdx].details) ? steps[multihopIdx].details : [];
+                  const stepIdx = stepDetails.findIndex((s: any) => s.step_id === evt.data.step_id);
+                  
+                  if (stepIdx !== -1) {
+                    stepDetails[stepIdx] = {
+                      ...stepDetails[stepIdx],
+                      status: 'pruned',
+                      pruned_count: evt.data.pruned_count
+                    };
+                    steps[multihopIdx].details = stepDetails;
+                  }
+                }
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'multihop_step_processed') {
+                const multihopIdx = steps.findIndex(s => s.key === 'multihop_steps');
+                if (multihopIdx !== -1) {
+                  const stepDetails = Array.isArray(steps[multihopIdx].details) ? steps[multihopIdx].details : [];
+                  const stepIdx = stepDetails.findIndex((s: any) => s.step_id === evt.data.step_id);
+                  
+                  if (stepIdx !== -1) {
+                    stepDetails[stepIdx] = {
+                      ...stepDetails[stepIdx],
+                      status: 'synthesizing',
+                      final_documents: evt.data.final_documents
+                    };
+                    steps[multihopIdx].details = stepDetails;
+                  }
+                }
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'multihop_synthesis_started') {
+                const multihopIdx = steps.findIndex(s => s.key === 'multihop_steps');
+                if (multihopIdx !== -1) {
+                  steps[multihopIdx].status = 'done';
+                }
+                const synthIdx = steps.findIndex(s => s.key === 'synthesize');
+                if (synthIdx !== -1) {
+                  steps[synthIdx].status = 'active';
+                  steps[synthIdx].details = `Synthesizing final answer from ${evt.data.total_steps_completed} steps...`;
+                }
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'multihop_completed') {
+                const synthIdx = steps.findIndex(s => s.key === 'synthesize');
+                if (synthIdx !== -1) {
+                  steps[synthIdx].status = 'done';
+                }
+                const finalIdx = steps.findIndex(s => s.key === 'final');
+                if (finalIdx !== -1) {
+                  steps[finalIdx].status = 'active';
+                  steps[finalIdx].details = evt.data.final_answer;
+                }
+                return { ...m, content: { steps } };
+              }
+              if (evt.type === 'decomposition') {
+                steps[0].status = 'done';
+                steps[2].status = 'active';
+                steps[2].details = (evt.data.sub_queries || []);
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'retrieval_started') {
-                steps[1].status = 'done';
-                steps[2].status = 'active';
-                steps[2].details = 'Retrieving relevant documents...';
+                steps[2].status = 'done';
+                steps[4].status = 'active';
+                steps[4].details = 'Retrieving relevant documents...';
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'retrieval_done') {
@@ -326,23 +518,30 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'sub_query_result') {
-                steps[5].status = 'active';
-                const existing = Array.isArray(steps[5].details) ? steps[5].details : [];
-                if (!existing.some((d: any) => d.question === evt.data.query)) {
-                  steps[5].details = [...existing, {
-                    question: evt.data.query,
-                    answer: evt.data.answer,
-                    source_documents: evt.data.source_documents || []
-                  }];
-                } else {
-                  steps[5].details = existing; // no change if duplicate
+                const ansIdx = steps.findIndex(s => s.key === 'answer');
+                if (ansIdx !== -1) {
+                  steps[ansIdx].status = 'active';
+                  const existing = Array.isArray(steps[ansIdx].details) ? steps[ansIdx].details : [];
+                  if (!existing.some((d: any) => d.question === evt.data.query)) {
+                    steps[ansIdx].details = [...existing, {
+                      question: evt.data.query,
+                      answer: evt.data.answer,
+                      source_documents: evt.data.source_documents || []
+                    }];
+                  } else {
+                    steps[ansIdx].details = existing; // no change if duplicate
+                  }
                 }
                 return { ...m, content: { steps } };
               }
               if (evt.type === 'final_answer' || evt.type === 'single_query_result') {
-                steps[5].status = 'done';
-                steps[6].status = 'active';
-                steps[6].details = 'Synthesizing final answer...';
+                const ansIdx = steps.findIndex(s => s.key === 'answer');
+                const synthIdx = steps.findIndex(s => s.key === 'synthesize');
+                if (ansIdx !== -1) steps[ansIdx].status = 'done';
+                if (synthIdx !== -1) {
+                  steps[synthIdx].status = 'active';
+                  steps[synthIdx].details = 'Synthesizing final answer...';
+                }
                 if (isLoading) setIsLoading(false);
                 return { ...m, content: { steps } };
               }
@@ -463,6 +662,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
           searchType,
           forceRag: forceDocs,
           provencePrune,
+          multihop: enableMultihop,
         })
       
       const aiMessage: ChatMessage = {
@@ -634,6 +834,7 @@ export const SessionChat = forwardRef<SessionChatRef, SessionChatProps>(({
             // General Settings
             {type: 'toggle', label:'Query decomposition', checked: enableDecompose, setter: setEnableDecompose},
             {type: 'toggle', label:'Compose sub-answers', checked: composeSubAnswers, setter: setComposeSubAnswers},
+            {type: 'toggle', label:'Multi-hop retrieval', checked: enableMultihop, setter: setEnableMultihop},
             {type: 'toggle', label:'Verify answer', checked: enableVerify, setter: setEnableVerify},
             {type: 'toggle', label:'Stream phases', checked: enableStream, setter: setEnableStream},
             

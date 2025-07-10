@@ -198,6 +198,7 @@ class ChatAPI {
       denseWeight?: number;
       forceRag?: boolean;
       provencePrune?: boolean;
+      multihop?: boolean;
     } = {}
   ): Promise<SessionChatResponse & { source_documents: any[] }> {
     try {
@@ -222,6 +223,7 @@ class ChatAPI {
           ...(typeof opts.denseWeight === 'number' && { dense_weight: opts.denseWeight }),
           ...(typeof opts.forceRag === 'boolean' && { force_rag: opts.forceRag }),
           ...(typeof opts.provencePrune === 'boolean' && { provence_prune: opts.provencePrune }),
+          ...(typeof opts.multihop === 'boolean' && { multihop: opts.multihop }),
         }),
       });
 
@@ -563,10 +565,11 @@ class ChatAPI {
       denseWeight?: number;
       forceRag?: boolean;
       provencePrune?: boolean;
+      multihop?: boolean;
     },
     onEvent: (event: { type: string; data: any }) => void,
   ): Promise<void> {
-    const { query, model, session_id, table_name, composeSubAnswers, decompose, aiRerank, contextExpand, verify, retrievalK, contextWindowSize, rerankerTopK, searchType, denseWeight, forceRag, provencePrune } = params;
+    const { query, model, session_id, table_name, composeSubAnswers, decompose, aiRerank, contextExpand, verify, retrievalK, contextWindowSize, rerankerTopK, searchType, denseWeight, forceRag, provencePrune, multihop } = params;
 
     const payload: Record<string, unknown> = { query };
     if (model) payload.model = model;
@@ -585,6 +588,7 @@ class ChatAPI {
     if (typeof denseWeight === 'number') payload.dense_weight = denseWeight;
     if (typeof forceRag === 'boolean') payload.force_rag = forceRag;
     if (typeof provencePrune === 'boolean') payload.provence_prune = provencePrune;
+    if (typeof multihop === 'boolean') payload.multihop = multihop;
 
     const resp = await fetch('http://localhost:8001/chat/stream', {
       method: 'POST',

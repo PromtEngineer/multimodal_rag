@@ -159,6 +159,9 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             provence_prune = data.get('provence_prune')
             provence_threshold = data.get('provence_threshold')
             
+            # 🔗 Multi-hop retrieval
+            multihop_flag = data.get('multihop')
+            
             # User-selected generation model
             requested_model = data.get('model')
             if isinstance(requested_model,str) and requested_model:
@@ -270,6 +273,7 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                     reranker_top_k=reranker_top_k,
                     search_type=search_type,
                     dense_weight=dense_weight,
+                    multihop=multihop_flag,
                 )
             
             # The result is a dict, so we need to dump it to a JSON string
@@ -317,6 +321,9 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
             # 🌿 Provence sentence pruning
             provence_prune = data.get('provence_prune')
             provence_threshold = data.get('provence_threshold')
+
+            # 🔗 Multi-hop retrieval
+            multihop_flag = data.get('multihop')
 
             # User-selected generation model
             requested_model = data.get('model')
@@ -457,6 +464,7 @@ class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
                         reranker_top_k=reranker_top_k,
                         search_type=search_type,
                         dense_weight=dense_weight,
+                        multihop=multihop_flag,
                         event_callback=emit,
                     )
 

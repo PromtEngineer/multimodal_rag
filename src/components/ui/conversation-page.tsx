@@ -157,9 +157,50 @@ function StructuredMessageBlock({ content }: { content: Array<Record<string, any
                     <CitationsBlock docs={step.details.source_documents} />
                   )}
                 </div>
-              ) : step.key === 'final' && step.details && typeof step.details === 'string' ? (
-                <div className="whitespace-pre-wrap text-gray-100">
-                  <ThinkingText text={step.details} />
+              ) : step.key === 'multihop_steps' && Array.isArray(step.details) ? (
+                <div className="space-y-3">
+                  {step.details.map((multihopStep: any, idx: number) => (
+                    <div key={idx} className="border-l-2 border-purple-400 pl-3 py-2 bg-gray-900 rounded">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-semibold text-purple-300">
+                          Step {multihopStep.step_number || multihopStep.step_id}
+                        </span>
+                        <span className="text-xs px-2 py-1 rounded-full bg-gray-700">
+                          {multihopStep.status === 'pending' && '⏳ Pending'}
+                          {multihopStep.status === 'retrieving' && '🔍 Retrieving'}
+                          {multihopStep.status === 'reranking' && '🔄 Reranking'}
+                          {multihopStep.status === 'reranked' && '✅ Reranked'}
+                          {multihopStep.status === 'pruning' && '✂️ Pruning'}
+                          {multihopStep.status === 'pruned' && '🎯 Pruned'}
+                          {multihopStep.status === 'synthesizing' && '⚙️ Synthesizing'}
+                          {multihopStep.status === 'completed' && '✅ Complete'}
+                          {multihopStep.status === 'error' && '❌ Error'}
+                        </span>
+                      </div>
+                      <div className="text-sm font-medium text-blue-300 mb-2">
+                        {multihopStep.query}
+                      </div>
+                      {multihopStep.documents_found !== undefined && (
+                        <div className="text-xs text-gray-400 mb-1">
+                          Documents found: {multihopStep.documents_found}
+                          {multihopStep.reranked_count !== undefined && (
+                            <span className="text-blue-400"> → Reranked: {multihopStep.reranked_count}</span>
+                          )}
+                          {multihopStep.pruned_count !== undefined && (
+                            <span className="text-purple-400"> → Pruned: {multihopStep.pruned_count}</span>
+                          )}
+                          {multihopStep.final_documents !== undefined && (
+                            <span className="text-green-400"> → Final: {multihopStep.final_documents}</span>
+                          )}
+                        </div>
+                      )}
+                      {multihopStep.answer && (
+                        <div className="text-sm text-gray-200 mt-2">
+                          <ThinkingText text={multihopStep.answer} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               ) : Array.isArray(step.details) ? (
                 step.key === 'decompose' && step.details.every((d: any)=> typeof d === 'string') ? (

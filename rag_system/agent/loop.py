@@ -248,16 +248,16 @@ Respond with JSON: {{"category": "<your_choice>"}}
         }
 
     # ---------------- Public sync API (kept for backwards compatibility) --------------
-    def run(self, query: str, table_name: str = None, session_id: str = None, compose_sub_answers: Optional[bool] = None, query_decompose: Optional[bool] = None, ai_rerank: Optional[bool] = None, context_expand: Optional[bool] = None, verify: Optional[bool] = None, retrieval_k: Optional[int] = None, context_window_size: Optional[int] = None, reranker_top_k: Optional[int] = None, search_type: Optional[str] = None, dense_weight: Optional[float] = None, max_retries: int = 1, event_callback: Optional[callable] = None) -> Dict[str, Any]:
+    def run(self, query: str, table_name: str = None, session_id: str = None, compose_sub_answers: Optional[bool] = None, query_decompose: Optional[bool] = None, ai_rerank: Optional[bool] = None, context_expand: Optional[bool] = None, verify: Optional[bool] = None, retrieval_k: Optional[int] = None, context_window_size: Optional[int] = None, reranker_top_k: Optional[int] = None, search_type: Optional[str] = None, dense_weight: Optional[float] = None, max_retries: int = 1, multihop: Optional[bool] = None, event_callback: Optional[callable] = None) -> Dict[str, Any]:
         """Synchronous helper. If *event_callback* is supplied, important
         milestones will be forwarded to that callable as
 
             event_callback(phase:str, payload:Any)
         """
-        return asyncio.run(self._run_async(query, table_name, session_id, compose_sub_answers, query_decompose, ai_rerank, context_expand, verify, retrieval_k, context_window_size, reranker_top_k, search_type, dense_weight, max_retries, event_callback))
+        return asyncio.run(self._run_async(query, table_name, session_id, compose_sub_answers, query_decompose, ai_rerank, context_expand, verify, retrieval_k, context_window_size, reranker_top_k, search_type, dense_weight, max_retries, multihop, event_callback))
 
     # ---------------- Main async implementation --------------------------------------
-    async def _run_async(self, query: str, table_name: str = None, session_id: str = None, compose_sub_answers: Optional[bool] = None, query_decompose: Optional[bool] = None, ai_rerank: Optional[bool] = None, context_expand: Optional[bool] = None, verify: Optional[bool] = None, retrieval_k: Optional[int] = None, context_window_size: Optional[int] = None, reranker_top_k: Optional[int] = None, search_type: Optional[str] = None, dense_weight: Optional[float] = None, max_retries: int = 1, event_callback: Optional[callable] = None) -> Dict[str, Any]:
+    async def _run_async(self, query: str, table_name: str = None, session_id: str = None, compose_sub_answers: Optional[bool] = None, query_decompose: Optional[bool] = None, ai_rerank: Optional[bool] = None, context_expand: Optional[bool] = None, verify: Optional[bool] = None, retrieval_k: Optional[int] = None, context_window_size: Optional[int] = None, reranker_top_k: Optional[int] = None, search_type: Optional[str] = None, dense_weight: Optional[float] = None, max_retries: int = 1, multihop: Optional[bool] = None, event_callback: Optional[callable] = None) -> Dict[str, Any]:
         start_time = time.time()
         
         # Emit analyze event at the start
@@ -347,7 +347,34 @@ Respond with JSON: {{"category": "<your_choice>"}}
                         self.chat_histories[session_id] = history
                     return cached_result
 
-        if query_type == "direct_answer":
+        # --- Multi-Hop Query Processing (PRIORITIZED WHEN EXPLICITLY ENABLED) ---
+        if multihop is True or (multihop is None and self.pipeline_configs.get("multihop", {}).get("enabled", False)):
+            print(f"✅ ROUTING DEBUG: Executing MULTI-HOP path (explicit={multihop is True})")
+            if event_callback:
+                event_callback("multihop_analysis", {"query": raw_query})
+            
+            # Analyze query for multi-hop potential
+            multihop_context = self.query_decomposer.decompose_for_multihop(raw_query)
+            
+            if len(multihop_context.steps) > 1:
+                print(f"🔗 Multi-hop retrieval detected: {len(multihop_context.steps)} steps")
+                result = self.retrieval_pipeline.run_multihop(
+                    context=multihop_context,
+                    table_name=table_name,
+                    window_size_override=0 if context_expand is False else None,
+                    event_callback=event_callback
+                )
+            else:
+                print(f"📝 Single-step query, falling back to regular RAG")
+                # Fallback to regular retrieval for single-step queries
+                result = self.retrieval_pipeline.run(
+                    contextual_query, 
+                    table_name, 
+                    0 if context_expand is False else None, 
+                    event_callback=event_callback
+                )
+
+        elif query_type == "direct_answer":
             print(f"✅ ROUTING DEBUG: Executing DIRECT_ANSWER path")
             if event_callback:
                 event_callback("direct_answer", {})
@@ -401,54 +428,27 @@ Respond with JSON: {{"category": "<your_choice>"}}
                 # Emit retrieval_started event before any retrievals
                 if event_callback:
                     event_callback("retrieval_started", {"count": len(sub_queries)})
-                
-                # If decomposition produced only a single sub-query, skip the
-                # parallel/composition machinery for efficiency.
+
                 if len(sub_queries) == 1:
-                    print("--- Only one sub-query after decomposition; using direct retrieval path ---")
-                    result = self.retrieval_pipeline.run(
-                        sub_queries[0],
-                        table_name,
-                        0 if context_expand is False else None,
-                        event_callback=event_callback
-                    )
-                    if event_callback:
-                        event_callback("single_query_result", result)
-                    # Emit retrieval_done and rerank_done for single sub-query
-                    if event_callback:
-                        event_callback("retrieval_done", {"count": 1})
-                        event_callback("rerank_started", {"count": 1})
-                        event_callback("rerank_done", {"count": 1})
+                    # Single query case - use the standard retrieval path
+                    result = self.retrieval_pipeline.run(contextual_query, table_name, 0 if context_expand is False else None, event_callback=event_callback)
                 else:
-                    compose_from_sub_answers = query_decomp_config.get("compose_from_sub_answers", True)
-                    if compose_sub_answers is not None:
-                        compose_from_sub_answers = compose_sub_answers
+                    # Multiple sub-queries case
+                    all_source_docs = []
+                    sub_results = []
 
-                    print(f"\n--- Processing {len(sub_queries)} sub-queries in parallel ---")
-                    start_time_inner = time.time()
-
-                    # Shared containers
-                    sub_answers = []  # For two-stage composition
-                    all_source_docs = []  # For single-stage aggregation
-                    citations_seen = set()
-
-                    # Emit rerank_started event before parallel retrievals (since each sub-query will rerank)
-                    if event_callback:
-                        event_callback("rerank_started", {"count": len(sub_queries)})
-
-                    # Emit token chunks as soon as we receive them. The UI
-                    # keeps answers separated by `index`, so interleaving is
-                    # harmless and gives continuous feedback.
-
-                    def make_cb(idx: int):
-                        def _cb(ev_type: str, payload):
-                            if event_callback is None:
-                                return
-                            if ev_type == "token":
-                                event_callback("sub_query_token", {"index": idx, "text": payload.get("text", ""), "question": sub_queries[idx]})
-                            else:
-                                event_callback(ev_type, payload)
-                        return _cb
+                    def make_cb(idx):
+                        """Factory to create per-sub-query event callbacks"""
+                        if not event_callback:
+                            return None
+                        
+                        def sub_callback(phase, payload):
+                            # Forward with sub-query context
+                            extended_payload = dict(payload) if payload else {}
+                            extended_payload["sub_query_index"] = idx
+                            event_callback(f"sub_{phase}", extended_payload)
+                        
+                        return sub_callback
 
                     with concurrent.futures.ThreadPoolExecutor(max_workers=min(3, len(sub_queries))) as executor:
                         future_to_query = {
@@ -476,74 +476,44 @@ Respond with JSON: {{"category": "<your_choice>"}}
                                         "source_documents": sub_result.get("source_documents", []),
                                     })
 
-                                if compose_from_sub_answers:
-                                    sub_answers.append({
-                                        "question": sub_query,
-                                        "answer": sub_result.get("answer", "")
-                                    })
-                                    # Keep up to 5 citations per sub-query for traceability
-                                    for doc in sub_result.get("source_documents", [])[:5]:
-                                        if doc['chunk_id'] not in citations_seen:
-                                            all_source_docs.append(doc)
-                                            citations_seen.add(doc['chunk_id'])
-                                else:
-                                    # Aggregate unique docs (single-stage path)
-                                    for doc in sub_result.get('source_documents', []):
-                                        if doc['chunk_id'] not in citations_seen:
-                                            all_source_docs.append(doc)
-                                            citations_seen.add(doc['chunk_id'])
+                                sub_results.append((i, sub_query, sub_result))
+                                all_source_docs.extend(sub_result.get("source_documents", []))
                             except Exception as e:
                                 print(f"❌ Sub-Query {i+1} failed: '{sub_query}' - {e}")
+                                sub_results.append((i, sub_query, {"answer": f"Error: {e}", "source_documents": []}))
 
-                    parallel_time = time.time() - start_time_inner
-                    print(f"🚀 Parallel processing completed in {parallel_time:.2f}s")
+                    # Sort results by original index
+                    sub_results.sort(key=lambda x: x[0])
+                    print(f"\n--- All {len(sub_results)} sub-queries completed ---")
 
-                    # Emit retrieval_done and rerank_done after all sub-queries are processed
-                    if event_callback:
-                        event_callback("retrieval_done", {"count": len(sub_queries)})
-                        event_callback("rerank_done", {"count": len(sub_queries)})
+                    # Remove duplicate documents
+                    seen_chunk_ids = set()
+                    unique_docs = []
+                    for doc in all_source_docs:
+                        chunk_id = doc.get('chunk_id')
+                        if chunk_id and chunk_id not in seen_chunk_ids:
+                            unique_docs.append(doc)
+                            seen_chunk_ids.add(chunk_id)
+                        elif not chunk_id:
+                            # Include documents without chunk_id (shouldn't happen normally)
+                            unique_docs.append(doc)
 
-                    if compose_from_sub_answers:
-                        print("\n--- Composing final answer from sub-answers ---")
-                        compose_prompt = f"""
-You are an expert answer composer for a Retrieval-Augmented Generation (RAG) system.
+                    all_source_docs = unique_docs
 
-Context:
-• The ORIGINAL QUESTION from the user is shown below.
-• That question was automatically decomposed into simpler SUB-QUESTIONS.
-• Each sub-question has already been answered by an earlier step and the resulting Question→Answer pairs are provided to you in JSON.
+                    # Check if user wants individual sub-answers composed
+                    compose_config = self.pipeline_configs.get("query_decomposition", {})
+                    should_compose = compose_config.get("compose_sub_answers", True)
+                    if compose_sub_answers is not None:
+                        should_compose = compose_sub_answers
 
-Your task:
-1. Read every sub-answer carefully.
-2. Write a single, final answer to the ORIGINAL QUESTION **using only the information contained in the sub-answers**. Do NOT invent facts that are not present.
-3. If the original question includes a comparison (e.g., "Which, A or B, …") clearly state the outcome (e.g., "A > B"). Quote concrete numbers when available.
-4. If any aspect of the original question cannot be answered with the given sub-answers, explicitly say so (e.g., "The provided context does not mention …").
-5. Keep the answer concise (≤ 5 sentences) and use a factual, third-person tone.
+                    if should_compose:
+                        print(f"\n--- Composing individual sub-answers ---")
+                        sub_answers = []
+                        for i, sub_query, sub_result in sub_results:
+                            sub_answer = sub_result.get("answer", "No answer found.")
+                            sub_answers.append(f"**{sub_query}**\n{sub_answer}")
 
-Input
-------
-ORIGINAL QUESTION:
-"{contextual_query}"
-
-SUB-ANSWERS (JSON):
-{json.dumps(sub_answers, indent=2)}
-
-------
-FINAL ANSWER:
-"""
-                        # --- Stream composition answer token-by-token ---
-                        answer_parts: list[str] = []
-
-                        for tok in self.llm_client.stream_completion(
-                            model=self.ollama_config["generation_model"],
-                            prompt=compose_prompt,
-                        ):
-                            answer_parts.append(tok)
-                            if event_callback:
-                                event_callback("token", {"text": tok})
-
-                        final_answer = "".join(answer_parts) or "Unable to generate an answer."
-
+                        final_answer = "\n\n".join(sub_answers)
                         result = {
                             "answer": final_answer,
                             "source_documents": all_source_docs

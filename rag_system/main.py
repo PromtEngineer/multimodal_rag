@@ -101,7 +101,13 @@ PIPELINE_CONFIGS = {
         "retrieval_k": 20,
         "context_window_size": 0,
         "semantic_cache_threshold": 0.98,
-        "cache_scope": "global",
+        "cache_scope": "session",
+        # Multi-hop retrieval configuration
+        "multihop": {
+            "enabled": True,
+            "max_steps": 5,
+            "step_timeout": 30
+        },
         # 🔧 Contextual enrichment configuration
         "contextual_enricher": {
             "enabled": True,

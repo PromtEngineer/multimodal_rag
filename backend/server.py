@@ -614,6 +614,7 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
             "dense_weight": (float, "dense_weight"),
             "provence_prune": (bool, "provence_prune"),
             "provence_threshold": (float, "provence_threshold"),
+            "multihop": (bool, "multihop"),
         }
         for key, (caster, payload_key) in optional_params.items():
             val = data.get(key)

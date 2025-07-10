@@ -2,6 +2,74 @@ from typing import List, Any, Dict
 import json
 from rag_system.utils.ollama_client import OllamaClient
 
+class MultiHopContext:
+    """Manages state and dependencies for multi-hop retrieval."""
+    
+    def __init__(self):
+        self.steps: List[Dict[str, Any]] = []
+        self.accumulated_facts: List[str] = []
+        self.dependency_graph: Dict[int, List[int]] = {}
+    
+    def add_step(self, step_id: int, query: str, dependencies: List[int] = None) -> None:
+        """Add a new step to the multi-hop process."""
+        self.steps.append({
+            'id': step_id,
+            'query': query,
+            'dependencies': dependencies or [],
+            'status': 'pending',
+            'results': None,
+            'context_used': []
+        })
+        self.dependency_graph[step_id] = dependencies or []
+    
+    def complete_step(self, step_id: int, results: Dict[str, Any], context_used: List[str]) -> None:
+        """Mark a step as completed and store its results."""
+        for step in self.steps:
+            if step['id'] == step_id:
+                step['status'] = 'completed'
+                step['results'] = results
+                step['context_used'] = context_used
+                # Add key facts to accumulated knowledge
+                if results.get('answer'):
+                    self.accumulated_facts.append(f"Step {step_id}: {results['answer']}")
+                break
+    
+    def get_context_for_step(self, step_id: int) -> str:
+        """Get accumulated context for a specific step based on dependencies."""
+        context_parts = []
+        
+        # Add accumulated facts from previous steps
+        if self.accumulated_facts:
+            context_parts.append("Previous findings:")
+            context_parts.extend(self.accumulated_facts)
+        
+        # Add specific dependency results
+        dependencies = self.dependency_graph.get(step_id, [])
+        for dep_id in dependencies:
+            for step in self.steps:
+                if step['id'] == dep_id and step['status'] == 'completed':
+                    if step['results'] and step['results'].get('answer'):
+                        context_parts.append(f"From step {dep_id}: {step['results']['answer']}")
+        
+        return "\n".join(context_parts) if context_parts else ""
+    
+    def is_step_ready(self, step_id: int) -> bool:
+        """Check if all dependencies for a step are completed."""
+        dependencies = self.dependency_graph.get(step_id, [])
+        for dep_id in dependencies:
+            for step in self.steps:
+                if step['id'] == dep_id and step['status'] != 'completed':
+                    return False
+        return True
+    
+    def get_next_ready_steps(self) -> List[int]:
+        """Get list of step IDs that are ready to execute."""
+        ready_steps = []
+        for step in self.steps:
+            if step['status'] == 'pending' and self.is_step_ready(step['id']):
+                ready_steps.append(step['id'])
+        return ready_steps
+
 class QueryDecomposer:
     def __init__(self, llm_client: OllamaClient, llm_model: str):
         self.llm_client = llm_client
@@ -106,6 +174,94 @@ JSON Output:
         except json.JSONDecodeError:
             print(f"Failed to decode JSON from query decomposer: {response_text}")
             return [query]
+
+    def decompose_for_multihop(self, query: str) -> MultiHopContext:
+        """Decompose a query into sequential steps with dependencies for multi-hop retrieval."""
+        prompt = f"""
+You are an expert at query analysis for multi-hop retrieval. Analyze the user query to determine if it requires sequential information gathering where each step depends on previous results.
+
+**Multi-hop queries typically involve:**
+- Questions that require building knowledge step by step
+- Queries where later information depends on earlier findings
+- Research questions that need progressive exploration
+
+**Instructions:**
+1. Determine if this is a multi-hop query
+2. If yes, break it into sequential steps where each step may depend on previous results
+3. If no, treat as single-step query
+
+**Query:** "{query}"
+
+Return a JSON object with:
+- "is_multihop": boolean
+- "reasoning": explanation of your decision
+- "steps": list of step objects with "id", "query", and "dependencies" (list of step IDs this depends on)
+
+**Examples:**
+
+**Multi-hop Example:**
+Query: "What are the key innovations in the latest AI paper, and how do they compare to the methods used in previous work mentioned in that paper?"
+JSON Output:
+{{
+  "is_multihop": true,
+  "reasoning": "This requires first finding the innovations in the latest paper, then identifying what previous work it mentions, then comparing the methods.",
+  "steps": [
+    {{"id": 1, "query": "What are the key innovations in the latest AI paper?", "dependencies": []}},
+    {{"id": 2, "query": "What previous work is mentioned in the latest AI paper?", "dependencies": [1]}},
+    {{"id": 3, "query": "How do the innovations compare to the methods in the previous work?", "dependencies": [1, 2]}}
+  ]
+}}
+
+**Single-step Example:**
+Query: "What is the architecture of the transformer model?"
+JSON Output:
+{{
+  "is_multihop": false,
+  "reasoning": "This is a direct factual question that can be answered in one step.",
+  "steps": [
+    {{"id": 1, "query": "What is the architecture of the transformer model?", "dependencies": []}}
+  ]
+}}
+
+JSON Output:
+"""
+        
+        response = self.llm_client.generate_completion(self.llm_model, prompt, format="json")
+        response_text = response.get('response', '{}')
+        
+        try:
+            if response_text.strip().startswith("```json"):
+                response_text = response_text.strip()[7:-4]
+            
+            data = json.loads(response_text)
+            is_multihop = data.get('is_multihop', False)
+            reasoning = data.get('reasoning', 'No reasoning provided.')
+            steps = data.get('steps', [])
+            
+            print(f"Multi-hop Analysis: {reasoning}")
+            
+            context = MultiHopContext()
+            
+            if not is_multihop or not steps:
+                # Fallback to single step
+                context.add_step(1, query, [])
+            else:
+                for step_data in steps:
+                    # Ensure we handle the step data properly with safe access
+                    step_id = step_data.get('id', len(context.steps) + 1)
+                    step_query = step_data.get('query', query)
+                    step_dependencies = step_data.get('dependencies', [])
+                    
+                    context.add_step(step_id, step_query, step_dependencies)
+            
+            return context
+            
+        except json.JSONDecodeError:
+            print(f"Failed to decode JSON from multi-hop decomposer: {response_text}")
+            # Fallback to single step
+            context = MultiHopContext()
+            context.add_step(1, query, [])
+            return context
 
 class HyDEGenerator:
     def __init__(self, llm_client: OllamaClient, llm_model: str):
