@@ -62,11 +62,20 @@ This document captures high-impact enhancements identified during the July 2025 
 
 ## 9. Codebase Hygiene
 
-* Decide on future of `react_agent.py` & Graph-RAG stubs – delete or complete.
+* Graph-RAG integration (currently disabled, can be implemented if needed).
 * Consolidate duplicate config keys (`embedding_model_name`, etc.).
 * Run `mypy --strict`, pylint, and black in CI.
 
 ---
+
+### 🧹 System Cleanup (Priority: **HIGH**)
+Reduce complexity and improve maintainability.
+
+* **✅ COMPLETED**: Remove experimental DSPy integration and unused modules (35+ files removed)  
+* **✅ COMPLETED**: Clean up duplicate or obsolete documentation files
+* **✅ COMPLETED**: Remove unused import statements and dependencies  
+* **✅ COMPLETED**: Consolidate similar configuration files
+* **✅ COMPLETED**: Remove broken or non-functional ReAct agent implementation
 
 ### Priority Matrix (suggested order)
 

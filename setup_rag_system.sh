@@ -271,9 +271,10 @@ INDEX_STORE_PATH=./index_store
 
 # Model Configuration
 DEFAULT_EMBEDDING_MODEL=sentence-transformers/all-mpnet-base-v2
-DEFAULT_GENERATION_MODEL=qwen2.5:7b
-DEFAULT_RERANKER_MODEL=BAAI/bge-reranker-base
-DEFAULT_ENRICHMENT_MODEL=qwen2.5:0.5b
+# Default model names - updated to current versions
+DEFAULT_GENERATION_MODEL=qwen3:8b
+DEFAULT_RERANKER_MODEL=answerdotai/answerai-colbert-small-v1
+DEFAULT_ENRICHMENT_MODEL=qwen3:0.6b
 
 # Performance Configuration
 MAX_CONCURRENT_REQUESTS=5
@@ -332,9 +333,10 @@ while ! docker compose exec ollama ollama list &> /dev/null; do
     ((attempt++))
 done
 
-info "Installing generation models..."
-docker compose exec ollama ollama pull qwen2.5:7b
-docker compose exec ollama ollama pull qwen2.5:0.5b
+# Download Ollama models
+info "Downloading required Ollama models..."
+docker compose exec ollama ollama pull qwen3:8b
+docker compose exec ollama ollama pull qwen3:0.6b
 
 info "Verifying model installation..."
 docker compose exec ollama ollama list
