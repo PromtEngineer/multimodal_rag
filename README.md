@@ -1,10 +1,10 @@
-# LocalGPT - Private Document Intelligence Platform
+# RAG System - Private Document Intelligence Platform
 
 <div align="center">
 
-![LocalGPT Logo](https://img.shields.io/badge/LocalGPT-Private%20AI-blue?style=for-the-badge)
+![RAG System Logo](https://img.shields.io/badge/RAG%20System-Private%20AI-blue?style=for-the-badge)
 
-**Transform your documents into intelligent, searchable knowledge with complete privacy**
+**Transform your PDF documents into intelligent, searchable knowledge with complete privacy**
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -14,15 +14,15 @@
 
 </div>
 
-## 🚀 What is LocalGPT?
+## 🚀 What is RAG System?
 
-LocalGPT is a **private, local document intelligence platform** that allows you to chat with your documents using advanced AI models - all while keeping your data completely private and secure on your own infrastructure.
+RAG System is a **private, local document intelligence platform** that allows you to chat with your PDF documents using advanced AI models - all while keeping your data completely private and secure on your own infrastructure.
 
 ### 🎯 Key Benefits
 
 - **🔒 Complete Privacy**: Your documents never leave your server
 - **🧠 Advanced AI**: State-of-the-art RAG (Retrieval-Augmented Generation) with smart routing
-- **📚 Multi-Format Support**: PDFs, Word docs, text files, and more
+- **📚 PDF Support**: Currently supports PDF documents (other formats coming soon!)
 - **🔍 Intelligent Search**: Hybrid search combining semantic similarity and keyword matching
 - **⚡ High Performance**: Optimized for speed with batch processing and caching
 - **🐳 Easy Deployment**: Docker support for simple setup and scaling
@@ -32,10 +32,11 @@ LocalGPT is a **private, local document intelligence platform** that allows you 
 ## ✨ Features
 
 ### 📖 Document Processing
-- **Multi-format Support**: PDF, DOCX, TXT, Markdown, and more
+- **PDF Support**: Full support for PDF documents with intelligent text extraction
 - **Smart Chunking**: Intelligent text segmentation with overlap optimization
 - **Contextual Enrichment**: Enhanced document understanding with AI-generated context
-- **Batch Processing**: Handle multiple documents simultaneously
+- **Batch Processing**: Handle multiple PDF documents simultaneously
+- **🔄 Coming Soon**: Support for DOCX, TXT, Markdown, and other formats
 
 ### 🤖 AI-Powered Chat
 - **Natural Language Queries**: Ask questions in plain English
@@ -76,8 +77,8 @@ LocalGPT is a **private, local document intelligence platform** that allows you 
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/localgpt.git
-cd localgpt
+git clone https://github.com/PromtEngineer/multimodal_rag.git
+cd multimodal_rag
 
 # Install Ollama locally (required even for Docker)
 curl -fsSL https://ollama.ai/install.sh | sh
@@ -110,8 +111,8 @@ docker compose logs -f
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/localgpt.git
-cd localgpt
+git clone https://github.com/PromtEngineer/multimodal_rag.git
+cd multimodal_rag
 
 # Install Python dependencies
 pip install -r requirements.txt
@@ -259,12 +260,12 @@ python run_system.py --health
 
 ### 1. Create Your First Index
 
-An **index** is a collection of processed documents that you can chat with.
+An **index** is a collection of processed PDF documents that you can chat with.
 
 #### Using the Web Interface:
 1. Open http://localhost:3000
 2. Click "Create New Index"
-3. Upload your documents (PDF, DOCX, TXT)
+3. Upload your PDF documents
 4. Configure processing options
 5. Click "Build Index"
 
@@ -282,9 +283,9 @@ python create_index_script.py
 # Create index
 curl -X POST http://localhost:8000/indexes \
   -H "Content-Type: application/json" \
-  -d '{"name": "My Index", "description": "My documents"}'
+  -d '{"name": "My Index", "description": "My PDF documents"}'
 
-# Upload documents
+# Upload PDF documents
 curl -X POST http://localhost:8000/indexes/INDEX_ID/upload \
   -F "files=@document.pdf"
 
@@ -297,7 +298,7 @@ curl -X POST http://localhost:8000/indexes/INDEX_ID/build
 Once your index is built:
 
 1. **Create a Chat Session**: Click "New Chat" or use an existing session
-2. **Select Your Index**: Choose which document collection to query
+2. **Select Your Index**: Choose which PDF collection to query
 3. **Ask Questions**: Type natural language questions about your documents
 4. **Get Answers**: Receive AI-generated responses with source citations
 
@@ -317,7 +318,7 @@ curl -X POST http://localhost:8000/sessions \
 
 #### Batch Document Processing
 ```bash
-# Process multiple documents at once
+# Process multiple PDF documents at once
 python demo_batch_indexing.py --config batch_indexing_config.json
 ```
 
@@ -325,7 +326,7 @@ python demo_batch_indexing.py --config batch_indexing_config.json
 ```python
 import requests
 
-# Chat with your documents via API
+# Chat with your PDF documents via API
 response = requests.post('http://localhost:8000/chat', json={
     'query': 'What are the key findings in the research papers?',
     'session_id': 'your-session-id',
@@ -342,7 +343,7 @@ print(response.json()['response'])
 
 ### Model Configuration
 
-LocalGPT supports multiple AI model providers:
+RAG System supports multiple AI model providers:
 
 #### Ollama Models (Local)
 ```python
@@ -404,7 +405,7 @@ SEARCH_CONFIG = {
 ## 📚 Use Cases
 
 ### 📊 Business Intelligence
-- **Document Analysis**: Extract insights from reports, contracts, and presentations
+- **Document Analysis**: Extract insights from PDF reports, contracts, and presentations
 - **Compliance**: Query regulatory documents and policies
 - **Knowledge Management**: Build searchable company knowledge bases
 
@@ -482,7 +483,7 @@ export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 
 1. **Check Logs**: Look at `logs/system.log` for detailed error messages
 2. **System Health**: Run `python system_health_check.py`
-3. **Documentation**: Check the [Technical Documentation](TECHNICAL_DOCS.md)
+3. **Documentation**: Check the [Technical Documentation](Documentation/)
 4. **GitHub Issues**: Report bugs and request features
 5. **Community**: Join our Discord/Slack community
 
@@ -511,7 +512,7 @@ Content-Type: application/json
 POST /indexes
 {"name": "My Index", "description": "Description"}
 
-# Upload documents
+# Upload PDF documents
 POST /indexes/{id}/upload
 Content-Type: multipart/form-data
 
@@ -563,13 +564,13 @@ Content-Type: application/json
 }
 ```
 
-For complete API documentation, see [API_REFERENCE.md](API_REFERENCE.md).
+For complete API documentation, see [Documentation/api_reference.md](Documentation/api_reference.md).
 
 ---
 
 ## 🏗️ Architecture
 
-LocalGPT is built with a modular, scalable architecture:
+RAG System is built with a modular, scalable architecture:
 
 ```mermaid
 graph TB
@@ -604,7 +605,7 @@ graph TB
 
 ## 🤝 Contributing
 
-We welcome contributions from developers of all skill levels! LocalGPT is an open-source project that benefits from community involvement.
+We welcome contributions from developers of all skill levels! RAG System is an open-source project that benefits from community involvement.
 
 ### 🚀 Quick Start for Contributors
 
@@ -640,6 +641,7 @@ python run_system.py --mode dev
 - **User Experience**: Enhance the web interface
 - **Testing**: Expand test coverage
 - **Documentation**: Improve setup and usage guides
+- **🔄 Format Support**: Add support for DOCX, TXT, Markdown, and other formats
 
 ### 📖 Detailed Guidelines
 
@@ -672,17 +674,16 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Documentation**: [Technical Docs](TECHNICAL_DOCS.md)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/localgpt/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/localgpt/discussions)
-- **Email**: support@localgpt.com
+- **Documentation**: [Technical Docs](Documentation/)
+- **Issues**: [GitHub Issues](https://github.com/PromtEngineer/multimodal_rag/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/PromtEngineer/multimodal_rag/discussions)
 
 ---
 
 <div align="center">
 
-**Made with ❤️ for private, intelligent document processing**
+**Made with ❤️ for private, intelligent PDF document processing**
 
-[⭐ Star us on GitHub](https://github.com/yourusername/localgpt) • [🐛 Report Bug](https://github.com/yourusername/localgpt/issues) • [💡 Request Feature](https://github.com/yourusername/localgpt/issues)
+[⭐ Star us on GitHub](https://github.com/PromtEngineer/multimodal_rag) • [🐛 Report Bug](https://github.com/PromtEngineer/multimodal_rag/issues) • [💡 Request Feature](https://github.com/PromtEngineer/multimodal_rag/issues)
 
 </div>
