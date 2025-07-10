@@ -35,24 +35,56 @@ This guide provides practical Docker commands and procedures for running the RAG
 
 ## 1. Quick Start Commands
 
-### 1.1 Complete Setup
+### Step 1: Clone and Setup
 
 ```bash
 # Clone repository
-git clone https://github.com/your-org/rag-system.git
-cd rag-system
+git clone <your-repository-url>
+cd rag_system_old
 
-# Install Ollama locally (required)
+# Verify Docker is running
+docker version
+```
+
+### Step 2: Install and Configure Ollama (Required)
+
+**⚠️ Important**: Even with Docker, Ollama must be installed locally for optimal performance.
+
+```bash
+# Install Ollama
 curl -fsSL https://ollama.ai/install.sh | sh
 
-# Start Ollama (in terminal 1)
+# Start Ollama (in one terminal)
 ollama serve
 
-# Install required models (in terminal 2)
-ollama pull qwen3:0.6b
-ollama pull qwen3:8b
+# Install required models (in another terminal)
+ollama pull qwen3:0.6b      # Fast model (650MB)
+ollama pull qwen3:8b        # High-quality model (4.7GB)
 
-# Start Docker containers (in terminal 3)
+# Verify models are installed
+ollama list
+
+# Test Ollama connection
+curl http://localhost:11434/api/tags
+```
+
+### Step 3: Start Docker Containers
+
+```bash
+# Start all containers
+./start-docker.sh
+
+# Stop all containers
+./start-docker.sh stop
+
+# View logs
+./start-docker.sh logs
+
+# Check status
+./start-docker.sh status
+
+# Restart containers
+./start-docker.sh stop
 ./start-docker.sh
 ```
 

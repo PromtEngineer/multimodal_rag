@@ -139,8 +139,8 @@ docker compose version
 
 ```bash
 # Clone repository
-git clone https://github.com/your-org/rag-system.git
-cd rag-system
+git clone <your-repository-url>
+cd rag_system_old
 
 # Verify Ollama is running
 curl http://localhost:11434/api/tags
