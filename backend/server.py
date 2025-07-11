@@ -916,9 +916,12 @@ Respond with exactly one word: USE_RAG or DIRECT_LLM"""
             # Delegate to advanced RAG API same as session indexing
             rag_api_url = "http://localhost:8001/index"
             import requests, json as _json
+            # Use the index's dedicated LanceDB table so retrieval matches
+            table_name = index.get("vector_table_name")
             payload = {
-                "file_paths": file_paths, 
-                "session_id": index_id,
+                "file_paths": file_paths,
+                "session_id": index_id,  # reuse index_id for progress tracking
+                "table_name": table_name,
                 "chunk_size": chunk_size,
                 "chunk_overlap": chunk_overlap,
                 "retrieval_mode": retrieval_mode,

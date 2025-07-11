@@ -257,10 +257,18 @@ class IndexingPipeline:
                     print(f"\n--- Ensuring Full-Text Search (FTS) index on table '{table_name}' ---")
                     try:
                         tbl = self.lancedb_manager.get_table(table_name)
-                        # Create FTS index only if it does not already exist
+                        # LanceDB's default index name is "text_idx" while older
+                        # revisions of this pipeline used our own name "fts_text".
+                        # Guard against both so we don't attempt to create a     
+                        # duplicate index and trigger a LanceError.
                         existing_indices = [idx.name for idx in tbl.list_indices()]
-                        if "fts_text" not in existing_indices:
-                            tbl.create_fts_index("text", use_tantivy=False, replace=False)
+                        if not any(name in existing_indices for name in ("text_idx", "fts_text")):
+                            tbl.create_fts_index(
+                                "text",  # column to index
+                                index_name="text_idx",  # stick to Lance's default
+                                use_tantivy=False,
+                                replace=False,
+                            )
                             print("✅ FTS index created successfully (using Lance native FTS).")
                         else:
                             print("ℹ️  FTS index already exists – skipped creation.")
