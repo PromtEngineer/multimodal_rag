@@ -52,7 +52,6 @@ chat_history.db
 
 # Backend generated files
 backend/shared_uploads/
-backend/chat_history.db
 
 # Vector DB artefacts
 lancedb/
@@ -64,7 +63,8 @@ logs/
 
 # SQLite or other database files
 *.db
-backend/*.db
+#backend/*.db
+# backend/chat_history.db
 backend/chroma_db/
 backend/chroma_db/**
 
@@ -74,3 +74,5 @@ rag_system/documents/
 
 # Ensure docker.env remains tracked
 !docker.env
+!backend/chat_data.db
+
