@@ -57,3 +57,20 @@ backend/chat_history.db
 # Vector DB artefacts
 lancedb/
 index_store/overviews/
+
+# Logs and runtime output
+logs/
+*.log
+
+# SQLite or other database files
+*.db
+backend/*.db
+backend/chroma_db/
+backend/chroma_db/**
+
+# Document and user-uploaded files (PDFs, images, etc.)
+rag_system/documents/
+*.pdf
+
+# Ensure docker.env remains tracked
+!docker.env
