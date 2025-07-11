@@ -392,7 +392,9 @@ Respond with JSON: {{"category": "<your_choice>"}}
             if decomp_enabled:
                 print(f"\n--- Query Decomposition Enabled ---")
                 # Use the raw user query (without conversation history) for decomposition to avoid leakage of prior context
-                sub_queries = self.query_decomposer.decompose(raw_query)
+                # Pass the last 5 conversation turns for context resolution within the decomposer
+                recent_history = history[-5:] if history else []
+                sub_queries = self.query_decomposer.decompose(raw_query, recent_history)
                 if event_callback:
                     event_callback("decomposition", {"sub_queries": sub_queries})
                 print(f"Original query: '{query}' (Contextual: '{contextual_query}')")
