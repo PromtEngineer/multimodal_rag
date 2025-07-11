@@ -1,7 +1,5 @@
 import fitz  # PyMuPDF
 from PIL import Image
-from colpali_engine.models import ColQwen2, ColQwen2Processor
-from transformers.utils.import_utils import is_flash_attn_2_available
 import torch
 import os
 from typing import List, Dict, Any
@@ -11,8 +9,6 @@ from rag_system.indexing.representations import QwenEmbedder
 
 
 from transformers import ColPaliForRetrieval, ColPaliProcessor, Qwen2TokenizerFast
-from PIL import Image
-import torch
 
 class LocalVisionModel:
     """

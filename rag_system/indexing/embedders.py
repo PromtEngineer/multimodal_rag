@@ -1,5 +1,3 @@
-from sentence_transformers import SentenceTransformer
-from transformers import AutoModelForCausalLM, AutoTokenizer
 from rag_system.indexing.representations import QwenEmbedder
 # from rag_system.indexing.representations import BM25Generator
 import lancedb
@@ -8,7 +6,6 @@ import pyarrow as pa
 from typing import List, Dict, Any
 import numpy as np
 import os
-import pickle
 import json
 
 class LanceDBManager:

@@ -5,7 +5,6 @@ from urllib.parse import urlparse, parse_qs
 import os
 import requests
 import sys
-import functools
 import logging
 
 # Add backend directory to path for database imports

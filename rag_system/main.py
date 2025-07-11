@@ -12,13 +12,7 @@ load_dotenv()
 # python -m rag_system.main api
 
 from rag_system.agent.loop import Agent
-from rag_system.indexing.representations import QwenEmbedder
-from rag_system.indexing.embedders import LanceDBManager
-from rag_system.indexing.multimodal import MultimodalProcessor, LocalVisionModel
-from rag_system.pipelines.indexing_pipeline import IndexingPipeline
-from rag_system.pipelines.retrieval_pipeline import RetrievalPipeline
 from rag_system.utils.ollama_client import OllamaClient
-from rag_system.factory import get_agent
 # Configuration is now defined in this file - no import needed
 
 # Advanced RAG System Configuration
@@ -219,6 +213,9 @@ def run_indexing(docs_path: str, config_mode: str = "default"):
     """Runs the indexing pipeline for the specified documents."""
     print(f"📚 Starting indexing for documents in: {docs_path}")
     validate_model_config()
+    
+    # Local import to avoid circular dependencies
+    from rag_system.pipelines.indexing_pipeline import IndexingPipeline
     
     # Get the appropriate indexing pipeline from the factory
     indexing_pipeline = IndexingPipeline(PIPELINE_CONFIGS[config_mode])
