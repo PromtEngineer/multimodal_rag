@@ -263,9 +263,9 @@ class IndexingPipeline:
                         # duplicate index and trigger a LanceError.
                         existing_indices = [idx.name for idx in tbl.list_indices()]
                         if not any(name in existing_indices for name in ("text_idx", "fts_text")):
+                            # Use LanceDB default index naming ("text_idx")
                             tbl.create_fts_index(
-                                "text",  # column to index
-                                index_name="text_idx",  # stick to Lance's default
+                                "text",
                                 use_tantivy=False,
                                 replace=False,
                             )
