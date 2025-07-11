@@ -24,36 +24,66 @@ class Verifier:
     async def verify_async(self, query: str, context: str, answer: str) -> VerificationResult:
         """Async variant that calls the Ollama client asynchronously."""
         prompt = f"""
-You are an expert fact checker.
+        You are an automated fact-checker. Determine whether the ANSWER is fully supported by the CONTEXT and output a single line of JSON.
 
-TASK
-  Determine whether the given ANSWER is fully supported by the CONTEXT.
+        # EXAMPLES
 
-OUTPUT FORMAT (very strict!)
-  Reply **only** with a single line JSON object, no markdown, no extra keys:
-  {{
-    "verdict": "SUPPORTED" | "NOT_SUPPORTED" | "NEEDS_CLARIFICATION",
-    "is_grounded": true | false,
-    "reasoning": "< concise reasoning >",
-    "confidence_score": <integer 0-100>
-  }}
+        <QUERY>
+        What color is the sky?
+        </QUERY>
+        <CONTEXT>
+        During the day, the sky appears blue due to Rayleigh scattering.
+        </CONTEXT>
+        <ANSWER>
+        The sky is blue during the day.
+        </ANSWER>
+        <OUTPUT>
+        {{"verdict": "SUPPORTED", "is_grounded": true, "reasoning": "The context explicitly supports that the sky is blue during the day.", "confidence_score": 100}}
+        </OUTPUT>
 
-Guidelines
-  • If any part of the answer is not in the context, verdict = "NOT_SUPPORTED".
-  • If answer is partially supported but misses critical info, use "NEEDS_CLARIFICATION".
-  • "is_grounded" mirrors whether verdict is SUPPORTED.
-  • Keep reasoning under 30 words.
+        <QUERY>
+        Where are apples and oranges grown?
+        </QUERY>
+        <CONTEXT>
+        Apples are grown in orchards.
+        </CONTEXT>
+        <ANSWER>
+        Apples are grown in orchards and oranges are grown in groves.
+        </ANSWER>
+        <OUTPUT>
+        {{"verdict": "NOT_SUPPORTED", "is_grounded": false, "reasoning": "The context mentions orchards, but not oranges or groves.", "confidence_score": 80}}
+        </OUTPUT>
 
-QUERY: "{query}"
-CONTEXT:
-"""
+        <QUERY>
+        How long is the process?
+        </QUERY>
+        <CONTEXT>
+        The first step takes 3 days. The second step takes 5 days.
+        </CONTEXT>
+        <ANSWER>
+        The process takes 3 days.
+        </ANSWER>
+        <OUTPUT>
+        {{"verdict": "NEEDS_CLARIFICATION", "is_grounded": false, "reasoning": "The answer omits the 5 days required for the second step.", "confidence_score": 70}}
+        </OUTPUT>
+
+        # TASK
+
+        <QUERY>
+        "{query}"
+        </QUERY>
+        <CONTEXT>
+        """
         prompt += context[:4000]  # Clamp to avoid huge prompts
         prompt += """
-ANSWER:
-"""
+        </CONTEXT>
+        <ANSWER>
+        """
         prompt += answer
         prompt += """
-"""
+        </ANSWER>
+        <OUTPUT>
+        """
         resp = await self.llm_client.generate_completion_async(self.llm_model, prompt, format="json")
         try:
             data = json.loads(resp.get("response", "{}"))
