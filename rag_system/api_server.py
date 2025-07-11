@@ -82,7 +82,11 @@ def _get_table_name_for_session(session_id):
         
         if not idx_ids:
             logger.warning(f"⚠️ No indexes found for session {session_id}")
-            return f"text_pages_{session_id}"  # Fallback to old behavior
+            # Use the default table name from config instead of session-specific name
+            from rag_system.main import PIPELINE_CONFIGS
+            default_table = PIPELINE_CONFIGS["default"]["storage"]["text_table_name"]
+            logger.info(f"📊 Using default table '{default_table}' for session {session_id[:8]}...")
+            return default_table
         
         # Use the first index's vector table name
         idx = db.get_index(idx_ids[0])
@@ -93,11 +97,19 @@ def _get_table_name_for_session(session_id):
             return table_name
         else:
             logger.warning(f"⚠️ Index found but no vector table name for session {session_id}")
-            return f"text_pages_{session_id}"  # Fallback
+            # Use the default table name from config instead of session-specific name
+            from rag_system.main import PIPELINE_CONFIGS
+            default_table = PIPELINE_CONFIGS["default"]["storage"]["text_table_name"]
+            logger.info(f"📊 Using default table '{default_table}' for session {session_id[:8]}...")
+            return default_table
             
     except Exception as e:
         logger.error(f"❌ Error getting table name for session {session_id}: {e}")
-        return f"text_pages_{session_id}"  # Fallback
+        # Use the default table name from config instead of session-specific name
+        from rag_system.main import PIPELINE_CONFIGS
+        default_table = PIPELINE_CONFIGS["default"]["storage"]["text_table_name"]
+        logger.info(f"📊 Using default table '{default_table}' for session {session_id[:8]}...")
+        return default_table
 
 class AdvancedRagApiHandler(http.server.BaseHTTPRequestHandler):
     def do_OPTIONS(self):
